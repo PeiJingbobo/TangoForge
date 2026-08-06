@@ -183,7 +183,8 @@ func (s *Service) GenerateTemplate(ctx context.Context, workdir string, example 
 	if err != nil {
 		return "", err // LLM_NOT_CONFIGURED
 	}
-	tmplText, err := client.Complete(ctx, llm.Request{
+	// 客户端断开不取消 LLM 请求（context.WithoutCancel；超时由 llm.Client http.Timeout 控制）。
+	tmplText, err := client.Complete(context.WithoutCancel(ctx), llm.Request{
 		System: `你是 TangoForge 的 Markdown 导出模板生成器。用户提供一份示例 Markdown 文档，
 请生成一份等价的 Go text/template 模板，用于从结构化任务数据渲染出同风格文档。
 

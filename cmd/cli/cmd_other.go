@@ -10,7 +10,8 @@ import (
 func runGraph(args []string, g cliGlobal) error {
 	opts := parseFlags(args)
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	c := newCLIClient(g)
@@ -39,7 +40,8 @@ func runStateMachine(args []string, g cliGlobal) error {
 	case "get":
 		opts := parseFlags(args[1:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		resp, err := c.call("GET", "/api/state-machine", project, nil)
@@ -54,7 +56,8 @@ func runStateMachine(args []string, g cliGlobal) error {
 		}
 		opts := parseFlags(args[2:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		data, err := os.ReadFile(args[1])
@@ -89,11 +92,11 @@ func runSkills(args []string, g cliGlobal) error {
 	} else {
 		project = parseFlags(args)["project"]
 	}
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	var resp *apiResp
-	var err error
 	if name != "" {
 		resp, err = c.call("GET", "/api/skills/"+name, project, nil)
 	} else {
@@ -110,7 +113,8 @@ func runSkills(args []string, g cliGlobal) error {
 func runPermission(args []string, g cliGlobal) error {
 	opts := parseFlags(args)
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	c := newCLIClient(g)
@@ -145,7 +149,8 @@ func runAudit(args []string, g cliGlobal) error {
 	if len(args) > 0 && args[0] == "export" {
 		opts := parseFlags(args[1:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		resp, err := c.call("GET", "/api/audit/export", project, nil)
@@ -157,7 +162,8 @@ func runAudit(args []string, g cliGlobal) error {
 	}
 	opts := parseFlags(args)
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	q := ""

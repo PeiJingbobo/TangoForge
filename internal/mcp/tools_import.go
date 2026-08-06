@@ -11,12 +11,14 @@ import (
 
 // import 域工具（草稿流，TF-018 业务层）。
 
-// toolImportPreview 提交 Markdown 解析 → 生成草稿（LLM）。
+// toolImportPreview 提交 Markdown 解析 → 生成草稿（LLM）。支持单文件/多文件/目录一次解析。
 var toolImportPreview = mcp.NewTool("import_preview",
-	mcp.WithDescription("提交 Markdown 解析生成草稿（不直接入库）。需 project；提供 file_path（相对 workdir 或绝对）"+
-		"或 content + source_file（必填）二选一。"),
+	mcp.WithDescription("提交 Markdown 解析生成草稿（不直接入库）。需 project；输入四选一："+
+		"file_path（单文件）| file_paths（多文件数组，合并为一次解析）| directory（目录，递归扫描 *.md）| content+source_file。"),
 	mcp.WithString("project", mcp.Required(), mcp.Description("项目工作目录绝对路径")),
-	mcp.WithString("file_path", mcp.Description("Markdown 文件路径（相对 workdir 或绝对）")),
+	mcp.WithString("file_path", mcp.Description("单文件路径（相对 workdir 或绝对）")),
+	mcp.WithArray("file_paths", mcp.Description("多文件路径数组（合并为一次解析）")),
+	mcp.WithString("directory", mcp.Description("目录路径（递归扫描 *.md/*.markdown）")),
 	mcp.WithString("content", mcp.Description("Markdown 内容（与 source_file 搭配）")),
 	mcp.WithString("source_file", mcp.Description("覆盖单元标识（content 方式必填）")),
 )
@@ -40,6 +42,8 @@ func (s *Server) handleImportPreview(ctx context.Context, req mcp.CallToolReques
 	return s.exec(ctx, "import.run", req.GetArguments(), func(ctx context.Context, workdir string, args map[string]any) (any, error) {
 		in := parser.ParseInput{
 			FilePath:   strArg(args, "file_path", ""),
+			FilePaths:  strArrayArg(args, "file_paths"),
+			Directory:  strArg(args, "directory", ""),
 			Content:    strArg(args, "content", ""),
 			SourceFile: strArg(args, "source_file", ""),
 		}

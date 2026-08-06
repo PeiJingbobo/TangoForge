@@ -134,11 +134,14 @@ func (s *Service) emit(ctx context.Context, workdir, action, target string) {
 	}
 }
 
-// ParseInput 导入入参（QA P4-1：file_path 或 content+source_file 双形态）。
+// ParseInput 导入入参（QA P4-1 扩展：file_path / file_paths / directory / content 四形态）。
+// 多文件（file_paths）与目录（directory）会合并为**一次 LLM 解析**，产出单一草稿。
 type ParseInput struct {
-	FilePath   string `json:"file_path"`
-	Content    string `json:"content"`
-	SourceFile string `json:"source_file"`
+	FilePath   string   `json:"file_path"`  // 单文件（相对 workdir 或绝对）
+	FilePaths  []string `json:"file_paths"` // 多文件：合并解析（source_file=公共父目录）
+	Directory  string   `json:"directory"`  // 目录：递归扫描 *.md/*.markdown 后合并解析（source_file=目录）
+	Content    string   `json:"content"`    // 原始内容（须配 source_file）
+	SourceFile string   `json:"source_file"`
 }
 
 // Parse 解析 Markdown 并生成草稿（QA P4-1 §17.1）。
@@ -160,9 +163,28 @@ func (s *Service) Parse(ctx context.Context, workdir string, in ParseInput) (Dra
 
 // parseCore Parse 主体（不含事件）。
 func (s *Service) parseCore(ctx context.Context, workdir string, in ParseInput) (Draft, error) {
-	// 入参解析：file_path 或 content+source_file 二选一。
+	// 入参解析：file_path / file_paths / directory / content 四形态。
 	var content, sourceFile string
+	var err error
 	switch {
+	case in.Directory != "":
+		dir := filepath.Clean(in.Directory)
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(workdir, dir)
+		}
+		files, err := scanMarkdownFiles(dir)
+		if err != nil {
+			return Draft{}, fmt.Errorf("%w: %v", ErrImportFailed, err)
+		}
+		content, sourceFile, err = mergeFiles(workdir, files)
+		if err != nil {
+			return Draft{}, fmt.Errorf("%w: %v", ErrImportFailed, err)
+		}
+	case len(in.FilePaths) > 0:
+		content, sourceFile, err = mergeFiles(workdir, in.FilePaths)
+		if err != nil {
+			return Draft{}, fmt.Errorf("%w: %v", ErrImportFailed, err)
+		}
 	case in.FilePath != "":
 		path := filepath.Clean(in.FilePath)
 		if !filepath.IsAbs(path) {
@@ -181,7 +203,7 @@ func (s *Service) parseCore(ctx context.Context, workdir string, in ParseInput) 
 		content = in.Content
 		sourceFile = filepath.Clean(in.SourceFile)
 	default:
-		return Draft{}, fmt.Errorf("%w: 必须提供 file_path 或 content", ErrImportFailed)
+		return Draft{}, fmt.Errorf("%w: 必须提供 file_path / file_paths / directory / content 之一", ErrImportFailed)
 	}
 	if strings.TrimSpace(content) == "" {
 		return Draft{}, fmt.Errorf("%w: Markdown 内容为空", ErrImportFailed)
@@ -193,12 +215,13 @@ func (s *Service) parseCore(ctx context.Context, workdir string, in ParseInput) 
 		return Draft{}, err
 	}
 
-	// LLM 调用。
+	// LLM 调用（客户端断开不取消 LLM 请求：用 WithoutCancel 脱离 r.Context()，
+	// 超时由 llm.Client 的 http.Timeout 控制；修复 CLI 超时断开导致的 context canceled，2026-08-06）。
 	client, err := llm.New(llm.FromConfig(s.llmCfg()), s.logger)
 	if err != nil {
 		return Draft{}, err // LLM_NOT_CONFIGURED
 	}
-	raw, err := client.CompleteJSON(ctx, llm.Request{
+	raw, err := client.CompleteJSON(context.WithoutCancel(ctx), llm.Request{
 		System:      buildSystemPrompt(),
 		User:        buildUserPrompt(sm, content),
 		RequireJSON: true,

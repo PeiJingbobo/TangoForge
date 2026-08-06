@@ -45,7 +45,9 @@ func newCLIClient(g cliGlobal) *cliClient {
 	return &cliClient{
 		server: "http://" + g.Server,
 		actor:  g.Actor,
-		http:   &http.Client{Timeout: 30 * time.Second},
+		// LLM 调用（import preview / export template）可能需 60s+，CLI 侧给足 120s
+		//（daemon 侧 LLM 超时独立由配置 TimeoutSec 控制，客户端断开不影响服务端继续执行）。
+		http: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
@@ -169,12 +171,31 @@ func daemonNames() []string {
 	return []string{"tangoforge-daemon"}
 }
 
-// requireProject 校验 --project 必填（任务类子命令）。
-func requireProjectFlag(project string) error {
+// requireProject 校验并规范化 --project（必填 + ~ 展开 + 绝对化，防止引号包裹 ~ 或相对路径
+// 导致 X-Project 与服务端工作目录不匹配）。
+func requireProject(project string) (string, error) {
 	if strings.TrimSpace(project) == "" {
-		return errors.New("缺少必填参数 --project <工作目录>（任务/导入/导出等子命令必须显式指定项目）")
+		return "", errors.New("缺少必填参数 --project <工作目录>（任务/导入/导出等子命令必须显式指定项目）")
 	}
-	return nil
+	expanded := expandTilde(project)
+	abs, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", fmt.Errorf("解析项目路径 %s: %w", project, err)
+	}
+	return abs, nil
+}
+
+// expandTilde 展开开头的 ~ 为用户主目录。
+func expandTilde(p string) string {
+	if p == "~" {
+		home, _ := os.UserHomeDir()
+		return home
+	}
+	if strings.HasPrefix(p, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, p[2:])
+	}
+	return p
 }
 
 // printOutput 输出：--json 打印原始 data JSON；否则格式化（调用方提供人类可读文本）。

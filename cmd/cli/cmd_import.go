@@ -4,7 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
+
+// collectRepeatFlag 收集重复出现的同名单值 flag（如多个 --file a.md --file b.md）。
+func collectRepeatFlag(args []string, name string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == name && i+1 < len(args) && !hasFlagPrefix(args[i+1]) {
+			out = append(out, args[i+1])
+			i++
+		} else if strings.HasPrefix(args[i], name+"=") {
+			out = append(out, strings.TrimPrefix(args[i], name+"="))
+		}
+	}
+	return out
+}
+
+// hasFlagPrefix 判断参数是否为 flag。
+func hasFlagPrefix(s string) bool {
+	return strings.HasPrefix(s, "--")
+}
 
 // runImport import 子命令：preview / drafts / confirm / discard。
 func runImport(args []string, g cliGlobal) error {
@@ -16,20 +36,28 @@ func runImport(args []string, g cliGlobal) error {
 	case "preview":
 		opts := parseFlags(args[1:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
-		body := map[string]string{}
-		if f := opts["file"]; f != "" {
-			body["file_path"] = f
-		} else {
-			content := opts["content"]
-			source := opts["source-file"]
-			if source == "" {
-				return fmt.Errorf("用法: tangoforge import preview [--project P] (--file F | --content C --source-file S)")
+		// 支持：--file F（可多个，多文件合并一次解析）| --dir D（递归扫描目录）| --content C --source-file S。
+		files := collectRepeatFlag(args[1:], "--file")
+		body := map[string]any{}
+		switch {
+		case opts["dir"] != "":
+			body["directory"] = opts["dir"]
+		case len(files) > 1:
+			body["file_paths"] = files
+		case len(files) == 1:
+			body["file_path"] = files[0]
+		case opts["content"] != "" || opts["source-file"] != "":
+			if opts["source-file"] == "" {
+				return fmt.Errorf("用法: tangoforge import preview [--project P] (--file F... | --dir D | --content C --source-file S)")
 			}
-			body["content"] = content
-			body["source_file"] = source
+			body["content"] = opts["content"]
+			body["source_file"] = opts["source-file"]
+		default:
+			return fmt.Errorf("用法: tangoforge import preview [--project P] (--file F... | --dir D | --content C --source-file S)")
 		}
 		resp, err := c.call("POST", "/api/import", project, body)
 		if err != nil {
@@ -40,7 +68,8 @@ func runImport(args []string, g cliGlobal) error {
 	case "drafts":
 		opts := parseFlags(args[1:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		resp, err := c.call("GET", "/api/import/drafts", project, nil)
@@ -55,7 +84,8 @@ func runImport(args []string, g cliGlobal) error {
 		}
 		opts := parseFlags(args[2:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		resp, err := c.call("POST", "/api/import/drafts/"+args[1]+"/confirm", project, nil)
@@ -70,7 +100,8 @@ func runImport(args []string, g cliGlobal) error {
 		}
 		opts := parseFlags(args[2:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		resp, err := c.call("DELETE", "/api/import/drafts/"+args[1], project, nil)
@@ -93,7 +124,8 @@ func runExport(args []string, g cliGlobal) error {
 		}
 		opts := parseFlags(args[2:])
 		project := opts["project"]
-		if err := requireProjectFlag(project); err != nil {
+		var err error
+		if project, err = requireProject(project); err != nil {
 			return err
 		}
 		data, err := os.ReadFile(args[1])
@@ -116,7 +148,8 @@ func runExport(args []string, g cliGlobal) error {
 	}
 	opts := parseFlags(rest)
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	body := map[string]string{}

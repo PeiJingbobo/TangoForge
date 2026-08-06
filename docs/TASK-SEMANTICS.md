@@ -374,11 +374,18 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 ### 17.1 入参与解析
 
-- `POST /api/import` body 支持双形态：`{"file_path": "..."}`（相对路径相对 workdir；绝对路径原样；source_file 规范化为绝对路径）或 `{"content": "...", "source_file": "..."}`（source_file 必填，覆盖单元标识）。
+- `POST /api/import` body 支持**四形态**（2026-08-06 扩展：多文件/目录一次导入）：
+  - `{"file_path": "..."}`：单文件（相对 workdir 或绝对；source_file=该文件绝对路径）；
+  - `{"file_paths": ["...", "..."]}`：**多文件**，合并为一次 LLM 解析（source_file=公共父目录）；
+  - `{"directory": "..."}`：**目录**，递归扫描 `*.md/*.markdown`（路径字典序）后合并一次解析（source_file=目录）；
+  - `{"content": "...", "source_file": "..."}`：原始内容（source_file 必填，覆盖单元标识）。
+- 多文件/目录合并时每个文件前插入 `<!-- file: <绝对路径> -->` 注释头，便于 LLM 区分来源；入库后以统一 source_file（批次标识）体现（多文件来源细节 v1 不逐条保留）。
 - LLM 输出**嵌套 children 结构**（Markdown 标题层级映射），严格 JSON Schema 约束（title/status 必填）；解析不依赖固定语法/正则。
 - **status 映射**：prompt 注入项目状态机 states（key+label）；LLM 返回 key 或 label（大小写不敏感）均可；无法匹配 → 整次失败；`archived` 不可作为导入状态。
 - **失败即整次失败**（缺 title / 缺 status / 坏 JSON / 超时 / LLM 未配置）：不落库，返回错误（`IMPORT_FAILED` 或 `LLM_*`，Message 含 LLM 原始输出），事件 `import.failed`；**禁止补默认值**。
 - 成功 → 写 `import_drafts`（pending），事件 `import.draft_ready`；`task_count` 为展平后全部任务数（含嵌套）。
+- **LLM 调用不随客户端断开取消**（`context.WithoutCancel`，超时由配置 TimeoutSec 控制）：CLI 断开后服务端仍完成调用写草稿，可稍后查询（2026-08-06 修复；CLI 侧 120s 超时覆盖）。
+- **APIKey 来源**：配置文件 `llm.api_key` 或环境变量 `DEEPSEEK_API_KEY`（llm.New 回退）。注意：**daemon 为长驻进程，环境变量是启动时快照**——shell 里 export 对已运行 daemon 无效；改配置文件即时生效（fsnotify 热重载），或 export 后重启 daemon。
 
 ### 17.2 规范化
 

@@ -40,7 +40,8 @@ func runTasks(args []string, g cliGlobal) error {
 func cmdTaskList(args []string, g cliGlobal, c *cliClient) error {
 	opts := parseFlags(args)
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	q := ""
@@ -65,7 +66,8 @@ func cmdTaskGet(args []string, g cliGlobal, c *cliClient) error {
 	}
 	opts := parseFlags(args[1:])
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	resp, err := c.call("GET", "/api/tasks/"+args[0], project, nil)
@@ -79,7 +81,8 @@ func cmdTaskGet(args []string, g cliGlobal, c *cliClient) error {
 func cmdTaskCreate(args []string, g cliGlobal, c *cliClient) error {
 	opts := parseFlags(args)
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	// title 为位置参数（第一个非 -- 值），也可用 --title 显式指定。
@@ -128,7 +131,8 @@ func cmdTaskUpdate(args []string, g cliGlobal, c *cliClient) error {
 	}
 	opts := parseFlags(args[1:])
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	body := map[string]any{}
@@ -171,7 +175,8 @@ func cmdTaskStatus(args []string, g cliGlobal, c *cliClient) error {
 	}
 	opts := parseFlags(args[2:])
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	resp, err := c.call("PATCH", "/api/tasks/"+args[0], project, map[string]any{"status": args[1]})
@@ -188,7 +193,8 @@ func cmdTaskArchive(args []string, g cliGlobal, c *cliClient) error {
 	}
 	opts := parseFlags(args[1:])
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	resp, err := c.call("POST", "/api/tasks/"+args[0]+"/archive", project, nil)
@@ -205,7 +211,8 @@ func cmdTaskRestore(args []string, g cliGlobal, c *cliClient) error {
 	}
 	opts := parseFlags(args[1:])
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	body := map[string]any{"fallback_todo": opts["fallback-todo"] == "true"}
@@ -223,7 +230,8 @@ func cmdTaskDelete(args []string, g cliGlobal, c *cliClient) error {
 	}
 	opts := parseFlags(args[1:])
 	project := opts["project"]
-	if err := requireProjectFlag(project); err != nil {
+	var err error
+	if project, err = requireProject(project); err != nil {
 		return err
 	}
 	resp, err := c.call("DELETE", "/api/tasks/"+args[0], project, nil)
