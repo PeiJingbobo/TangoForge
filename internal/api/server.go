@@ -216,6 +216,8 @@ func (s *Server) perm(action string, h http.HandlerFunc) http.HandlerFunc {
 //     → 来源识别（远程无 Token → 401）→ 动作权限（ui 放行，其余查 permissions 表 → 403）。
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
+	// CORS：Electron 渲染进程跨源访问（dev localhost:5173 / 生产 file://）；OPTIONS 预检 204。
+	r.Use(s.corsMiddleware)
 	r.Get("/ping", s.handlePing)
 	// WS 事件订阅（独立于 /api 中间件链，handleWS 内自行完成来源过滤/项目校验/权限）。
 	r.Get("/ws/events", s.handleWS)

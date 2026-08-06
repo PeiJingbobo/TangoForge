@@ -275,3 +275,38 @@ func freePort(t *testing.T) int {
 	_ = ln.Close()
 	return port
 }
+
+// TestCORS_Headers 桌面端跨源（TF-028 联调发现）：Electron 渲染进程携带 Origin 时回显放行。
+func TestCORS_Headers(t *testing.T) {
+	srv := newTestServer(t, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	req.Header.Set("Origin", "http://localhost:5173")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Errorf("ACAO = %q, want origin echo", got)
+	}
+	headers := rec.Header().Get("Access-Control-Allow-Headers")
+	if !strings.Contains(headers, "X-Project") || !strings.Contains(headers, "X-UI-Token") {
+		t.Errorf("ACAH = %q, want X-Project/X-UI-Token", headers)
+	}
+}
+
+// TestCORS_Preflight OPTIONS 预检（自定义头触发）直接 204，file:// 生产模式 Origin=null 放行。
+func TestCORS_Preflight(t *testing.T) {
+	srv := newTestServer(t, nil, nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/projects", nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "x-project,x-ui-token")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("preflight status = %d, want 204", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "null" {
+		t.Errorf("ACAO = %q, want null echo", got)
+	}
+}
