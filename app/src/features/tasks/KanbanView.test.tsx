@@ -103,6 +103,9 @@ describe('KanbanView', () => {
       http.get(`${DAEMON_BASE_URL}/api/tasks`, () =>
         HttpResponse.json({ code: 0, data: { tree: TREE, total: 2, page: 0, size: 0 } }),
       ),
+      http.get(`${DAEMON_BASE_URL}/api/import/drafts`, () =>
+        HttpResponse.json({ code: 0, data: [] }),
+      ),
     )
   })
 

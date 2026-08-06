@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { Search, Plus } from 'lucide-react'
+import { Search, Plus, FileUp, Download } from 'lucide-react'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { KanbanBoard } from '@/components/kanban/kanban-board'
 import { resolveDragTarget } from '@/components/kanban/drag-logic'
@@ -18,6 +18,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { ImportDialog } from '@/features/imports/ImportDialog'
+import { DraftsPanel } from '@/features/imports/DraftsPanel'
+import { ExportDialog } from '@/features/tasks/ExportDialog'
 import { useTasks, useCreateTask } from '@/hooks/useTasks'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
@@ -35,6 +38,8 @@ export function KanbanView() {
   const [query, setQuery] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const { getEffectiveStatus, moveTask } = useKanbanMutations(pid)
 
   // WS 实时失效（多端等价：其他通道的写操作实时反映）
@@ -117,11 +122,34 @@ export function KanbanView() {
               #{tag}
             </Button>
           ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setImportOpen(true)}
+            aria-label="导入任务"
+          >
+            <FileUp className="size-4" />
+            导入
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExportOpen(true)}
+            aria-label="导出任务"
+          >
+            <Download className="size-4" />
+            导出
+          </Button>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
             新建任务
           </Button>
         </div>
+      </div>
+
+      {/* 草稿待确认面板（有 pending 草稿时显示） */}
+      <div className="mb-5">
+        <DraftsPanel />
       </div>
 
       {columns.length === 0 ? (
@@ -153,6 +181,19 @@ export function KanbanView() {
           }
         }}
       />
+
+      {/* 导入草稿流 / 导出 */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>从 Markdown 导入</DialogTitle>
+            <DialogDescription>解析结果先进入草稿，确认后按文件全量覆盖入库。</DialogDescription>
+          </DialogHeader>
+          <ImportDialog onOpenChange={setImportOpen} />
+        </DialogContent>
+      </Dialog>
+
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
     </div>
   )
 }

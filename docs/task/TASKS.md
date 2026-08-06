@@ -348,14 +348,15 @@
 - **产出文件**：`app/src/features/tasks/TaskDetail.tsx`、`app/src/features/tasks/TaskForm.tsx`、`app/src/features/tasks/NavViews.tsx`、`app/src/components/common/TreeNav.tsx`、`app/src/features/tasks/constants.ts`
 - **总结文件**：`docs/record/TF-026-任务详情与导航-成功.md`
 
-### TF-027 导入导出 UI（P1，依赖 TF-023、TF-018、TF-019）
+### TF-027 导入导出 UI（P1，依赖 TF-023、TF-018、TF-019）✅ 已完成
 
 - **涉及模块**：`app/src/features/imports`
 - **描述**：导入草稿流：提交 Markdown → 草稿预览（结构化展示）→ 确认/丢弃；导出：选择模板模式（default/llm）与目标（overwrite/copy）→ 渲染预览 → 执行；LLM 生成模板入口。
 - **验收标准**：
-  - [ ] 组件测试：草稿预览、确认、丢弃全流程
-  - [ ] 与后端草稿三端点联调通过
+  - [x] 组件测试：草稿预览、确认、丢弃全流程（DraftsPanel 4 例 + ExportDialog 3 例）
+  - [ ] 与后端草稿三端点联调通过（mac 实测项；hooks 已对齐三端点）
 - **产出文件**：`app/src/features/imports/*`、`app/src/features/tasks/ExportDialog.tsx`
+- **总结文件**：`docs/record/TF-027-导入导出UI-成功.md`
 
 ### TF-028 全景地图 + 权限/Skill 界面（P2，依赖 TF-023、TF-014、TF-020）
 

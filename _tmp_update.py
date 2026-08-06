@@ -3,33 +3,33 @@ import io
 
 p = 'docs/task/TASKS.md'
 s = io.open(p, encoding='utf-8').read()
-old = """### TF-026 任务详情与导航视图（P1，依赖 TF-023、TF-008）
+old = """### TF-027 导入导出 UI（P1，依赖 TF-023、TF-018、TF-019）
 
-- **涉及模块**：`app/src/features/tasks`
-- **描述**：任务详情/编辑（字段编辑、归档/还原、依赖编辑 + 无环提示）；导航三视图：树形列表（折叠/搜索）、时间线、状态分类。
+- **涉及模块**：`app/src/features/imports`
+- **描述**：导入草稿流：提交 Markdown → 草稿预览（结构化展示）→ 确认/丢弃；导出：选择模板模式（default/llm）与目标（overwrite/copy）→ 渲染预览 → 执行；LLM 生成模板入口。
 - **验收标准**：
-  - [ ] 组件测试：详情编辑、依赖环错误展示
-  - [ ] 树形视图与后端树结构一致
-- **产出文件**：`app/src/features/tasks/TaskDetail.tsx`、`app/src/features/tasks/TaskForm.tsx`、`app/src/components/common/TreeNav.tsx` 等"""
-new = """### TF-026 任务详情与导航视图（P1，依赖 TF-023、TF-008）✅ 已完成
+  - [ ] 组件测试：草稿预览、确认、丢弃全流程
+  - [ ] 与后端草稿三端点联调通过
+- **产出文件**：`app/src/features/imports/*`、`app/src/features/tasks/ExportDialog.tsx`"""
+new = """### TF-027 导入导出 UI（P1，依赖 TF-023、TF-018、TF-019）✅ 已完成
 
-- **涉及模块**：`app/src/features/tasks`
-- **描述**：任务详情/编辑（字段编辑、归档/还原、依赖编辑 + 无环提示）；导航三视图：树形列表（折叠/搜索）、时间线、状态分类。
+- **涉及模块**：`app/src/features/imports`
+- **描述**：导入草稿流：提交 Markdown → 草稿预览（结构化展示）→ 确认/丢弃；导出：选择模板模式（default/llm）与目标（overwrite/copy）→ 渲染预览 → 执行；LLM 生成模板入口。
 - **验收标准**：
-  - [x] 组件测试：详情编辑（TaskForm 5 例 + TaskDetail 3 例）、依赖环错误展示（CIRCULAR_DEPENDENCY → toast 无环提示）
-  - [x] 树形视图与后端树结构一致（TreeNav 直接消费后端 tree，4 例）
-- **产出文件**：`app/src/features/tasks/TaskDetail.tsx`、`app/src/features/tasks/TaskForm.tsx`、`app/src/features/tasks/NavViews.tsx`、`app/src/components/common/TreeNav.tsx`、`app/src/features/tasks/constants.ts`
-- **总结文件**：`docs/record/TF-026-任务详情与导航-成功.md`"""
-assert old in s, 'TF-026 未匹配'
+  - [x] 组件测试：草稿预览、确认、丢弃全流程（DraftsPanel 4 例 + ExportDialog 3 例）
+  - [ ] 与后端草稿三端点联调通过（mac 实测项；hooks 已对齐三端点）
+- **产出文件**：`app/src/features/imports/*`、`app/src/features/tasks/ExportDialog.tsx`
+- **总结文件**：`docs/record/TF-027-导入导出UI-成功.md`"""
+assert old in s, 'TF-027 未匹配'
 s = s.replace(old, new)
 io.open(p, 'w', encoding='utf-8', newline='\n').write(s)
 
 p2 = 'docs/task/OVERVIEW.md'
 s2 = io.open(p2, encoding='utf-8').read()
-s2 = s2.replace('| TF-026 | 任务详情与导航视图 | P5 | P1 | TF-023, TF-008 | ⬜ | – |',
-                '| TF-026 | 任务详情与导航视图 | P5 | P1 | TF-023, TF-008 | ✅ | `docs/record/TF-026-任务详情与导航-成功.md` |')
-s2 = s2.replace('待开始 6 · 进行中 0 · 已完成 25', '待开始 5 · 进行中 0 · 已完成 26')
-s2 = s2.replace('[4/7] ✅✅✅✅⬜⬜⬜', '[5/7] ✅✅✅✅✅⬜⬜')
-s2 = s2.replace('TF-025 ✅ ▸ TF-026 ▸', 'TF-025 ✅ TF-026 ✅ ▸')
+s2 = s2.replace('| TF-027 | 导入导出 UI | P5 | P1 | TF-023, TF-018, TF-019 | ⬜ | – |',
+                '| TF-027 | 导入导出 UI | P5 | P1 | TF-023, TF-018, TF-019 | ✅ | `docs/record/TF-027-导入导出UI-成功.md` |')
+s2 = s2.replace('待开始 5 · 进行中 0 · 已完成 26', '待开始 4 · 进行中 0 · 已完成 27')
+s2 = s2.replace('[5/7] ✅✅✅✅✅⬜⬜', '[6/7] ✅✅✅✅✅✅⬜')
+s2 = s2.replace('TF-026 ✅ ▸ TF-027 ▸', 'TF-026 ✅ TF-027 ✅ ▸')
 io.open(p2, 'w', encoding='utf-8', newline='\n').write(s2)
-print('TF-026 docs updated')
+print('TF-027 docs updated')
