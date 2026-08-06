@@ -194,16 +194,3 @@ func TestAudit_AgentDeniedByDefault(t *testing.T) {
 	rec := agentReq(t, srv, http.MethodGet, "/api/audit", dir, "")
 	mustCode(t, rec, http.StatusForbidden, "agent audit denied")
 }
-
-func TestPlaceholders_NOT_IMPLEMENTED(t *testing.T) {
-	srv := newAPIServer(t, nil)
-	defer func() { _ = srv.Close() }()
-	dir := importProjectViaAPI(t, srv)
-
-	// import（TF-018）与 skill（TF-020）已替换真实 handler；export 占位待 TF-019。
-	rec := uiReq(t, srv, http.MethodPost, "/api/export", dir, `{"target":"copy"}`)
-	body := mustCode(t, rec, http.StatusNotImplemented, "export placeholder")
-	if apiCode(t, body) != "NOT_IMPLEMENTED" {
-		t.Fatalf("want NOT_IMPLEMENTED, got %s", body)
-	}
-}

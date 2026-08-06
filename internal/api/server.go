@@ -25,6 +25,7 @@ import (
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
+	"tangoforge/internal/exporter"
 	"tangoforge/internal/mcp"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
@@ -51,6 +52,8 @@ type Server struct {
 	skills *skill.Service
 	// TF-018 导入解析服务（LLM 草稿流）。
 	parserSvc *parser.Service
+	// TF-019 导出服务（Markdown 渲染 + LLM 模板生成）。
+	exporterSvc *exporter.Service
 	// TF-016 远程 MCP HTTP 传输（/mcp，惰性初始化一次）。
 	mcpOnce    sync.Once
 	mcpHandler http.Handler
@@ -120,6 +123,21 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) 
 				Action: action, Target: target, Result: audit.ResultOK,
 			})
 			hub.Publish(workdir, action, map[string]any{"id": target})
+		},
+	})
+	s.exporterSvc = exporter.NewService(exporter.Options{
+		Logger: logger,
+		Tasks:  taskSvc,
+		LLM: func() config.LLMConfig {
+			return s.currentConfig().LLM
+		},
+		OnExport: func(ctx context.Context, workdir, action, target string) {
+			actor := auth.ActorFrom(ctx)
+			auditStore.Write(ctx, workdir, audit.Entry{
+				Actor: actor.Name, ActorClass: actor.Class,
+				Action: action, Target: target, Result: audit.ResultOK,
+			})
+			hub.Publish(workdir, action, map[string]any{"path": target})
 		},
 	})
 	s.httpSrv = &http.Server{Handler: s.Handler()}
@@ -257,9 +275,9 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/import/drafts", s.perm("import.run", s.handleImportDrafts))
 			r.Post("/import/drafts/{id}/confirm", s.perm("import.confirm", s.handleImportDraftConfirm))
 			r.Delete("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftDiscard))
-			// TF-019 落地：export 端点。
-			r.Post("/export", s.perm("export.run", s.handleExportPlaceholder))
-			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplatePlaceholder))
+			// TF-019 已落地：Markdown 导出与模板（exporter）。
+			r.Post("/export", s.perm("export.run", s.handleExport))
+			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplateGenerate))
 			r.Get("/skills", s.perm("skill.read", s.handleSkills))
 			r.Get("/skills/{name}", s.perm("skill.read", s.handleSkillInfo))
 		})

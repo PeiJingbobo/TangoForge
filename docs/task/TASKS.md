@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 4 | 0 | 3 |
+| P4 Agent 能力 | 7 | 5 | 0 | 2 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **18** | **0** | **13** |
+| **合计** | **31** | **19** | **0** | **12** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -257,12 +257,14 @@
 
 ### TF-019 Markdown 导出与模板（P2，依赖 TF-015、TF-005）
 
-- **涉及模块**：`internal/exporter`
-- **描述**：默认模板渲染（`internal/exporter/templates/default.tmpl`，Go `text/template`）；`export.template_path` 自定义模板覆盖；`template_mode: default|llm`（LLM 依据示例文档生成贴近风格的模板，存项目配置）；`target: overwrite|copy`。
+- **涉及模块**：`internal/exporter`、`internal/api`
+- **描述**：默认模板渲染（`internal/exporter/templates/default.tmpl` 已升级：Front Matter + 层级标题 + 状态/优先级/标签/负责人元数据行，**可被 TF-018 重新导入**）；`export.template_path` 自定义模板覆盖；`template_mode: default|llm`；`target: overwrite|copy`（写盘 + 响应 content）；LLM 生成模板（示例文档 → 模板 → Parse 校验 → generated-template.tmpl + config 更新）。
 - **验收标准**：
-  - [ ] 单测：默认模板渲染、自定义模板覆盖、LLM 模板生成（mock LLM）
-  - [ ] 导出产物可被 TF-018 重新导入（往返一致）
-- **产出文件**：`internal/exporter/exporter.go`、`internal/exporter/template.go`、`internal/exporter/exporter_test.go`
+  - [x] 单测：默认模板渲染（层级/状态/元数据行断言）、自定义模板覆盖、LLM 模板生成与非法拒绝（mock LLM）、llm 模式未生成报错、overwrite 缺 path、项目未导入、flattenTree 层级
+  - [x] 导出产物往返格式（`- 状态: <key>` + `##/###` 层级）可被 parser 重新导入
+- **产出文件**：`internal/exporter/exporter.go`、`internal/exporter/exporter_test.go`、`internal/exporter/templates/default.tmpl`（升级）、`internal/api/handlers_export.go`、`internal/api/handlers_export_test.go`、`docs/TASK-SEMANTICS.md` §18
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-019-Markdown导出与模板-成功.md`
 
 ### TF-020 Skill 扫描与索引（P1，依赖 TF-005）
 

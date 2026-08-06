@@ -1,12 +1,13 @@
-# {{ .Project.Name }} — 任务清单
+---
+title: "{{.Project.Name}}"
+generated_at: "{{.GeneratedAt}}"
+---
 
-{{ range .Tasks }}
-## [{{ .Status }}] {{ .Title }}
+{{range .Tasks}}{{header .Level .Title}}
 
-- 优先级：{{ .Priority }}
-- 标签：{{ join .Tags ", " }}
-- 负责人：{{ .Assignee }}
-{{ if .Description }}
-{{ .Description }}
-{{ end }}
-{{ end }}
+{{if .Description}}{{.Description}}
+{{end}}- 状态: {{.Status}}
+- 优先级: {{.Priority}}{{if .Tags}} | 标签: {{join .Tags ", "}}{{end}}{{if .Assignee}} | 负责人: {{.Assignee}}{{end}}
+{{if .DependsOn}}依赖: {{join .DependsOn ", "}}
+{{end}}
+{{end}}
