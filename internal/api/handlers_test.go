@@ -38,7 +38,7 @@ func newAPIServer(t *testing.T, mutate func(*config.GlobalConfig)) *Server {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewServer(&cfg, registry, logger)
+	return NewServer(&cfg, registry, logger, "")
 }
 
 // doAPI 执行请求（remoteAddr 默认回环），返回响应记录器。

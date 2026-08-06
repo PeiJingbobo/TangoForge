@@ -30,7 +30,7 @@ func newTestServer(t *testing.T, cfg *config.GlobalConfig, registry *sql.DB) *Se
 		registry = openMemRegistry(t)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewServer(cfg, registry, logger)
+	return NewServer(cfg, registry, logger, "")
 }
 
 // openMemRegistry 打开并迁移内存全局注册表库。

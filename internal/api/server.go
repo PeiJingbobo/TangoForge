@@ -37,6 +37,8 @@ import (
 type Server struct {
 	cfgMu sync.RWMutex
 	cfg   *config.GlobalConfig
+	// configPath 全局配置文件路径（PUT /api/config 写盘；测试可留空仅热更新）。
+	configPath string
 
 	registry *sql.DB
 	logger   *slog.Logger
@@ -67,9 +69,10 @@ type Server struct {
 //
 // cfg 为初始配置指针；热重载（setConfig / ReloadPort）会原子替换内部状态。
 // registry 为全局注册表库连接（已迁移），用于 X-Project 注册校验。
+// configPath 为全局配置文件路径（PUT /api/config 写盘用；传 "" 则仅热更新不落盘）。
 // 审计 / 权限 / 任务服务的接线（QA P3-1）：task 写钩子 → audit（result=ok）；
 // 权限中间件 OnDenied → audit（result=denied）；actor 经 ctx（auth.ActorFrom）读取。
-func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) *Server {
+func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, configPath string) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -99,15 +102,16 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) 
 	})
 
 	s := &Server{
-		cfg:      cfg,
-		registry: registry,
-		logger:   logger,
-		tasks:    taskSvc,
-		projects: project.NewService(registry, logger),
-		perms:    permStore,
-		audit:    auditStore,
-		hub:      hub,
-		skills:   skill.NewService(logger),
+		cfg:        cfg,
+		configPath: configPath,
+		registry:   registry,
+		logger:     logger,
+		tasks:      taskSvc,
+		projects:   project.NewService(registry, logger),
+		perms:      permStore,
+		audit:      auditStore,
+		hub:        hub,
+		skills:     skill.NewService(logger),
 	}
 	s.parserSvc = parser.NewService(parser.Options{
 		Logger: logger,
@@ -241,6 +245,13 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/", s.handleProjectList)
 			r.Post("/import", s.handleProjectImport)
 			r.Delete("/{id}", s.handleProjectRemove)
+		})
+
+		// 全局配置组：豁免 X-Project（全局首选项，与项目无关）；仅 UI（handler 内二次校验）。
+		r.Route("/config", func(r chi.Router) {
+			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
+			r.Get("/", s.handleConfigGet)
+			r.Put("/", s.handleConfigPut)
 		})
 
 		// 主业务组：X-Project → 来源识别 → 动作权限。
