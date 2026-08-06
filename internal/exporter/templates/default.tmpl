@@ -1,0 +1,12 @@
+# {{ .Project.Name }} — 任务清单
+
+{{ range .Tasks }}
+## [{{ .Status }}] {{ .Title }}
+
+- 优先级：{{ .Priority }}
+- 标签：{{ join .Tags ", " }}
+- 负责人：{{ .Assignee }}
+{{ if .Description }}
+{{ .Description }}
+{{ end }}
+{{ end }}

@@ -1,0 +1,283 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"sort"
+	"time"
+)
+
+// Migration 定义一次数据库迁移：向上应用（Up）与向下回退（Down）各一个事务。
+//
+// 版本号全项目唯一且递增；已发布的 Migration 定义不得修改，新增变更以更高版本追加
+// （对应 REQUIREMENTS.md §5.2「数据库迁移机制」扩展约定）。
+type Migration struct {
+	Version int
+	Name    string
+	Up      func(ctx context.Context, tx *sql.Tx) error
+	Down    func(ctx context.Context, tx *sql.Tx) error
+}
+
+// ErrNoMigrations 表示传入空迁移集合。
+var ErrNoMigrations = errors.New("db: empty migrations")
+
+// ErrMigrationNotFound 表示目标回退版本在迁移集合中不存在。
+var ErrMigrationNotFound = errors.New("db: migration not found")
+
+// schemaMigrationsDDL 版本管理表（记录每次成功应用的迁移版本）。
+const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
+	version    INTEGER PRIMARY KEY,
+	name       TEXT NOT NULL,
+	applied_at TEXT NOT NULL
+)`
+
+// GlobalMigrations 全局注册表库迁移集合。
+//
+// v1：projects 表（项目注册表，仅记录「项目名称 + 工作目录」，不含业务数据；
+// 移除记录绝不删除磁盘 .taskboard/ 数据）。
+var GlobalMigrations = []Migration{
+	{
+		Version: 1,
+		Name:    "create_projects_table",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			_, err := tx.Exec(`CREATE TABLE projects (
+				id             INTEGER PRIMARY KEY AUTOINCREMENT,
+				name           TEXT NOT NULL,
+				workdir        TEXT NOT NULL UNIQUE,
+				created_at     TEXT NOT NULL,
+				last_opened_at TEXT
+			)`)
+			return err
+		},
+		Down: func(_ context.Context, tx *sql.Tx) error {
+			_, err := tx.Exec(`DROP TABLE IF EXISTS projects`)
+			return err
+		},
+	},
+}
+
+// ProjectMigrations 项目库迁移集合。
+//
+// v1：tasks / permissions / import_drafts / skills / audit_log 5 表 + 索引。
+// 各表 project_id 字段保留全局注册表分配的项目 id，不建跨库外键（见包文档）。
+// tasks.parent_id 为库内自引用；未启用 foreign_keys 强制（SQLite 默认 OFF）。
+var ProjectMigrations = []Migration{
+	{
+		Version: 1,
+		Name:    "create_project_tables",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			stmts := []string{
+				`CREATE TABLE tasks (
+					id            TEXT PRIMARY KEY,
+					project_id    INTEGER NOT NULL,
+					parent_id     TEXT REFERENCES tasks(id),
+					title         TEXT NOT NULL,
+					description   TEXT NOT NULL DEFAULT '',
+					status        TEXT NOT NULL,
+					priority      INTEGER NOT NULL DEFAULT 0,
+					tags          TEXT NOT NULL DEFAULT '[]',
+					assignee      TEXT NOT NULL DEFAULT '',
+					depends_on    TEXT NOT NULL DEFAULT '[]',
+					archived_from TEXT,
+					source_file   TEXT,
+					source_section TEXT,
+					created_at    TEXT NOT NULL,
+					updated_at    TEXT NOT NULL
+				)`,
+				`CREATE INDEX idx_tasks_project ON tasks(project_id)`,
+				`CREATE INDEX idx_tasks_status ON tasks(project_id, status)`,
+				`CREATE TABLE permissions (
+					id         INTEGER PRIMARY KEY AUTOINCREMENT,
+					project_id INTEGER NOT NULL,
+					action     TEXT NOT NULL,
+					allowed    INTEGER NOT NULL DEFAULT 0,
+					UNIQUE(project_id, action)
+				)`,
+				`CREATE TABLE import_drafts (
+					id           TEXT PRIMARY KEY,
+					project_id   INTEGER NOT NULL,
+					source_file  TEXT NOT NULL,
+					parsed_json  TEXT NOT NULL,
+					status       TEXT NOT NULL DEFAULT 'pending',
+					created_at   TEXT NOT NULL,
+					confirmed_at TEXT
+				)`,
+				`CREATE TABLE skills (
+					name       TEXT PRIMARY KEY,
+					content    TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				)`,
+				`CREATE TABLE audit_log (
+					id          INTEGER PRIMARY KEY AUTOINCREMENT,
+					ts          TEXT NOT NULL,
+					actor       TEXT NOT NULL,
+					actor_class TEXT NOT NULL,
+					action      TEXT NOT NULL,
+					target      TEXT NOT NULL,
+					result      TEXT NOT NULL,
+					detail      TEXT
+				)`,
+				`CREATE INDEX idx_audit_project ON audit_log(action, ts)`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		Down: func(_ context.Context, tx *sql.Tx) error {
+			stmts := []string{
+				`DROP INDEX IF EXISTS idx_audit_project`,
+				`DROP TABLE IF EXISTS audit_log`,
+				`DROP TABLE IF EXISTS skills`,
+				`DROP TABLE IF EXISTS import_drafts`,
+				`DROP TABLE IF EXISTS permissions`,
+				`DROP INDEX IF EXISTS idx_tasks_status`,
+				`DROP INDEX IF EXISTS idx_tasks_project`,
+				`DROP TABLE IF EXISTS tasks`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+}
+
+// Migrate 将数据库向上迁移至迁移集合中的最新版本。
+//
+// 幂等：已应用版本自动跳过，重复调用不产生副作用；
+// 每个迁移在独立事务中执行，失败回滚且不记录版本。
+func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
+	if len(migrations) == 0 {
+		return ErrNoMigrations
+	}
+	if _, err := db.ExecContext(ctx, schemaMigrationsDDL); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	current, err := currentVersion(ctx, db)
+	if err != nil {
+		return err
+	}
+	sorted := sortedMigrations(migrations)
+	for _, m := range sorted {
+		if m.Version <= current {
+			continue
+		}
+		if err := applyOne(ctx, db, m); err != nil {
+			return fmt.Errorf("migrate up v%d (%s): %w", m.Version, m.Name, err)
+		}
+	}
+	return nil
+}
+
+// MigrateDown 将数据库向下回退到目标版本（含）。
+// to=0 表示回退全部迁移（表结构清空，仅保留 schema_migrations）。
+// 每个迁移在独立事务中执行；目标版本必须存在于迁移集合。
+func MigrateDown(ctx context.Context, db *sql.DB, migrations []Migration, to int) error {
+	if _, err := db.ExecContext(ctx, schemaMigrationsDDL); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	current, err := currentVersion(ctx, db)
+	if err != nil {
+		return err
+	}
+	sorted := sortedMigrations(migrations)
+	// 目标版本存在性校验。
+	if to > 0 {
+		found := false
+		for _, m := range sorted {
+			if m.Version == to {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("%w: version %d", ErrMigrationNotFound, to)
+		}
+	}
+	for i := len(sorted) - 1; i >= 0; i-- {
+		m := sorted[i]
+		if m.Version <= to {
+			continue
+		}
+		if m.Version > current {
+			// 跳过尚未应用的版本（防御性，正常流程不会出现）。
+			continue
+		}
+		if err := rollbackOne(ctx, db, m); err != nil {
+			return fmt.Errorf("migrate down v%d (%s): %w", m.Version, m.Name, err)
+		}
+	}
+	return nil
+}
+
+// CurrentVersion 返回当前已应用的最大迁移版本；无迁移时返回 0。
+func CurrentVersion(ctx context.Context, db *sql.DB) (int, error) {
+	if err := db.PingContext(ctx); err != nil {
+		return 0, err
+	}
+	// schema_migrations 可能不存在（从未迁移），此时返回 0 不视为错误。
+	if _, err := db.ExecContext(ctx, schemaMigrationsDDL); err != nil {
+		return 0, fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	return currentVersion(ctx, db)
+}
+
+// currentVersion 读取 schema_migrations 的最大版本（表已确保存在）。
+func currentVersion(ctx context.Context, db *sql.DB) (int, error) {
+	var v sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&v); err != nil {
+		return 0, fmt.Errorf("read current version: %w", err)
+	}
+	return int(v.Int64), nil
+}
+
+// applyOne 在单事务中应用一个迁移并记录版本。
+func applyOne(ctx context.Context, db *sql.DB, m Migration) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := m.Up(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)`,
+		m.Version, m.Name, time.Now().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// rollbackOne 在单事务中回退一个迁移并删除版本记录。
+func rollbackOne(ctx context.Context, db *sql.DB, m Migration) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := m.Down(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM schema_migrations WHERE version = ?`, m.Version); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// sortedMigrations 按版本号升序排列迁移集合。
+func sortedMigrations(migrations []Migration) []Migration {
+	out := make([]Migration, len(migrations))
+	copy(out, migrations)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Version < out[j].Version })
+	return out
+}

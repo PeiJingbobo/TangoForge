@@ -1,0 +1,25 @@
+{
+  "name": "tangoforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TangoForge — 人机协作任务看板系统（pnpm workspace 根）",
+  "scripts": {
+    "dev": "pnpm --filter tangoforge-app dev",
+    "build": "pnpm --filter tangoforge-app build",
+    "preview": "pnpm --filter tangoforge-app preview",
+    "typecheck": "pnpm --filter tangoforge-app typecheck",
+    "lint": "pnpm --filter tangoforge-app lint",
+    "lint:fix": "pnpm --filter tangoforge-app lint:fix",
+    "format": "pnpm --filter tangoforge-app format",
+    "format:check": "pnpm --filter tangoforge-app format:check",
+    "test": "pnpm --filter tangoforge-app test",
+    "test:watch": "pnpm --filter tangoforge-app test:watch",
+    "test:coverage": "pnpm --filter tangoforge-app test:coverage",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

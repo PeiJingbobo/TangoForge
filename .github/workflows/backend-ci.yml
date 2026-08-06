@@ -1,0 +1,78 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'test/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.golangci.yml'
+      - 'scripts/**'
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'test/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.golangci.yml'
+      - 'scripts/**'
+
+jobs:
+  test:
+    name: Test & Lint (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.22', '1.23']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: gofmt 校验（不允许未格式化代码入库）
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: 单元测试（CGO_ENABLED=0 约束校验，docs/TECHNICAL.md §3.1）
+        run: CGO_ENABLED=0 go test -cover ./...
+
+      - name: 核心包覆盖率门槛（internal/task ≥ 90%，docs/TECHNICAL.md §3.8）
+        run: ./scripts/check_coverage.sh
+
+      - name: 集成测试（临时 Daemon + 真实 HTTP 客户端）
+        run: CGO_ENABLED=0 go test -tags=integration ./test/integration/...
+
+  cross-build:
+    name: 交叉编译 6 产物（CGO_ENABLED=0）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: make build-all
+        run: make build-all
+
+      - name: 校验产物类型
+        run: file bin/release/*

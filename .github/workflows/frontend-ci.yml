@@ -1,0 +1,42 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', 'package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']
+  pull_request:
+    paths: ['app/**', 'package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml']
+
+jobs:
+  test:
+    name: Typecheck / Lint / Test / Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查（tsc 严格模式，docs/TECHNICAL.md §4.7）
+        run: pnpm typecheck
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: Prettier 格式检查
+        run: pnpm format:check
+
+      - name: Vitest 单元测试（含覆盖率门槛）
+        run: pnpm test:coverage
+
+      - name: electron-vite 构建
+        run: pnpm build

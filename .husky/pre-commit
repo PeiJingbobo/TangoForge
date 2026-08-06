@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# TangoForge pre-commit（husky + lint-staged）：
+# 1. 根配置：Go 文件 gofmt 格式化；
+# 2. app/ 配置：前端文件 ESLint --fix + Prettier。
+npx lint-staged
+cd app && npx lint-staged

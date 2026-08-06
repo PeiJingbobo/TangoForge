@@ -1,0 +1,37 @@
+# ---- Go ----
+bin/
+*.exe
+*.test
+*.out
+coverage.html
+coverage.out
+
+# ---- 运行时数据（不入库）----
+# 项目本地元数据目录（含 meta.db / config.yaml / skills/ / audit.log）
+.taskboard/
+# WorkBuddy 会话数据（记忆/技能缓存）
+.workbuddy/
+
+# ---- 前端 ----
+node_modules/
+app/node_modules/
+app/dist/
+app/out/
+app/release/
+app/*.local
+
+# ---- OS / IDE ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ---- 日志 / 临时 ----
+*.log
+tmp/
+*.tmp
+
+# ---- 环境 ----
+.env
+.env.local

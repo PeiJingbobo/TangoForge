@@ -1,0 +1,21 @@
+# golangci-lint 配置（CI 与本地 make lint 共用）
+# 安装：go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - misspell
+    - gofumpt
+    - revive
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
