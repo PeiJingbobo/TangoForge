@@ -42,15 +42,3 @@ func (s *Server) handleExportTemplatePlaceholder(w http.ResponseWriter, _ *http.
 	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED",
 		"LLM 生成模板随 TF-019 落地", "")
 }
-
-// handleSkillsPlaceholder GET /api/skills（TF-020 落地）。
-func (s *Server) handleSkillsPlaceholder(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED",
-		"Skill 列表随 TF-020 落地", "")
-}
-
-// handleSkillInfoPlaceholder GET /api/skills/:name（TF-020 落地）。
-func (s *Server) handleSkillInfoPlaceholder(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED",
-		"skill_info 随 TF-020 落地", "")
-}

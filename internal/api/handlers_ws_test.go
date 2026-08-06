@@ -200,12 +200,10 @@ func TestPlaceholders_NOT_IMPLEMENTED(t *testing.T) {
 	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
+	// import/export 占位待 TF-018/019 落地；skill 已由 TF-020 替换（见 handlers_skills_test.go）。
 	rec := uiReq(t, srv, http.MethodPost, "/api/import", dir, `{"file":"x.md"}`)
 	body := mustCode(t, rec, http.StatusNotImplemented, "import placeholder")
 	if apiCode(t, body) != "NOT_IMPLEMENTED" {
 		t.Fatalf("want NOT_IMPLEMENTED, got %s", body)
 	}
-
-	rec = uiReq(t, srv, http.MethodGet, "/api/skills", dir, "")
-	mustCode(t, rec, http.StatusNotImplemented, "skills placeholder")
 }

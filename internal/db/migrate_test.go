@@ -117,7 +117,7 @@ func TestMigrate_ProjectCreatesAllTablesAndIndexes(t *testing.T) {
 		"source_file", "source_section", "created_at", "updated_at")
 	assertColumns(t, conn, "permissions", "id", "project_id", "action", "allowed")
 	assertColumns(t, conn, "import_drafts", "id", "project_id", "source_file", "parsed_json", "status", "created_at", "confirmed_at")
-	assertColumns(t, conn, "skills", "name", "content", "updated_at")
+	assertColumns(t, conn, "skills", "name", "content", "updated_at", "version", "description", "instructions")
 	assertColumns(t, conn, "audit_log", "id", "ts", "actor", "actor_class", "action", "target", "result", "detail")
 	// 索引齐全。
 	assertIndexExists(t, conn, "idx_tasks_project")
@@ -143,8 +143,8 @@ func TestMigrate_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current version: %v", err)
 	}
-	if v1 != v2 || v2 != 1 {
-		t.Errorf("version should stay 1 after idempotent migrate, got %d -> %d", v1, v2)
+	if v1 != v2 || v2 != 2 {
+		t.Errorf("version should stay 2 after idempotent migrate, got %d -> %d", v1, v2)
 	}
 }
 

@@ -301,4 +301,26 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - parser / exporter 负责 prompt 构造（状态机 states 注入、JSON Schema 描述）与结果语义校验（title/status 必填等）；
 - 导出 default 模式不依赖 LLM（仅 `template_mode=llm` 需要），LLM 未配置时 default 导出正常可用。
 
+## 15. Skill 语义（TF-020，QA P4-1）
+
+### 15.1 数据源与扫描
+
+- **文件系统为唯一数据源**：`{workdir}/.taskboard/skills/` 目录（**仅一级，不递归**），仅 `.yaml / .yml / .md` 参与；子目录与其它扩展名忽略。
+- **扫描时机**：启动时 + 每次 `GET /api/skills` / `GET /api/skills/:name` 查询时**轻量重扫**（天然满足"删除文件后索引同步"）；**不引入 fsnotify 常驻 watcher**，`skill.changed` 事件暂不推送（登记说明）。
+- 解析失败（坏 YAML / 缺 name / MD 无标题）→ **仅日志告警并跳过**，不阻断扫描。
+- skills 表仅缓存：重扫时 upsert + 清理失效行；**绝不反写文件**。
+
+### 15.2 文件格式
+
+- **YAML**：`name`（必填，唯一标识）/ `version` / `description` / `instructions`；`content` 为原始文件文本。
+- **Markdown**：首个 `# ` 标题为 `name`（strip），全文同时作为 `instructions` 与 `content`；无 `# ` 标题视为解析失败。
+- 缓存列（项目库迁移 v2 扩展）：`name, content, updated_at, version, description, instructions`。
+
+### 15.3 查询与错误
+
+- `GET /api/skills`（skill.read）：重扫 + 返回全量（按名称升序）。
+- `GET /api/skills/:name`（skill.read）：`skill_info` 详情；不存在 → `SKILL_NOT_FOUND`（404）。
+- 项目未导入（无 meta.db）→ `PROJECT_NOT_FOUND`（404）。
+- skill.read 属新项目默认只读 5 项之一（默认授予）。
+
 *（文档完）*

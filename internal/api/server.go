@@ -26,6 +26,7 @@ import (
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
 	"tangoforge/internal/project"
+	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
 )
 
@@ -44,6 +45,8 @@ type Server struct {
 	audit    *audit.Store
 	// TF-014 WS 事件广播中心。
 	hub *hub
+	// TF-020 Skill 业务服务。
+	skills *skill.Service
 
 	httpSrv  *http.Server
 	lnMu     sync.Mutex
@@ -94,12 +97,13 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) 
 		perms:    permStore,
 		audit:    auditStore,
 		hub:      hub,
+		skills:   skill.NewService(logger),
 	}
 	s.httpSrv = &http.Server{Handler: s.Handler()}
 	return s
 }
 
-// Close 释放业务依赖（审计排空、权限/任务连接关闭）。
+// Close 释放业务依赖（审计排空、权限/任务/Skill 连接关闭）。
 func (s *Server) Close() error {
 	var firstErr error
 	if s.audit != nil {
@@ -114,6 +118,11 @@ func (s *Server) Close() error {
 	}
 	if s.tasks != nil {
 		if err := s.tasks.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.skills != nil {
+		if err := s.skills.Close(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -212,8 +221,8 @@ func (s *Server) Handler() http.Handler {
 			r.Delete("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftDiscardPlaceholder))
 			r.Post("/export", s.perm("export.run", s.handleExportPlaceholder))
 			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplatePlaceholder))
-			r.Get("/skills", s.perm("skill.read", s.handleSkillsPlaceholder))
-			r.Get("/skills/{name}", s.perm("skill.read", s.handleSkillInfoPlaceholder))
+			r.Get("/skills", s.perm("skill.read", s.handleSkills))
+			r.Get("/skills/{name}", s.perm("skill.read", s.handleSkillInfo))
 		})
 
 		r.Get("/", func(w http.ResponseWriter, _ *http.Request) {

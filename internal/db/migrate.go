@@ -147,6 +147,43 @@ var ProjectMigrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// v2（TF-020）：skills 表扩展结构化元数据列（version/description/instructions），
+		// 支撑 YAML 双格式 skill_info 返回；文件系统仍为唯一数据源，表仅缓存。
+		Version: 2,
+		Name:    "extend_skills_meta",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			for _, stmt := range []string{
+				`ALTER TABLE skills ADD COLUMN version TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE skills ADD COLUMN description TEXT NOT NULL DEFAULT ''`,
+				`ALTER TABLE skills ADD COLUMN instructions TEXT NOT NULL DEFAULT ''`,
+			} {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		Down: func(_ context.Context, tx *sql.Tx) error {
+			// SQLite 旧版不支持 DROP COLUMN 链式执行；重建表回退到 v1 结构。
+			stmts := []string{
+				`CREATE TABLE skills_v1 (
+					name       TEXT PRIMARY KEY,
+					content    TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				)`,
+				`INSERT INTO skills_v1 (name, content, updated_at) SELECT name, content, updated_at FROM skills`,
+				`DROP TABLE skills`,
+				`ALTER TABLE skills_v1 RENAME TO skills`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // Migrate 将数据库向上迁移至迁移集合中的最新版本。

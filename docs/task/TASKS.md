@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 1 | 0 | 6 |
+| P4 Agent 能力 | 7 | 2 | 0 | 5 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **15** | **0** | **16** |
+| **合计** | **31** | **16** | **0** | **15** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -259,12 +259,14 @@
 
 ### TF-020 Skill 扫描与索引（P1，依赖 TF-005）
 
-- **涉及模块**：`internal/skill`
-- **描述**：启动时扫描 `{workdir}/.taskboard/skills/`（YAML + Markdown 双格式），解析失败仅告警不阻断；`skills` 表仅作缓存同步；提供 `skill_info` 查询。
+- **涉及模块**：`internal/skill`、`internal/api`、`internal/db`（迁移 v2）
+- **描述**：扫描 `{workdir}/.taskboard/skills/` 一级目录（YAML + Markdown 双格式，QA P4-1）；解析失败仅告警不阻断；`skills` 表仅作缓存同步（迁移 v2 扩展 version/description/instructions 列）；`skill_info` 查询；替换 HTTP 占位 handler。
 - **验收标准**：
-  - [ ] 单测：扫描、缓存同步、解析失败容错、删除文件后索引同步
-  - [ ] 文件系统为唯一数据源（表改动不反写文件）
-- **产出文件**：`internal/skill/skill.go`、`internal/skill/scanner.go`、`internal/skill/skill_test.go`
+  - [x] 单测：YAML/Markdown 解析、解析失败容错、缓存同步、删除文件后索引同步、子目录/非支持扩展名忽略、项目未导入报错、目录缺失视为空
+  - [x] 文件系统为唯一数据源（表改动不反写文件）；扫描时机 = 启动 + 每次查询重扫（无 fsnotify 常驻 watcher，QA P4-1）
+- **产出文件**：`internal/skill/skill.go`、`internal/skill/skill_test.go`、`internal/api/handlers_skills.go`、`internal/api/handlers_skills_test.go`、`internal/db/migrate.go`（v2）、`docs/TASK-SEMANTICS.md` §15
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-020-Skill扫描与索引-成功.md`
 
 ### TF-021 CLI 子命令（P1，依赖 TF-013 端点就绪）
 
