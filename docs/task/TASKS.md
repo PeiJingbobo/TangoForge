@@ -150,9 +150,11 @@
 - **涉及模块**：`internal/auth`
 - **描述**：按 `REQUIREMENTS.md §7.2` 实现 5 级来源判定：`X-UI-Token`+回环 → ui；MCP stdio → agent（客户端名）；远程 Bearer Token → agent（X-Actor 或 unknown）；本地 X-Actor（CLI 默认 human）→ agent；无法识别 → unknown。识别结果供权限中间件与审计使用。
 - **验收标准**：
-  - [ ] 单测覆盖 5 级判定全路径（含回环/非回环、Token 缺失/错误）
-  - [ ] UI 凭据仅回环有效；远程无 Token → 401
+  - [x] 单测覆盖 5 级判定全路径（含回环/非回环、Token 缺失/错误）
+  - [x] UI 凭据仅回环有效；远程无 Token → 401
 - **产出文件**：`internal/auth/identify.go`、`internal/auth/identify_test.go`、`internal/auth/token.go`
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-010-来源识别中间件-成功.md`
 
 ### TF-011 权限模型与中间件（P0，依赖 TF-010、TF-004）
 
