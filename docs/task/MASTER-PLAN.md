@@ -177,6 +177,16 @@ TF-030 CI（依赖绝大部分任务完成）
 
 **里程碑未达成的处理**：不得进入下一阶段；回退至对应任务补齐，再重新验收。
 
+**P4 退出检查（待用户人工验证，M4 里程碑）**：
+
+- [x] 本阶段全部任务（TF-015~021）状态 = `已完成`，总结/日志齐备；
+- [x] `CGO_ENABLED=0 go test ./...` 全绿（12 包）、`go vet ./...` 干净、`internal/task` 覆盖率 **91.4%**（≥ 90%）、全端点 501 占位清零；
+- [x] **真实冒烟通过**：CLI 全命令（`scripts/cli_smoke.sh` SMOKE PASS：import → UI 授权 → tasks 生命周期 → export → graph → 状态机 → permission → 边界）；MCP HTTP `/mcp` initialize + tools/list（TF-016 已冒烟）；
+- [x] stdio MCP 协议级测试（io.Pipe 驱动真实 Listen）与 19 工具全集测试（含 denied 路径）；
+- [x] 遗留登记：真实 DeepSeek 导入草稿流（D 项）与 MCP stdio 客户端接入（C2）待用户按 `docs/record/M4-人工验证清单.md` 执行后关闭。
+
+> **✅ M4 Agent 可用（待用户按验证清单验收后关闭）**：P4 7 任务全部完成（TF-015~021），进入人工验证阶段。
+
 > **✅ M2 任务引擎可用（2026-08-06 达成）**：P2 关闭，可进入 P3（传输层与安全）。
 > **✅ M3 API 可用（2026-08-06 达成）**：P3 关闭（TF-010~014 全 ✅），可进入 P4（Agent 能力）。
 
