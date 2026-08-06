@@ -35,3 +35,6 @@ tmp/
 # ---- 环境 ----
 .env
 .env.local
+
+# ---- 本地测试数据（磁盘保留，不入库） ----
+test-markdown/
