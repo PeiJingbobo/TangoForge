@@ -6,13 +6,21 @@ import { cn } from '@/lib/utils'
 /**
  * 应用布局：顶部品牌栏 + 当前项目 + 导航 + 主题切换（docs/UI-VISION.md）。
  */
-const NAV_LINKS = [
-  { to: '/', label: '工作区' },
-  { to: '/settings', label: '设置' },
-]
-
 export function AppLayout() {
   const project = useProjectStore((s) => s.project)
+  const encoded = project ? encodeURIComponent(project) : ''
+
+  const navLinks = [
+    { to: '/', label: '工作区' },
+    ...(project
+      ? [
+          { to: `/project/${encoded}/kanban`, label: '看板' },
+          { to: `/project/${encoded}/nav`, label: '导航' },
+          { to: `/project/${encoded}/graph`, label: '全景图' },
+        ]
+      : []),
+    { to: '/settings', label: '设置' },
+  ]
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -32,7 +40,7 @@ export function AppLayout() {
               </span>
             )}
             <nav className="hidden items-center gap-1 sm:flex">
-              {NAV_LINKS.map((l) => (
+              {navLinks.map((l) => (
                 <Link
                   key={l.to}
                   to={l.to}

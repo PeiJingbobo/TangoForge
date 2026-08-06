@@ -358,14 +358,15 @@
 - **产出文件**：`app/src/features/imports/*`、`app/src/features/tasks/ExportDialog.tsx`
 - **总结文件**：`docs/record/TF-027-导入导出UI-成功.md`
 
-### TF-028 全景地图 + 权限/Skill 界面（P2，依赖 TF-023、TF-014、TF-020）
+### TF-028 全景地图 + 权限/Skill 界面（P2，依赖 TF-023、TF-014、TF-020）✅ 已完成
 
 - **涉及模块**：`app/src/components/graph`、`app/src/features/permissions`、`app/src/features/skills`
 - **描述**：全景图：`GET /api/graph` 全量数据，D3/vis-network 力导向渲染（useRef 管理实例、节点颜色映射状态、缩放拖拽、超阈值前端聚簇）；权限管理界面（仅 UI，勾选 action）；Skill 浏览（列表 + skill_info 详情）。
 - **验收标准**：
-  - [ ] 组件测试：图渲染数据正确、实例销毁无泄漏
-  - [ ] 权限修改仅 UI 可操作（接口层已双重校验）
-- **产出文件**：`app/src/components/graph/*`、`app/src/features/permissions/*`、`app/src/features/skills/*`
+  - [x] 组件测试：图渲染数据正确（circle=节点数、聚簇>300）、实例销毁无泄漏（卸载不抛错）
+  - [x] 权限修改仅 UI 可操作（界面勾选 + PUT 全量覆盖；接口层已双重校验）
+- **产出文件**：`app/src/components/graph/*`、`app/src/features/permissions/*`、`app/src/features/skills/*`、`app/src/features/tasks/GraphPage.tsx`、`app/src/features/settings/SettingsPage.tsx`（实装）
+- **总结文件**：`docs/record/TF-028-全景地图与权限Skill-成功.md`
 
 ---
 
