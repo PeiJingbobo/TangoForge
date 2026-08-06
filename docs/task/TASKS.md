@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 3 | 0 | 4 |
+| P4 Agent 能力 | 7 | 4 | 0 | 3 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **17** | **0** | **14** |
+| **合计** | **31** | **18** | **0** | **13** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -244,13 +244,16 @@
 
 ### TF-018 Markdown 导入与草稿流（P1，依赖 TF-015、TF-004、TF-005）
 
-- **涉及模块**：`internal/parser`
-- **描述**：LLM 解析 Markdown → 严格 JSON Schema 约束的结构化结果；缺 `title`/`status` 或 JSON 不合规 → **整次失败不落库**（返回错误 + LLM 原始输出）；成功 → `import_drafts` 草稿（preview）→ 确认后按 `source_file` **文件级全量覆盖**入库（旧任务软删→归档重建）；草稿可丢弃。
+- **涉及模块**：`internal/parser`、`internal/task`（ImportTasks）、`internal/api`、`internal/llm`（ErrorCode）
+- **描述**：LLM 解析 Markdown → 严格 JSON Schema 约束的嵌套结构（QA P4-1）；status 严格映射（key/label 匹配失败整次失败）；缺 title/status 或 JSON 不合规 → **整次失败不落库**（返回错误 + LLM 原始输出）；成功 → `import_drafts` 草稿（preview）→ 确认后按 `source_file` **文件级全量覆盖**入库（task.ImportTasks 事务：归档旧任务 + 批量重建）；草稿可丢弃。
 - **验收标准**：
-  - [ ] 单测（mock LLM）：成功/缺字段/坏 JSON/超时全路径
-  - [ ] 确认入库后旧任务归档、新任务保留 `source_file/source_section`
-  - [ ] 草稿丢弃后正式任务池无变化
-- **产出文件**：`internal/parser/parser.go`、`internal/parser/schema.go`、`internal/parser/parser_test.go`
+  - [x] 单测（mock LLM）：成功（嵌套/依赖标题解析）/缺字段/坏 JSON/超时/LLM 未配置全路径；失败事件 import.failed
+  - [x] 确认入库后旧任务归档（Archived 计数）、新任务保留 source_file/source_section
+  - [x] 草稿丢弃后正式任务池无变化；草稿生命周期 pending→confirmed/discarded
+  - [x] task.ImportTasks 事务原子 + WAL 铁律（事务外校验）+ 不触发 task.* 钩子
+- **产出文件**：`internal/parser/parser.go`、`internal/parser/schema.go`、`internal/parser/parser_test.go`、`internal/task/import.go`、`internal/task/import_test.go`、`internal/api/handlers_imports.go`、`internal/api/handlers_imports_test.go`、`docs/TASK-SEMANTICS.md` §17
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-018-Markdown导入与草稿流-成功.md`
 
 ### TF-019 Markdown 导出与模板（P2，依赖 TF-015、TF-005）
 

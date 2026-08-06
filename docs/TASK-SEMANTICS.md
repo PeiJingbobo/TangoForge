@@ -343,4 +343,40 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 - 错误码与 HTTP 一致：`PROJECT_NOT_FOUND / TASK_NOT_FOUND / TASK_INVALID / PERMISSION_DENIED` 等（§10）；`auth.ErrProjectNotFound`（权限查询前项目缺失）也映射 `PROJECT_NOT_FOUND`。
 
+## 17. Markdown 导入草稿流语义（TF-018，QA P4-1）
+
+### 17.1 入参与解析
+
+- `POST /api/import` body 支持双形态：`{"file_path": "..."}`（相对路径相对 workdir；绝对路径原样；source_file 规范化为绝对路径）或 `{"content": "...", "source_file": "..."}`（source_file 必填，覆盖单元标识）。
+- LLM 输出**嵌套 children 结构**（Markdown 标题层级映射），严格 JSON Schema 约束（title/status 必填）；解析不依赖固定语法/正则。
+- **status 映射**：prompt 注入项目状态机 states（key+label）；LLM 返回 key 或 label（大小写不敏感）均可；无法匹配 → 整次失败；`archived` 不可作为导入状态。
+- **失败即整次失败**（缺 title / 缺 status / 坏 JSON / 超时 / LLM 未配置）：不落库，返回错误（`IMPORT_FAILED` 或 `LLM_*`，Message 含 LLM 原始输出），事件 `import.failed`；**禁止补默认值**。
+- 成功 → 写 `import_drafts`（pending），事件 `import.draft_ready`；`task_count` 为展平后全部任务数（含嵌套）。
+
+### 17.2 规范化
+
+- priority 复用 `task.NormalizePriority`（int 0-5 / 字符串别名）；tags 去重去空保序；assignee 去空白。
+
+### 17.3 确认入库（task.ImportTasks）
+
+- 展平：深度优先分配 UUID、parent_id、`source_section` 路径（如 "1.2.3"）。
+- **depends_on 用标题引用**：LLM 输出被依赖任务的【标题】，确认时映射为任务 ID；标题不唯一或不存在 → 整次失败。
+- `task.ImportTasks(ctx, workdir, sourceFile, tasks)`：**文件级全量覆盖**——事务内归档该 source_file 的全部旧任务（archived + archived_from）+ 批量 INSERT，任一步失败整体回滚；**事务外完成全部校验**（title/status/依赖存在性/本批内部依赖环），WAL 写锁铁律。
+- **不触发 task.\* 写钩子**（批量导入避免事件风暴）；事件 `import.draft_confirmed` + 审计一条 `import.confirm` 由 parser 层发送。
+- 重复导入同一 source_file：旧任务归档重建（Archived/Created 计数返回）。
+
+### 17.4 草稿生命周期
+
+- `import_drafts` 只追加：pending → confirmed / discarded（confirmed/discarded 不可再操作；重复操作 → `DRAFT_NOT_FOUND`）。
+- `GET /api/import/drafts` 默认仅返回 pending；同一 source_file 重复导入产生独立草稿（不清理旧草稿）。
+
+### 17.5 错误码
+
+| 错误码 | HTTP | 说明 |
+|--------|------|------|
+| `IMPORT_FAILED` | 422 | 解析/校验失败（含 LLM 原始输出） |
+| `DRAFT_NOT_FOUND` | 404 | 草稿不存在或已确认/丢弃 |
+| `LLM_NOT_CONFIGURED` | 422 | base_url/model 未配置 |
+| `LLM_TIMEOUT` / `LLM_API_ERROR` / `LLM_INVALID_RESPONSE` | 422 | LLM 调用失败（§14.3） |
+
 *（文档完）*

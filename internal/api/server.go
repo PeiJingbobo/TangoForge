@@ -26,6 +26,7 @@ import (
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
 	"tangoforge/internal/mcp"
+	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
@@ -48,6 +49,8 @@ type Server struct {
 	hub *hub
 	// TF-020 Skill 业务服务。
 	skills *skill.Service
+	// TF-018 导入解析服务（LLM 草稿流）。
+	parserSvc *parser.Service
 	// TF-016 远程 MCP HTTP 传输（/mcp，惰性初始化一次）。
 	mcpOnce    sync.Once
 	mcpHandler http.Handler
@@ -103,11 +106,27 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) 
 		hub:      hub,
 		skills:   skill.NewService(logger),
 	}
+	s.parserSvc = parser.NewService(parser.Options{
+		Logger: logger,
+		LLM: func() config.LLMConfig {
+			return s.currentConfig().LLM // 每次调用取最新（LLM 配置热重载即时生效）。
+		},
+		Tasks: taskSvc,
+		OnEvent: func(ctx context.Context, workdir, action, target string) {
+			// 导入域事件双通道：异步审计 + WS 事件广播（与 task 写钩子同构）。
+			actor := auth.ActorFrom(ctx)
+			auditStore.Write(ctx, workdir, audit.Entry{
+				Actor: actor.Name, ActorClass: actor.Class,
+				Action: action, Target: target, Result: audit.ResultOK,
+			})
+			hub.Publish(workdir, action, map[string]any{"id": target})
+		},
+	})
 	s.httpSrv = &http.Server{Handler: s.Handler()}
 	return s
 }
 
-// Close 释放业务依赖（审计排空、权限/任务/Skill 连接关闭）。
+// Close 释放业务依赖（审计排空、权限/任务/Skill/parser 连接关闭）。
 func (s *Server) Close() error {
 	var firstErr error
 	if s.audit != nil {
@@ -127,6 +146,11 @@ func (s *Server) Close() error {
 	}
 	if s.skills != nil {
 		if err := s.skills.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.parserSvc != nil {
+		if err := s.parserSvc.Close(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -228,11 +252,12 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/audit", s.perm("audit.read", s.handleAuditQuery))
 			r.Get("/audit/export", s.perm("audit.read", s.handleAuditExport))
 
-			// TF-014 占位（依赖 P4 业务层，QA P3-3）：import/export/skill。
-			r.Post("/import", s.perm("import.run", s.handleImportPlaceholder))
-			r.Get("/import/drafts", s.perm("import.run", s.handleImportDraftsPlaceholder))
-			r.Post("/import/drafts/{id}/confirm", s.perm("import.confirm", s.handleImportDraftConfirmPlaceholder))
-			r.Delete("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftDiscardPlaceholder))
+			// TF-018 已落地：Markdown 导入草稿流（parser）。
+			r.Post("/import", s.perm("import.run", s.handleImport))
+			r.Get("/import/drafts", s.perm("import.run", s.handleImportDrafts))
+			r.Post("/import/drafts/{id}/confirm", s.perm("import.confirm", s.handleImportDraftConfirm))
+			r.Delete("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftDiscard))
+			// TF-019 落地：export 端点。
 			r.Post("/export", s.perm("export.run", s.handleExportPlaceholder))
 			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplatePlaceholder))
 			r.Get("/skills", s.perm("skill.read", s.handleSkills))

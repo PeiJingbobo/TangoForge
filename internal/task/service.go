@@ -44,6 +44,8 @@ type Service interface {
 	Restore(ctx context.Context, workdir, id string, opts RestoreOptions) (Task, error)
 	// Delete 物理删除回收站任务（§8.3：仅 archived，级联置空原子，返回被删快照）。
 	Delete(ctx context.Context, workdir, id string) (Task, error)
+	// ImportTasks 文件级全量覆盖导入（TF-018 草稿确认入库，§17.3：归档旧 source_file + 批量重建原子）。
+	ImportTasks(ctx context.Context, workdir, sourceFile string, tasks []Task) (ImportResult, error)
 	// Close 关闭全部缓存的项目库连接（进程退出/测试清理时调用）。
 	Close() error
 }

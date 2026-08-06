@@ -461,6 +461,21 @@ func extractJSON(text string) (json.RawMessage, error) {
 	return raw, nil
 }
 
+// ErrorCode 将 llm 错误映射为传输层业务码（供 api/mcp 统一映射，TF-018/019）。
+func ErrorCode(err error) string {
+	switch {
+	case errors.Is(err, ErrNotConfigured):
+		return "LLM_NOT_CONFIGURED"
+	case errors.Is(err, ErrTimeout):
+		return "LLM_TIMEOUT"
+	case errors.Is(err, ErrAPIStatus):
+		return "LLM_API_ERROR"
+	case errors.Is(err, ErrInvalidResponse):
+		return "LLM_INVALID_RESPONSE"
+	}
+	return ""
+}
+
 // truncate 截断字符串（错误信息摘要用）。
 func truncate(s string, n int) string {
 	r := []rune(s)

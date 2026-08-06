@@ -6,6 +6,8 @@ import (
 
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
+	"tangoforge/internal/llm"
+	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/task"
 )
@@ -37,7 +39,8 @@ func mapError(err error) (status int, code, message string) {
 		}
 	}
 	switch {
-	case errors.Is(err, auth.ErrProjectNotFound), errors.Is(err, audit.ErrProjectNotFound):
+	case errors.Is(err, auth.ErrProjectNotFound), errors.Is(err, audit.ErrProjectNotFound),
+		errors.Is(err, parser.ErrProjectNotFound):
 		return http.StatusNotFound, task.CodeProjectNotFound, "该目录尚未导入为项目（无 .taskboard/meta.db）"
 	case errors.Is(err, project.ErrNotFound):
 		return http.StatusNotFound, task.CodeProjectNotFound, "项目注册记录不存在"
@@ -45,6 +48,14 @@ func mapError(err error) (status int, code, message string) {
 		return http.StatusBadRequest, "PROJECT_INVALID", err.Error()
 	case errors.Is(err, auth.ErrInvalidAction):
 		return http.StatusBadRequest, "TASK_INVALID", err.Error()
+	case errors.Is(err, parser.ErrDraftNotFound):
+		return http.StatusNotFound, parser.CodeDraftNotFound, err.Error()
+	case errors.Is(err, parser.ErrImportFailed):
+		return http.StatusUnprocessableEntity, parser.CodeImportFailed, err.Error()
+	}
+	// LLM 错误（TF-015，§14.3）→ 422 对应码。
+	if code := llm.ErrorCode(err); code != "" {
+		return http.StatusUnprocessableEntity, code, err.Error()
 	}
 	return http.StatusInternalServerError, "INTERNAL", err.Error()
 }
