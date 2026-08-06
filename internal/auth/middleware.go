@@ -25,13 +25,16 @@ func WorkdirFrom(ctx context.Context) string {
 
 // IdentifyMiddleware 来源识别中间件（TF-010 落地为 HTTP 层）：
 //
-//  1. Identify(cfg, r) 判定 Actor（5 级优先级，docs/TECHNICAL.md §3.3）；
+//  1. Identify(getCfg(), r) 判定 Actor（5 级优先级，docs/TECHNICAL.md §3.3）；
 //  2. needAuth=true（远程缺失/错误 Bearer）→ 401 UNAUTHORIZED；
 //  3. 识别结果写入 ctx（WithActor），后续权限中间件 / handler / 写钩子统一读取。
-func IdentifyMiddleware(cfg *config.GlobalConfig) func(http.Handler) http.Handler {
+//
+// getCfg 为配置提供者：每次请求调用获取最新全局配置，
+// 保证 ui_token / api_token 热重载即时生效（不捕获启动时指针）。
+func IdentifyMiddleware(getCfg func() *config.GlobalConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			actor, needAuth := Identify(cfg, r)
+			actor, needAuth := Identify(getCfg(), r)
 			if needAuth {
 				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED",
 					"远程请求必须携带有效的 Authorization: Bearer <api_token>", "")

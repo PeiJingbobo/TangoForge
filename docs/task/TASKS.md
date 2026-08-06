@@ -13,11 +13,11 @@
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
-| P3 传输层与安全 | 5 | 3 | 0 | 2 |
+| P3 传输层与安全 | 5 | 4 | 0 | 1 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **12** | **0** | **19** |
+| **合计** | **31** | **13** | **0** | **18** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -183,10 +183,12 @@
 - **涉及模块**：`internal/api`
 - **描述**：核心路由：`GET/POST /api/projects`、`DELETE /api/projects/:id`、`GET/POST /api/tasks`、`GET/PATCH /api/tasks/:id`、`POST /api/tasks/:id/archive|restore`、`DELETE /api/tasks/:id`、`GET/PUT /api/state-machine`、`GET /api/permissions`、`PUT /api/permissions`。统一响应 `{code, data}` / 错误 `{code, message, detail}`。
 - **验收标准**：
-  - [ ] 单元 + 集成冒烟：项目→建任务→状态流转→归档→还原 全链路
-  - [ ] 错误码符合约定（PROJECT_NOT_FOUND / INVALID_TRANSITION / CIRCULAR_DEPENDENCY / STATUS_IN_USE / PERMISSION_DENIED）
-  - [ ] 传输层为薄封装，无重复业务逻辑
-- **产出文件**：`internal/api/handlers_tasks.go`、`internal/api/handlers_projects.go`、`internal/api/handlers_state_machine.go`、`internal/api/routes.go`
+  - [x] 单元 + 集成冒烟：项目→建任务→状态流转→归档→还原 全链路
+  - [x] 错误码符合约定（PROJECT_NOT_FOUND / INVALID_TRANSITION / CIRCULAR_DEPENDENCY / STATUS_IN_USE / PERMISSION_DENIED）
+  - [x] 传输层为薄封装，无重复业务逻辑
+- **产出文件**：`internal/api/handlers_tasks.go`、`internal/api/handlers_projects.go`、`internal/api/handlers_state_machine.go`、`internal/api/handlers_permissions.go`、`internal/api/errors.go`、`internal/api/handlers_test.go`
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-013-HTTP核心端点-成功.md`
 
 ### TF-014 WebSocket 与其余端点（P1，依赖 TF-013、TF-012、TF-020、TF-019）
 

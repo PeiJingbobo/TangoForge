@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"tangoforge/internal/auth"
 	"tangoforge/internal/db"
 )
 
@@ -23,6 +24,8 @@ func (s *Server) remoteAccessMiddleware(next http.Handler) http.Handler {
 // projectMiddleware 项目注册校验（REQUIREMENTS.md §5.2）：
 // 每个 /api/* 请求必须显式携带项目工作目录（X-Project 头或 ?project= 查询参数），
 // 且该目录已在全局注册表注册，否则返回 404 PROJECT_NOT_FOUND。
+// 校验通过后将规范化 workdir 写入 ctx（auth.WithWorkdir），
+// 供权限中间件（RequirePermission）与 handler 统一读取（QA P3-2）。
 func (s *Server) projectMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		workdir := projectFromRequest(r)
@@ -44,6 +47,6 @@ func (s *Server) projectMiddleware(next http.Handler) http.Handler {
 				"该目录尚未导入为项目，请先执行项目导入", workdir)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(auth.WithWorkdir(r.Context(), workdir)))
 	})
 }

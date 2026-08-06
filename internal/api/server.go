@@ -4,7 +4,8 @@
 // 业务实现由 task / project 等业务层提供，中间件所需的最小数据查询直接复用 db 包原生 SQL。
 //
 // TF-003 范围：/ping 健康检查、来源过滤（remote_access）、X-Project 注册校验、
-// 端口热重载（QA Q8 完整热重载）；真实业务端点由 TF-013 挂载。
+// 端口热重载（QA Q8 完整热重载）；
+// TF-013 起：来源识别 + 权限中间件（internal/auth）+ 核心业务端点。
 package api
 
 import (
@@ -21,10 +22,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"tangoforge/internal/audit"
+	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
+	"tangoforge/internal/project"
+	"tangoforge/internal/task"
 )
 
-// Server 守护进程 HTTP 服务：持有可热切换的全局配置与全局注册表库连接。
+// Server 守护进程 HTTP 服务：持有可热切换的全局配置、全局注册表库连接与业务依赖。
 type Server struct {
 	cfgMu sync.RWMutex
 	cfg   *config.GlobalConfig
@@ -32,26 +37,81 @@ type Server struct {
 	registry *sql.DB
 	logger   *slog.Logger
 
+	// TF-013 业务依赖（NewServer 内部自组装并接线）。
+	tasks    task.Service
+	projects *project.Service
+	perms    *auth.PermissionStore
+	audit    *audit.Store
+
 	httpSrv  *http.Server
 	lnMu     sync.Mutex
 	listener net.Listener
 }
 
-// NewServer 构造 HTTP 服务。
+// NewServer 构造 HTTP 服务并自组装业务依赖。
 //
 // cfg 为初始配置指针；热重载（setConfig / ReloadPort）会原子替换内部状态。
 // registry 为全局注册表库连接（已迁移），用于 X-Project 注册校验。
+// 审计 / 权限 / 任务服务的接线（QA P3-1）：task 写钩子 → audit（result=ok）；
+// 权限中间件 OnDenied → audit（result=denied）；actor 经 ctx（auth.ActorFrom）读取。
 func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
+
+	auditStore := audit.NewStore(logger)
+	permStore := auth.NewPermissionStore(logger)
+	permStore.OnDenied = func(ctx context.Context, workdir, action string) {
+		actor := auth.ActorFrom(ctx)
+		auditStore.Write(ctx, workdir, audit.Entry{
+			Actor: actor.Name, ActorClass: actor.Class,
+			Action: action, Target: workdir, Result: audit.ResultDenied,
+			Detail: "permission denied",
+		})
+	}
+	taskSvc := task.NewService(task.Options{
+		Logger: logger,
+		OnWrite: func(ctx context.Context, workdir, action, target string) {
+			actor := auth.ActorFrom(ctx)
+			auditStore.Write(ctx, workdir, audit.Entry{
+				Actor: actor.Name, ActorClass: actor.Class,
+				Action: action, Target: target, Result: audit.ResultOK,
+			})
+		},
+	})
+
 	s := &Server{
 		cfg:      cfg,
 		registry: registry,
 		logger:   logger,
+		tasks:    taskSvc,
+		projects: project.NewService(registry, logger),
+		perms:    permStore,
+		audit:    auditStore,
 	}
 	s.httpSrv = &http.Server{Handler: s.Handler()}
 	return s
+}
+
+// Close 释放业务依赖（审计排空、权限/任务连接关闭）。
+func (s *Server) Close() error {
+	var firstErr error
+	if s.audit != nil {
+		if err := s.audit.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.perms != nil {
+		if err := s.perms.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.tasks != nil {
+		if err := s.tasks.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // SetConfig 原子替换当前配置（remote_access 等内存标志立即生效；供热重载回调调用）。
@@ -71,19 +131,68 @@ func (s *Server) currentConfig() config.GlobalConfig {
 	return *s.cfg
 }
 
+// currentConfigPtr 返回当前配置指针（识别中间件提供者：每次请求读取，热重载即时生效）。
+func (s *Server) currentConfigPtr() *config.GlobalConfig {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
+}
+
+// perm 包装动作权限中间件为 http.HandlerFunc（chi 路由要求 HandlerFunc）。
+func (s *Server) perm(action string, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.perms.RequirePermission(action)(h).ServeHTTP(w, r)
+	}
+}
+
 // Handler 组装路由与中间件链。
 //
-// /ping 不经过任何中间件（健康检查）；/api/* 依次经过：
+// /ping 不经过任何中间件（健康检查）；/api 下：
 //  1. 来源过滤（非回环且未开启 remote_access → 403）；
-//  2. X-Project 注册校验（未携带或未注册 → 404 PROJECT_NOT_FOUND）。
+//  2. /api/projects 组：**豁免 X-Project**（项目列表/导入无"当前项目"概念，QA P3-2），
+//     仅经来源识别；DELETE 项目记录仅 UI（回环 + X-UI-Token）；
+//  3. 其余 /api/*：X-Project 注册校验（未携带或未注册 → 404 PROJECT_NOT_FOUND）
+//     → 来源识别（远程无 Token → 401）→ 动作权限（ui 放行，其余查 permissions 表 → 403）。
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/ping", s.handlePing)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(s.remoteAccessMiddleware)
-		r.Use(s.projectMiddleware)
-		// TF-013 起在此挂载真实业务端点；当前未匹配路由由 chi 默认 404 兜底。
+
+		// 项目注册表组：豁免 projectMiddleware（QA P3-2）。
+		r.Route("/projects", func(r chi.Router) {
+			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
+			r.Get("/", s.handleProjectList)
+			r.Post("/import", s.handleProjectImport)
+			r.Delete("/{id}", s.handleProjectRemove)
+		})
+
+		// 主业务组：X-Project → 来源识别 → 动作权限。
+		r.Group(func(r chi.Router) {
+			r.Use(s.projectMiddleware)
+			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
+
+			r.Route("/tasks", func(r chi.Router) {
+				r.Get("/", s.perm("task.read", s.handleTaskList))
+				r.Post("/", s.perm("task.create", s.handleTaskCreate))
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", s.perm("task.read", s.handleTaskGet))
+					r.Patch("/", s.perm("task.update", s.handleTaskUpdate))
+					r.Post("/archive", s.perm("task.delete", s.handleTaskArchive))
+					r.Post("/restore", s.perm("task.restore", s.handleTaskRestore))
+					r.Delete("/", s.perm("task.delete", s.handleTaskDelete))
+				})
+			})
+
+			r.Get("/state-machine", s.perm("state_machine.read", s.handleStateMachineGet))
+			r.Put("/state-machine", s.perm("state_machine.write", s.handleStateMachinePut))
+
+			r.Get("/permissions", s.perm("permission.read", s.handlePermissionGet))
+			// PUT /api/permissions 仅 UI（回环 + X-UI-Token 由识别层保证），handler 内二次校验 actor==ui。
+			r.Put("/permissions", s.handlePermissionPut)
+		})
+
 		r.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "api root: 无端点定义", "")
 		})

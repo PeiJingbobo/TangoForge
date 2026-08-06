@@ -37,13 +37,17 @@ type RestoreOptions struct {
 //
 // 已归档任务再次归档 → 幂等返回当前状态（Q2-B，不重复记录、不触发钩子）。
 // 归档 + 级联置空在同一事务内原子完成（QA Q3）。
+//
+// 事务策略（TF-013 修复）：**事务外读快照、事务内首条语句即写**。
+// WAL 下 DEFERRED 事务若先读后写，写升级遇其他连接写锁会立即 SQLITE_BUSY
+// （busy handler 不适用）；首条语句为写时在获取写锁阶段应用 busy_timeout 等待。
 func (s *service) Archive(ctx context.Context, workdir, id string) (ArchiveResult, error) {
 	conn, err := s.projectDB(ctx, workdir)
 	if err != nil {
 		return ArchiveResult{}, err
 	}
 
-	// 幂等短路（Q2-B）：已归档 → 返回当前状态。
+	// 事务外读：幂等短路（Q2-B）+ 快照（并发窗口下最后写入生效，TASK-SEMANTICS §11）。
 	pre, err := newSQLRepo(conn).GetByID(ctx, id)
 	if err != nil {
 		return ArchiveResult{}, err
@@ -62,19 +66,13 @@ func (s *service) Archive(ctx context.Context, workdir, id string) (ArchiveResul
 	defer func() { _ = tx.Rollback() }()
 	repo := newSQLRepoTx(tx)
 
-	t, err := repo.GetByID(ctx, id)
-	if err != nil {
-		return ArchiveResult{}, err
-	}
-	if t == nil {
-		return ArchiveResult{}, fmt.Errorf("%w: %s", ErrTaskNotFound, id)
-	}
-
+	// 事务内首条语句是写（repo.Update）：获取写锁阶段应用 busy_timeout，避免升级冲突。
+	t := *pre
 	now := time.Now()
 	t.ArchivedFrom = t.Status
 	t.Status = StatusArchived
 	t.UpdatedAt = now
-	if err := repo.Update(ctx, t); err != nil {
+	if err := repo.Update(ctx, &t); err != nil {
 		return ArchiveResult{}, err
 	}
 	children, err := repo.ClearParentsByParentID(ctx, id, now)
@@ -91,7 +89,7 @@ func (s *service) Archive(ctx context.Context, workdir, id string) (ArchiveResul
 	}
 	s.logger.Debug("task archived", "id", t.ID, "children", children, "workdir", workdir)
 	s.emit(ctx, workdir, "task.archived", t.ID)
-	return ArchiveResult{Task: *t, DependentCount: dep, ChildrenCleared: int(children)}, nil
+	return ArchiveResult{Task: t, DependentCount: dep, ChildrenCleared: int(children)}, nil
 }
 
 // Restore 还原归档任务（docs/TASK-SEMANTICS.md §8.2）。

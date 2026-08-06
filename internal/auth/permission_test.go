@@ -164,7 +164,8 @@ func doReq(h http.Handler, method, target, remoteAddr string, setHeader func(htt
 
 // chain 组装中间件链（顺序与 api 层一致）：workdir 先写入 → 来源识别 → 权限判断 → handler。
 func chain(cfg *config.GlobalConfig, store *PermissionStore, action, workdir string, h http.Handler) http.Handler {
-	return WithWorkdirHandler(workdir, IdentifyMiddleware(cfg)(store.RequirePermission(action)(h)))
+	cfgPtr := cfg // 保持 cfg 指针语义（测试中 cfg 为局部变量指针）
+	return WithWorkdirHandler(workdir, IdentifyMiddleware(func() *config.GlobalConfig { return cfgPtr })(store.RequirePermission(action)(h)))
 }
 
 func TestMiddleware_UIAllowedWithoutTable(t *testing.T) {

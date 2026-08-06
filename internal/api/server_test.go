@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -131,19 +133,29 @@ func TestProject_Unregistered(t *testing.T) {
 
 func TestProject_RegisteredPasses(t *testing.T) {
 	reg := openMemRegistry(t)
-	workdir := `C:\work\proj`
+	cfg := config.DefaultGlobalConfig()
+	cfg.UIToken = "ui-secret"
+	// 真实临时目录 + 初始化项目库（handler 可正常工作）。
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, ".taskboard"), 0o755); err != nil {
+		t.Fatalf("mkdir .taskboard: %v", err)
+	}
+	if _, err := db.EnsureProject(context.Background(), db.MetaDBPath(workdir)); err != nil {
+		t.Fatalf("ensure project db: %v", err)
+	}
 	registerProject(t, reg, workdir)
 
-	srv := newTestServer(t, nil, reg)
+	srv := newTestServer(t, &cfg, reg)
+	defer func() { _ = srv.Close() }()
 	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
 	req.RemoteAddr = "127.0.0.1:5555"
 	req.Header.Set("X-Project", workdir)
+	req.Header.Set("X-UI-Token", "ui-secret")
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, req)
-	// 注册通过中间件后进入路由：/api/tasks 未定义（TF-013 前）→ 404 兜底，
-	// 但错误必须是 NOT_FOUND 而非 PROJECT_NOT_FOUND。
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404 (route not found)", rec.Code)
+	// TF-013 起 /api/tasks 已定义：注册通过中间件 + UI 放行 → 200 空列表。
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (registered project passes middleware)", rec.Code)
 	}
 	if strings.Contains(rec.Body.String(), "PROJECT_NOT_FOUND") {
 		t.Errorf("should pass project check, body = %s", rec.Body.String())
@@ -152,16 +164,29 @@ func TestProject_RegisteredPasses(t *testing.T) {
 
 func TestProject_QueryParam(t *testing.T) {
 	reg := openMemRegistry(t)
-	workdir := `D:\repo\proj`
+	cfg := config.DefaultGlobalConfig()
+	cfg.UIToken = "ui-secret"
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, ".taskboard"), 0o755); err != nil {
+		t.Fatalf("mkdir .taskboard: %v", err)
+	}
+	if _, err := db.EnsureProject(context.Background(), db.MetaDBPath(workdir)); err != nil {
+		t.Fatalf("ensure project db: %v", err)
+	}
 	registerProject(t, reg, workdir)
 
-	srv := newTestServer(t, nil, reg)
-	rec := doRequest(t, srv.Handler(), http.MethodGet, "/api/tasks?project="+workdir, "127.0.0.1:5555")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404 (route not found)", rec.Code)
+	srv := newTestServer(t, &cfg, reg)
+	defer func() { _ = srv.Close() }()
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks?project="+workdir, nil)
+	req.RemoteAddr = "127.0.0.1:5555"
+	req.Header.Set("X-UI-Token", "ui-secret")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code == http.StatusNotFound && strings.Contains(rec.Body.String(), "PROJECT_NOT_FOUND") {
+		t.Fatalf("query param should pass project check, body = %s", rec.Body.String())
 	}
-	if strings.Contains(rec.Body.String(), "PROJECT_NOT_FOUND") {
-		t.Errorf("query param should pass project check, body = %s", rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (query param passes middleware)", rec.Code)
 	}
 }
 
