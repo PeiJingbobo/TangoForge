@@ -13,11 +13,11 @@
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
-| P3 传输层与安全 | 5 | 0 | 0 | 5 |
+| P3 传输层与安全 | 5 | 2 | 0 | 3 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **9** | **0** | **22** |
+| **合计** | **31** | **11** | **0** | **20** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -161,9 +161,11 @@
 - **涉及模块**：`internal/auth`、`internal/task`（permissions 读写）
 - **描述**：`permissions` 表（`project_id, action, allowed`）读写；新项目默认只读权限（TF-004 已建）；中间件：`actor_class=ui` 直接放行，其余查表，未授权 403；`PUT /api/permissions` 仅 UI 凭据 + 回环（Agent 不可改权限表）；`GET /api/permissions` 返回自身范围。
 - **验收标准**：
-  - [ ] 单测：默认权限、授权/未授权矩阵、UI 放行、权限修改端点双条件校验
-  - [ ] MCP/CLI 请求无法修改权限表（403）
-- **产出文件**：`internal/auth/permission.go`、`internal/auth/permission_test.go`
+  - [x] 单测：默认权限、授权/未授权矩阵、UI 放行、权限修改端点双条件校验
+  - [x] MCP/CLI 请求无法修改权限表（403）
+- **产出文件**：`internal/auth/permission.go`、`internal/auth/permission_test.go`、`internal/auth/middleware.go`
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-011-权限模型与中间件-成功.md`
 
 ### TF-012 异步审计（P1，依赖 TF-010）
 
