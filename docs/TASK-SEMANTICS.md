@@ -161,7 +161,18 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - 钩子：`task.deleted`。
 - **UI 确认流（Q8）**：App UI 物理删除前检测子任务，由用户选择处置方式（确认级联置空 / 取消）。
 
-## 9. 错误码清单
+## 9. 依赖关系（depends_on）语义（TF-008）
+
+- **方向语义（Q1-A）**：`A.depends_on = [B]` 表示 **A 依赖 B**（B 是 A 的前置 / 被依赖者）；**环 = 沿 depends_on 图走回自身**（含自依赖 `X.depends_on` 含 X）。
+- **校验位置（Q4-A）**：Create / Update 在**写入前校验**（写操作本身为单语句原子，校验失败直接返回，不产生任何脏数据——语义等价"事务内完成"）。
+- **校验规则**：
+  - **依赖任务必须存在**（`DEPENDENCY_NOT_FOUND`，Q2-A）——拒绝不存在的依赖 ID；
+  - **依赖已归档（archived）任务允许**（Q3-A：归档不阻断依赖关系，与 TF-007 归档"被依赖仅提示不阻断"闭环一致）；
+  - **自依赖**（`X.depends_on` 含 X）→ `CIRCULAR_DEPENDENCY`（Q7-A）；
+  - **多跳环**（Q5-A）：基于"更新后的 depends_on 集合 + 其余任务现有集合"沿依赖图多跳 DFS，回到自身 → `CIRCULAR_DEPENDENCY`。
+- Update 的 `DependsOn=nil`（不更新）与 `&[]`（清空）沿用 §4.2 指针语义；清空不触发环校验（空集无环）。
+
+## 10. 错误码清单
 
 | 错误码 | 语义 |
 |--------|------|
@@ -174,24 +185,26 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 | `INVALID_TRANSITION` | 非法状态流转（transitions 为空拒绝一切 / 目标不在 from 规则的 to 列表） |
 | `STATUS_IN_USE` | 状态被任务占用，不可删除/重命名（Message 携带占用任务数） |
 | `DELETE_NOT_ALLOWED` | 物理删除仅限回收站（archived）任务，非归档任务拒绝 |
+| `DEPENDENCY_NOT_FOUND` | depends_on 引用不存在的任务 |
+| `CIRCULAR_DEPENDENCY` | depends_on 引入循环依赖（含自依赖） |
 
 > 错误定义于 `internal/task/errors.go`（哨兵错误 + Code() 映射）；HTTP 状态码映射在 TF-013 落地。
-> TF-006 已追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 已追加 `DELETE_NOT_ALLOWED`；TF-008 追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
+> TF-006 已追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 已追加 `DELETE_NOT_ALLOWED`；TF-008 已追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
 
-## 10. 并发与钩子
+## 11. 并发与钩子
 
 - **并发写**：最后写入生效，不加乐观锁（REQUIREMENTS-REVIEW Q27-A），靠审计追溯（审计 TF-012 落地）。
 - **写钩子（Q14-A）**：Service 构造时可选注入 `OnWrite(ctx, action, target)` 回调，写操作成功后调用（当前为 nil 安全）；TF-012 异步审计、TF-014 WS 事件经此钩子接入，**不改 Service 签名**。动作：`task.created / task.updated / task.status_changed / task.archived / task.restored / task.deleted / state_machine.changed`。
 - 连接管理（Q1-A）：Service 内部按 workdir 打开并缓存项目库连接（map + mutex，`SetMaxOpenConns(1)`），方法签名携带 workdir；不依赖全局注册表连接（Q2-B）。
 
-## 11. 与后续任务的边界
+## 12. 与后续任务的边界
 
 | 任务 | 本文件涉及的边界 |
 |------|------------------|
 | ~~TF-006 状态机校验~~ | ✅ 已完成：§5.1 流转校验 + §5.2 状态机编辑（含 `INVALID_TRANSITION` / `STATUS_IN_USE`） |
 | ~~TF-007 归档/还原/物理删除~~ | ✅ 已完成：§8 删除语义（幂等归档、级联置空、RestoreOptions、`DELETE_NOT_ALLOWED`） |
-| TF-008 依赖校验 | depends_on 存在性（`DEPENDENCY_NOT_FOUND`）与无环校验（`CIRCULAR_DEPENDENCY`） |
-| TF-009 覆盖率收口 | 本文件 §1–§10 语义全部纳入测试断言 |
-| TF-012 审计 / TF-014 WS | 经 §10 写钩子接入 |
+| ~~TF-008 依赖校验~~ | ✅ 已完成：§9 依赖语义（存在性、自依赖、多跳环，`DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`） |
+| ~~TF-009 覆盖率收口~~ | ✅ 已完成：P2 结束时 `internal/task` 覆盖率 ≥ 90%（check_coverage.sh 强制） |
+| TF-012 审计 / TF-014 WS | 经 §11 写钩子接入 |
 
 *（文档完）*

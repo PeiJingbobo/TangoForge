@@ -194,9 +194,16 @@ func (s *service) Create(ctx context.Context, workdir string, in CreateInput) (T
 		return Task{}, err
 	}
 
+	// 依赖校验（TF-008）：先于写入，拒绝不产生脏数据（Q4-A）。
+	depends := cleanStrings(in.DependsOn)
+	id := uuid.NewString()
+	if err := s.validateDependencies(ctx, repo, id, depends); err != nil {
+		return Task{}, err
+	}
+
 	now := time.Now()
 	t := Task{
-		ID:          uuid.NewString(),
+		ID:          id,
 		ProjectID:   1, // docs/TASK-SEMANTICS.md §1：项目库内固定写 1（文档性冗余）
 		ParentID:    in.ParentID,
 		Title:       title,
@@ -205,7 +212,7 @@ func (s *service) Create(ctx context.Context, workdir string, in CreateInput) (T
 		Priority:    priority,
 		Tags:        normalizeTags(in.Tags),
 		Assignee:    in.Assignee,
-		DependsOn:   cleanStrings(in.DependsOn),
+		DependsOn:   depends,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -348,7 +355,12 @@ func (s *service) Update(ctx context.Context, workdir, id string, in UpdateInput
 		t.Assignee = *in.Assignee
 	}
 	if in.DependsOn != nil {
-		t.DependsOn = cleanStrings(*in.DependsOn)
+		newDep := cleanStrings(*in.DependsOn)
+		// 依赖校验（TF-008）：先于写入，拒绝时任务状态不脏。
+		if err := s.validateDependencies(ctx, repo, t.ID, newDep); err != nil {
+			return Task{}, err
+		}
+		t.DependsOn = newDep
 	}
 	if in.ParentID != nil {
 		if *in.ParentID == nil {

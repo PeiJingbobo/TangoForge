@@ -5,19 +5,21 @@ import (
 	"fmt"
 )
 
-// 业务错误码（docs/TASK-SEMANTICS.md §9）。
+// 业务错误码（docs/TASK-SEMANTICS.md §10）。
 //
-// HTTP 状态码映射在 TF-013 落地；TF-008 追加 DEPENDENCY_NOT_FOUND / CIRCULAR_DEPENDENCY。
+// HTTP 状态码映射在 TF-013 落地。
 const (
-	CodeProjectNotFound   = "PROJECT_NOT_FOUND"
-	CodeTaskNotFound      = "TASK_NOT_FOUND"
-	CodeTaskInvalid       = "TASK_INVALID"
-	CodeParentNotFound    = "PARENT_NOT_FOUND"
-	CodeParentCycle       = "PARENT_CYCLE"
-	CodeStatusNotFound    = "STATUS_NOT_FOUND"
-	CodeInvalidTransition = "INVALID_TRANSITION"
-	CodeStatusInUse       = "STATUS_IN_USE"
-	CodeDeleteNotAllowed  = "DELETE_NOT_ALLOWED"
+	CodeProjectNotFound    = "PROJECT_NOT_FOUND"
+	CodeTaskNotFound       = "TASK_NOT_FOUND"
+	CodeTaskInvalid        = "TASK_INVALID"
+	CodeParentNotFound     = "PARENT_NOT_FOUND"
+	CodeParentCycle        = "PARENT_CYCLE"
+	CodeStatusNotFound     = "STATUS_NOT_FOUND"
+	CodeInvalidTransition  = "INVALID_TRANSITION"
+	CodeStatusInUse        = "STATUS_IN_USE"
+	CodeDeleteNotAllowed   = "DELETE_NOT_ALLOWED"
+	CodeDependencyNotFound = "DEPENDENCY_NOT_FOUND"
+	CodeCircularDependency = "CIRCULAR_DEPENDENCY"
 )
 
 // Error 业务错误：携带机器可读 Code 与人类可读 Message。
@@ -49,6 +51,10 @@ var (
 	ErrStatusInUse       = &Error{Code: CodeStatusInUse, Message: "状态被任务占用"}
 	// ErrDeleteNotAllowed 物理删除仅限回收站（archived）任务。
 	ErrDeleteNotAllowed = &Error{Code: CodeDeleteNotAllowed, Message: "物理删除仅限回收站（archived）中的任务"}
+	// ErrDependencyNotFound depends_on 引用不存在的任务。
+	ErrDependencyNotFound = &Error{Code: CodeDependencyNotFound, Message: "依赖任务不存在"}
+	// ErrCircularDependency depends_on 引入循环依赖（含自依赖）。
+	ErrCircularDependency = &Error{Code: CodeCircularDependency, Message: "存在循环依赖"}
 )
 
 // NewInvalid 构造携带具体原因的 TASK_INVALID 错误。
@@ -64,6 +70,16 @@ func NewInvalidTransition(from, to string) error {
 // NewStatusInUse 构造携带占用任务数的 STATUS_IN_USE 错误。
 func NewStatusInUse(key string, count int) error {
 	return &Error{Code: CodeStatusInUse, Message: fmt.Sprintf("状态 %q 被 %d 个任务占用，无法删除或重命名", key, count)}
+}
+
+// NewDependencyNotFound 构造携带缺失依赖 ID 的 DEPENDENCY_NOT_FOUND 错误。
+func NewDependencyNotFound(id string) error {
+	return &Error{Code: CodeDependencyNotFound, Message: fmt.Sprintf("依赖任务不存在: %s", id)}
+}
+
+// NewCircularDependency 构造携带环起点任务 ID 的 CIRCULAR_DEPENDENCY 错误。
+func NewCircularDependency(id string) error {
+	return &Error{Code: CodeCircularDependency, Message: fmt.Sprintf("任务 %s 引入循环依赖", id)}
 }
 
 // codeOf 提取错误的业务码；非任务域错误返回空串（供传输层兜底）。

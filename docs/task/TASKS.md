@@ -12,12 +12,12 @@
 | 阶段 | 任务数 | 已完成 | 进行中 | 待开始 |
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
-| P2 任务核心域 | 5 | 3 | 0 | 2 |
+| P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 0 | 0 | 5 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **7** | **0** | **24** |
+| **合计** | **31** | **9** | **0** | **22** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -120,20 +120,26 @@
 ### TF-008 依赖关系与无环校验（P1，依赖 TF-005）
 
 - **涉及模块**：`internal/task`
-- **描述**：`depends_on` JSON 数组读写；Create/Update 时循环依赖检测（环 → `CIRCULAR_DEPENDENCY`，写操作直接拒绝）；依赖任务不存在时校验策略明确（报错或忽略，需与文档一致——建议报错 `DEPENDENCY_NOT_FOUND` 并登记）。
+- **描述**：`depends_on` JSON 数组读写；Create/Update 时循环依赖检测（环 → `CIRCULAR_DEPENDENCY`，写操作直接拒绝）；依赖任务不存在时校验策略明确（`DEPENDENCY_NOT_FOUND` 报错）。方向语义（A 依赖 B）、多跳环检测、校验先于写入等细节见 `docs/TASK-SEMANTICS.md` §9。
 - **验收标准**：
-  - [ ] 单测覆盖：合法依赖、A→B→A 环拒绝、自依赖拒绝
-  - [ ] 依赖校验在事务内完成，拒绝时不产生脏数据
-- **产出文件**：`internal/task/dependency.go`、`internal/task/dependency_test.go`
+  - [x] 单测覆盖：合法依赖、A→B→A 环拒绝、自依赖拒绝（含多跳环、依赖不存在、依赖 archived 允许）
+  - [x] 依赖校验在写入前完成（单语句原子，语义等价事务），拒绝时不产生脏数据
+- **产出文件**：`internal/task/dependency.go`、`internal/task/dependency_test.go`、`internal/task/errors.go`（追加 DEPENDENCY_NOT_FOUND / CIRCULAR_DEPENDENCY）、`internal/task/service.go`（Create/Update 接入）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-008-依赖关系与无环校验-成功.md`
 
 ### TF-009 任务域覆盖率收口（P0，依赖 TF-005~TF-008）
 
 - **涉及模块**：`internal/task`（含测试）
-- **描述**：补全 P2 全部边界测试，使 `internal/task` 行覆盖率 ≥ 90%（含状态机、归档/还原、依赖校验、草稿导入流程），本地跑 `scripts/check_coverage.sh` 通过。
+- **描述**：补全 P2 全部边界测试，使 `internal/task` 行覆盖率 ≥ 90%（含状态机、归档/还原、依赖校验、草稿导入流程），本地跑 `scripts/check_coverage.sh` 通过。错误分支注入策略（Q9-A）：meta.db 目录注入 projectDB 失败、关闭连接注入 repo 错误、config.yaml 损坏注入状态机加载失败。
 - **验收标准**：
-  - [ ] `./scripts/check_coverage.sh` 通过（THRESHOLD=90）
-  - [ ] `CGO_ENABLED=0 go test -cover ./internal/task/...` 覆盖率 ≥ 90%
-- **产出文件**：`internal/task/*_test.go`（补全）
+  - [x] `./scripts/check_coverage.sh` 通过（THRESHOLD=90）
+  - [x] `CGO_ENABLED=0 go test -cover ./internal/task/...` 覆盖率 ≥ 90%（实测 92.1%）
+- **产出文件**：`internal/task/coverage_test.go`（错误注入补测）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-009-任务域覆盖率收口-成功.md`
+
+> **✅ M2 里程碑达成（2026-08-06）**：P2 任务核心域全部完成，`internal/task` 覆盖率 92.1%（> 90% 门槛），质量门禁打勾见 MASTER-PLAN §7。
 
 ---
 

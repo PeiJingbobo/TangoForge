@@ -162,12 +162,14 @@ TF-030 CI（依赖绝大部分任务完成）
 
 每个阶段结束时执行**阶段退出检查**（对应 `AGENTS.md §10.4` 质量门槛清单）：
 
-- [ ] 本阶段全部任务状态 = `已完成`，总结/日志齐备；
-- [ ] `make check`（或等价命令）通过；P2 后 `internal/task` 覆盖率 ≥ 90%；
-- [ ] 无 P0/P1 遗留问题；已知问题全部登记在总结"遗留问题"节；
-- [ ] 受影响文档（AGENTS.md / REQUIREMENTS.md / TECHNICAL.md / docs/README.md 索引）已同步。
+- [x] 本阶段全部任务状态 = `已完成`，总结/日志齐备；（**P2 检查：2026-08-06 ✅**，TF-005~009 全 ✅）
+- [x] `make check`（或等价命令）通过；P2 后 `internal/task` 覆盖率 ≥ 90%；（**✅ 实测 92.1%**，`check_coverage.sh` 通过）
+- [x] 无 P0/P1 遗留问题；已知问题全部登记在总结"遗留问题"节；（✅ P1/P2 无遗留；P3 起新任务按清单推进）
+- [x] 受影响文档（AGENTS.md / REQUIREMENTS.md / TECHNICAL.md / docs/README.md 索引）已同步。（✅ TASK-SEMANTICS.md 已随各任务同步；REQUIREMENTS/TECHNICAL 基线未改动，无需修订）
 
 **里程碑未达成的处理**：不得进入下一阶段；回退至对应任务补齐，再重新验收。
+
+> **✅ M2 任务引擎可用（2026-08-06 达成）**：P2 关闭，可进入 P3（传输层与安全）。
 
 ---
 
