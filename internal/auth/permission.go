@@ -21,6 +21,9 @@ var ErrProjectNotFound = errors.New("auth: project not found")
 // ErrInvalidAction 表示权限动作不在 v1 全集内。
 var ErrInvalidAction = errors.New("auth: invalid action")
 
+// ErrPermissionDenied 权限拒绝（MCP 等非 HTTP 通道复用，TF-016）。
+var ErrPermissionDenied = errors.New("auth: permission denied")
+
 // PermissionStore 项目权限存储：permissions 表（项目库 meta.db）读写。
 //
 // 语义（QA P3-5/P3-6 确认）：
@@ -116,6 +119,27 @@ func (s *PermissionStore) Allowed(ctx context.Context, workdir, action string) (
 		return false, fmt.Errorf("auth: query permission %s/%s: %w", workdir, action, err)
 	}
 	return allowed != 0, nil
+}
+
+// Require 供非 HTTP 通道（MCP stdio / HTTP 工具，TF-016）复用授权判定：
+//   - actor_class == ui → 放行（防御性；MCP 通道识别恒为 agent/unknown）；
+//   - 其余 → 查项目 permissions 表，未授权触发 OnDenied（审计 denied）并返回 ErrPermissionDenied。
+func (s *PermissionStore) Require(ctx context.Context, workdir, action string) error {
+	actor := ActorFrom(ctx)
+	if actor.Class == ClassUI {
+		return nil
+	}
+	allowed, err := s.Allowed(ctx, workdir, action)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		if s.OnDenied != nil {
+			s.OnDenied(ctx, workdir, action)
+		}
+		return fmt.Errorf("%w: %s", ErrPermissionDenied, action)
+	}
+	return nil
 }
 
 // Set 全量覆盖项目权限（QA P3-5）：提交项必须属于 v1 全集，未提交项重置 false。

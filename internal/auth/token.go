@@ -5,8 +5,9 @@ import (
 	"net/http"
 )
 
-// secureEqual 恒定时间字符串比较（防时序侧信道；Token 比较必须使用）。
-func secureEqual(a, b string) bool {
+// SecureEqual 恒定时间字符串比较（防时序侧信道；Token 比较必须使用）。
+// 供 auth 内部与 api（MCP HTTP 鉴权，TF-016）复用。
+func SecureEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 

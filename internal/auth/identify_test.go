@@ -186,16 +186,16 @@ func TestBearerToken(t *testing.T) {
 }
 
 func TestSecureEqual(t *testing.T) {
-	if !secureEqual("abc", "abc") {
+	if !SecureEqual("abc", "abc") {
 		t.Error("equal strings must match")
 	}
-	if secureEqual("abc", "abd") {
+	if SecureEqual("abc", "abd") {
 		t.Error("different strings must not match")
 	}
-	if secureEqual("", "a") {
+	if SecureEqual("", "a") {
 		t.Error("empty vs non-empty must not match")
 	}
-	if !secureEqual("", "") {
+	if !SecureEqual("", "") {
 		t.Error("empty strings must match")
 	}
 }

@@ -26,6 +26,9 @@ func main() {
 		fmt.Printf("tangoforge %s\n", version)
 	case "help", "-h", "--help":
 		usage()
+	case "mcp":
+		// stdio MCP 服务（QA P4-1：同二进制子命令，直连业务层；daemon 侧另有 /mcp HTTP 传输）。
+		runMCPCommand(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -38,6 +41,7 @@ func usage() {
 用法:
   tangoforge version        输出版本
   tangoforge help           显示帮助
+  tangoforge mcp            启动 stdio MCP 服务（供 AI Agent 操作任务池）
 
 规划中的子命令: project / task / import / export / permission / skill
 所有操作子命令均需显式携带 --project <工作目录>。`)

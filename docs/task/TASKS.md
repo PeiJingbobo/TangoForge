@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 2 | 0 | 5 |
+| P4 Agent 能力 | 7 | 3 | 0 | 4 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **16** | **0** | **15** |
+| **合计** | **31** | **17** | **0** | **14** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -221,12 +221,16 @@
 
 ### TF-016 MCP 服务框架（P0，依赖 TF-003、TF-005、TF-010）
 
-- **涉及模块**：`internal/mcp`、`cmd/mcp`
-- **描述**：MCP stdio 传输服务（mark3labs/mcp-go 或自研，需纯 Go 无 CGO）；`list_tools` 返回 v1 固定工具集声明；`call_tool` 分发改写为业务层调用；先落地 `task_read` / `task_create`（均含必填 `project` 参数）；来源识别 actor=客户端名（agent）。
+- **涉及模块**：`internal/mcp`、`cmd/cli`（mcp 子命令）、`internal/api`（/mcp 路由）、`internal/auth`
+- **描述**：MCP 双传输（QA P4-1）：**stdio**（同二进制子命令 `tangoforge mcp --config`，直连业务层）+ **HTTP 远程**（daemon 挂载 `POST /mcp` Streamable HTTP，remote_access + Bearer 鉴权，MCP 恒为 agent 身份）。mark3labs/mcp-go v0.57.0（纯 Go，goproxy 验证可达）；统一执行骨架 exec（actor=clientInfo.name → project 必填 → PermissionStore.Require → 业务调用 → JSON 文本）；先落地 `task_read` / `task_create`；业务错误放 result（isError）。
 - **验收标准**：
-  - [ ] 集成测试：stdio 会话中 `list_tools` / `call_tool(task_read|task_create)` 可调用
-  - [ ] 未携带 `project` → 明确报错
-- **产出文件**：`internal/mcp/server.go`、`internal/mcp/tools.go`、`cmd/mcp/main.go`
+  - [x] stdio 集成测试（io.Pipe 驱动真实 Listen）：initialize → tools/list（≥2 工具）→ tools/call task_read（成功）/task_create（默认权限 denied）→ 缺 project 明确报错 → 未导入项目 PROJECT_NOT_FOUND
+  - [x] HTTP 传输测试：回环调用成功、远程无 Bearer 401、denied 审计（actor=clientInfo.name）
+  - [x] 真实 daemon 冒烟：`POST /mcp` initialize 200 + session + tools/list 返回工具声明
+  - [x] 未携带 `project` → 明确报错（TASK_INVALID）
+- **产出文件**：`internal/mcp/mcp.go`、`internal/mcp/tools_task.go`、`internal/mcp/mcp_stdio_test.go`、`cmd/cli/cmd_mcp.go`、`internal/api/handlers_mcp_test.go`；`internal/auth`（Require 方法 + ErrPermissionDenied + SecureEqual 导出）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-016-MCP服务框架-成功.md`
 
 ### TF-017 MCP 工具全集（P1，依赖 TF-016 + 各业务模块）
 

@@ -25,6 +25,7 @@ import (
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
+	"tangoforge/internal/mcp"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
@@ -47,6 +48,9 @@ type Server struct {
 	hub *hub
 	// TF-020 Skill 业务服务。
 	skills *skill.Service
+	// TF-016 远程 MCP HTTP 传输（/mcp，惰性初始化一次）。
+	mcpOnce    sync.Once
+	mcpHandler http.Handler
 
 	httpSrv  *http.Server
 	lnMu     sync.Mutex
@@ -174,6 +178,16 @@ func (s *Server) Handler() http.Handler {
 	// WS 事件订阅（独立于 /api 中间件链，handleWS 内自行完成来源过滤/项目校验/权限）。
 	r.Get("/ws/events", s.handleWS)
 
+	// 远程 MCP（QA P4-1 扩展）：Streamable HTTP 传输，挂载 /mcp。
+	// 鉴权链：remote_access 过滤 → MCP 通道鉴权（远程必须 Bearer → 401；回环放行）。
+	// 不经过来源识别中间件：MCP 恒为 agent 身份（actor 取会话 clientInfo.name），
+	// 权限在工具执行时查 permissions 表（与 HTTP 等价）。
+	r.Route("/mcp", func(r chi.Router) {
+		r.Use(s.remoteAccessMiddleware)
+		r.Use(s.mcpAuthMiddleware)
+		r.Handle("/", s.MCPHandler())
+	})
+
 	r.Route("/api", func(r chi.Router) {
 		r.Use(s.remoteAccessMiddleware)
 
@@ -295,6 +309,41 @@ func (s *Server) handlePing(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"code": 0,
 		"data": map[string]string{"status": "ok"},
+	})
+}
+
+// MCPHandler 返回远程 MCP 的 Streamable HTTP handler（惰性初始化一次）。
+// 复用 daemon 既有业务依赖（taskSvc 已接 audit + WS 双通道，MCP 写操作事件正常广播）。
+func (s *Server) MCPHandler() http.Handler {
+	s.mcpOnce.Do(func() {
+		srv := mcp.NewServer(mcp.Deps{
+			Logger:   s.logger,
+			Tasks:    s.tasks,
+			Projects: s.projects,
+			Perms:    s.perms,
+			Skills:   s.skills,
+		})
+		s.mcpHandler = srv.HTTPHandler()
+	})
+	return s.mcpHandler
+}
+
+// mcpAuthMiddleware 远程 MCP 通道鉴权（QA P4-1）：
+//   - 远程请求必须携带有效 Bearer api_token（与 /api 一致），否则 401；
+//   - 回环请求放行（actor 由 MCP 会话 clientInfo 提供，权限在工具执行时查表）；
+//   - MCP 通道不识别 UI 凭据（UI 走 /api，MCP 恒为 Agent 身份）。
+func (s *Server) mcpAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopback(r.RemoteAddr) {
+			cfg := s.currentConfig()
+			bearer := auth.BearerToken(r)
+			if bearer == "" || cfg.APIToken == "" || !auth.SecureEqual(bearer, cfg.APIToken) {
+				writeError(w, http.StatusUnauthorized, "UNAUTHORIZED",
+					"远程请求必须携带有效的 Authorization: Bearer <api_token>", "")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 

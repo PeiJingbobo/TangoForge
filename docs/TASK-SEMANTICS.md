@@ -323,4 +323,24 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - 项目未导入（无 meta.db）→ `PROJECT_NOT_FOUND`（404）。
 - skill.read 属新项目默认只读 5 项之一（默认授予）。
 
+## 16. MCP 传输层语义（TF-016，QA P4-1 双传输）
+
+### 16.1 服务形态与双传输
+
+- **stdio**：同二进制子命令 `tangoforge mcp [--config <全局配置路径>]`，独立进程**直连业务层**（不经 HTTP）；供 IDE / Agent 客户端本地 spawn。
+- **HTTP（远程）**：daemon 挂载 `POST /mcp`（Streamable HTTP，MCP 2025-11-25 协议）；鉴权链：remote_access 过滤 → **MCP 通道鉴权**（远程必须 Bearer api_token → 401；回环放行）→ 工具执行时查权限表。
+- **MCP 通道恒为 agent 身份**：不识别 UI 凭据（X-UI-Token 在 /mcp 不构成 ui；UI 走 /api）；actor = initialize 会话 `clientInfo.name`（缺省 unknown），class=agent（`auth.FromMCP`）。
+- HTTP 模式写操作经 daemon 既有写钩子广播 WS 事件；**stdio 独立进程写操作不推送 WS 事件**（跨进程限制，UI 需刷新获取；v1 已知限制）。
+
+### 16.2 工具执行与权限
+
+- 工具执行骨架：actor（clientInfo）→ project 参数必填（缺失 → `TASK_INVALID` 明确报错）→ `PermissionStore.Require`（与 HTTP 等价查同一 permissions 表；denied → 工具错误 `PERMISSION_DENIED` + denied 审计）→ 业务调用。
+- **业务错误放 result 内**（isError=true + `{code,message}` JSON 文本），非协议级错误（MCP 规范：LLM 可见才能自纠）。
+- 成功返回 `{code:0, data:<业务数据>}` JSON 文本（结构对齐 HTTP data）。
+- 工具名/参数映射：`task_read`→task.read、`task_create`→task.create；每个工具首参 `project`（强制）。
+
+### 16.3 与 HTTP 的错误一致性
+
+- 错误码与 HTTP 一致：`PROJECT_NOT_FOUND / TASK_NOT_FOUND / TASK_INVALID / PERMISSION_DENIED` 等（§10）；`auth.ErrProjectNotFound`（权限查询前项目缺失）也映射 `PROJECT_NOT_FOUND`。
+
 *（文档完）*

@@ -91,7 +91,7 @@ func Identify(cfg *config.GlobalConfig, r *http.Request) (Actor, bool) {
 	if isLoopbackAddr(r.RemoteAddr) {
 		// 1. UI 凭据：仅回环来源有效。
 		if tok := r.Header.Get("X-UI-Token"); tok != "" && cfg != nil &&
-			cfg.UIToken != "" && secureEqual(tok, cfg.UIToken) {
+			cfg.UIToken != "" && SecureEqual(tok, cfg.UIToken) {
 			return Actor{Name: "ui", Class: ClassUI}, false
 		}
 		// 3. 本地 HTTP / CLI：X-Actor 头（CLI 默认 human）。
@@ -104,7 +104,7 @@ func Identify(cfg *config.GlobalConfig, r *http.Request) (Actor, bool) {
 
 	// 2. 远程请求：必须携带有效 Bearer（api_token），否则 401。
 	bearer := BearerToken(r)
-	if bearer == "" || cfg == nil || cfg.APIToken == "" || !secureEqual(bearer, cfg.APIToken) {
+	if bearer == "" || cfg == nil || cfg.APIToken == "" || !SecureEqual(bearer, cfg.APIToken) {
 		return Actor{}, true
 	}
 	name := r.Header.Get("X-Actor")
