@@ -339,6 +339,33 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - 成功返回 `{code:0, data:<业务数据>}` JSON 文本（结构对齐 HTTP data）。
 - 工具名/参数映射：`task_read`→task.read、`task_create`→task.create；每个工具首参 `project`（强制）。
 
+### 16.4 v1 固定工具集（TF-017，QA P4-1 Q6 扩展）
+
+| 工具 | 权限 action | 说明 |
+|------|-------------|------|
+| `project_list` | 豁免（全局） | 列出全部项目，无 project 参数（与 /api/projects 组豁免一致，QA P3-2） |
+| `project_import` | 豁免（项目组） | **仅导入注册**：要求目录已初始化（存在 meta.db），否则报错引导 init/create（Q6） |
+| `project_init` | 豁免（项目组） | **仅初始化** `.taskboard/`（meta.db + 默认权限 + config.yaml + skills/），不注册（Q6） |
+| `project_create` | 豁免（项目组） | **先 init 成功后再 import**（Q6 新增） |
+| `task_read` | task.read | id 详情；无 id 返回任务树（兼容） |
+| `task_list` | task.read | 任务树列表（status/q 过滤） |
+| `task_create` | task.create | 创建任务 |
+| `task_update` | task.update | 部分更新（title/description/priority/tags/assignee/depends_on/parent_id；parent_id 空串=置顶） |
+| `task_archive` | task.delete | 归档（软删除） |
+| `task_restore` | task.restore | 还原（fallback_todo 可选） |
+| `import_preview` | import.run | 提交 Markdown 解析 → 草稿（file_path 或 content+source_file） |
+| `import_confirm` | import.confirm | 确认草稿入库（文件级覆盖） |
+| `import_discard` | import.run | 丢弃草稿 |
+| `export_markdown` | export.run | 渲染 Markdown（template_mode/target/path） |
+| `graph_get` | graph.read | 全景图（复用 task.Graph，与 HTTP 同源） |
+| `state_machine_get` | state_machine.read | 状态机定义 |
+| `state_machine_update` | state_machine.write | 状态机编辑（state_machine 对象参数） |
+| `skill_info` | skill.read | skill_info 详情（name 参数） |
+| `permission_list` | permission.read | 全量权限（allowed 布尔） |
+
+- project 域工具**豁免权限检查**（与 HTTP /api/projects 组一致：无项目上下文、属项目引导，QA P3-2）；其余工具一律 `PermissionStore.Require`。
+- `Perms.Set` 为全量覆盖：MCP 工具授权测试须先 Get 合并（与 HTTP PUT 语义一致）。
+
 ### 16.3 与 HTTP 的错误一致性
 
 - 错误码与 HTTP 一致：`PROJECT_NOT_FOUND / TASK_NOT_FOUND / TASK_INVALID / PERMISSION_DENIED` 等（§10）；`auth.ErrProjectNotFound`（权限查询前项目缺失）也映射 `PROJECT_NOT_FOUND`。

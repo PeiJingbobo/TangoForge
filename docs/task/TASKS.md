@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 5 | 0 | 2 |
+| P4 Agent 能力 | 7 | 6 | 0 | 1 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **19** | **0** | **12** |
+| **合计** | **31** | **20** | **0** | **11** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -234,13 +234,16 @@
 
 ### TF-017 MCP 工具全集（P1，依赖 TF-016 + 各业务模块）
 
-- **涉及模块**：`internal/mcp`
-- **描述**：补齐 v1 固定工具集：`project_list/import/init`、`task_list/update/archive/restore`、`import_preview/confirm/discard`、`export_markdown`、`graph_get`、`state_machine_get/update`、`skill_info`、`permission_list`。
+- **涉及模块**：`internal/mcp`、`internal/task`（Graph）、`internal/project`（Init/ImportExisting/Create）、`internal/api`（graph 薄封装）
+- **描述**：补齐 v1 固定工具集（19 个）：`project_list/import/init` + **`project_create`**（QA P4-1 Q6：import 仅导入 / init 仅初始化 / create 先 init 后 import）、`task_list/update/archive/restore`、`import_preview/confirm/discard`、`export_markdown`、`graph_get`（复用 task.Graph）、`state_machine_get/update`、`skill_info`、`permission_list`；project 域豁免权限（与 HTTP /api/projects 组一致）。
 - **验收标准**：
-  - [ ] 每个工具首个参数为 `project`（强制）
-  - [ ] 工具权限与 HTTP 等价（查同一 permissions 表）
-  - [ ] 集成测试覆盖代表性工具（含 denied 路径）
-- **产出文件**：`internal/mcp/tools_*.go`（按域拆分）
+  - [x] 每个工具首个参数为 `project`（强制；project_list 全局豁免）
+  - [x] 工具权限与 HTTP 等价（查同一 permissions 表，denied 审计）
+  - [x] 集成测试（stdio）：tools/list 全 19 工具；project_create→任务全生命周期→graph/状态机/import/export 全链路；denied 路径（task_update/state_machine_update 默认拒绝）
+  - [x] task.Graph 单测（排除 archived、parent/dependency 边、空项目）；project Init/ImportExisting/Create 单测
+- **产出文件**：`internal/mcp/tools_*.go`（project/import/export/graph/state_machine/skill/permission + task 扩展）、`internal/mcp/mcp_tools_test.go`、`internal/task/graph.go`、`internal/task/graph_test.go`、`internal/project/project_init_test.go`、`docs/TASK-SEMANTICS.md` §16.4
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-017-MCP工具全集-成功.md`
 
 ### TF-018 Markdown 导入与草稿流（P1，依赖 TF-015、TF-004、TF-005）
 

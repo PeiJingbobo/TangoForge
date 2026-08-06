@@ -46,6 +46,8 @@ type Service interface {
 	Delete(ctx context.Context, workdir, id string) (Task, error)
 	// ImportTasks 文件级全量覆盖导入（TF-018 草稿确认入库，§17.3：归档旧 source_file + 批量重建原子）。
 	ImportTasks(ctx context.Context, workdir, sourceFile string, tasks []Task) (ImportResult, error)
+	// Graph 全景图全量数据（§12.5：未归档任务 + parent/dependency 边；服务端不聚簇，TF-017）。
+	Graph(ctx context.Context, workdir string) (GraphData, error)
 	// Close 关闭全部缓存的项目库连接（进程退出/测试清理时调用）。
 	Close() error
 }

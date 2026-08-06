@@ -25,6 +25,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"tangoforge/internal/auth"
+	"tangoforge/internal/exporter"
+	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
@@ -38,6 +40,8 @@ type Deps struct {
 	Projects *project.Service
 	Perms    *auth.PermissionStore
 	Skills   *skill.Service
+	Parser   *parser.Service
+	Exporter *exporter.Service
 }
 
 // Server MCP 服务：持有业务依赖与已注册工具。
@@ -59,11 +63,31 @@ func NewServer(deps Deps) *Server {
 	return s
 }
 
-// registerTools 注册 v1 固定工具集（TF-016 先落地 task_read / task_create，
-// TF-017 补齐 project / task / import / export / graph / state_machine / skill / permission）。
+// registerTools 注册 v1 固定工具集（REQUIREMENTS.md §8.3 + QA P4-1 Q6 扩展）。
 func (s *Server) registerTools() {
+	// task 域。
 	s.mcpSrv.AddTool(toolTaskRead, s.handleTaskRead)
+	s.mcpSrv.AddTool(toolTaskList, s.handleTaskList)
 	s.mcpSrv.AddTool(toolTaskCreate, s.handleTaskCreate)
+	s.mcpSrv.AddTool(toolTaskUpdate, s.handleTaskUpdate)
+	s.mcpSrv.AddTool(toolTaskArchive, s.handleTaskArchive)
+	s.mcpSrv.AddTool(toolTaskRestore, s.handleTaskRestore)
+	// project 域（QA P4-1 Q6：import 仅导入 / init 仅初始化 / create 先 init 后 import）。
+	s.mcpSrv.AddTool(toolProjectList, s.handleProjectList)
+	s.mcpSrv.AddTool(toolProjectImport, s.handleProjectImport)
+	s.mcpSrv.AddTool(toolProjectInit, s.handleProjectInit)
+	s.mcpSrv.AddTool(toolProjectCreate, s.handleProjectCreate)
+	// import / export 域。
+	s.mcpSrv.AddTool(toolImportPreview, s.handleImportPreview)
+	s.mcpSrv.AddTool(toolImportConfirm, s.handleImportConfirm)
+	s.mcpSrv.AddTool(toolImportDiscard, s.handleImportDiscard)
+	s.mcpSrv.AddTool(toolExportMarkdown, s.handleExportMarkdown)
+	// 只读查询域。
+	s.mcpSrv.AddTool(toolGraphGet, s.handleGraphGet)
+	s.mcpSrv.AddTool(toolStateMachineGet, s.handleStateMachineGet)
+	s.mcpSrv.AddTool(toolStateMachineUpdate, s.handleStateMachineUpdate)
+	s.mcpSrv.AddTool(toolSkillInfo, s.handleSkillInfo)
+	s.mcpSrv.AddTool(toolPermissionList, s.handlePermissionList)
 }
 
 // StdioServer 返回 stdio 传输服务（cmd 层调用 Listen(ctx, stdin, stdout)）。

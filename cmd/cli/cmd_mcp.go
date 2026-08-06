@@ -14,7 +14,9 @@ import (
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"tangoforge/internal/exporter"
 	"tangoforge/internal/mcp"
+	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
@@ -88,12 +90,47 @@ func serveMCP(ctx context.Context, logger *slog.Logger, configPath string) error
 	skillSvc := skill.NewService(logger)
 	defer func() { _ = skillSvc.Close() }()
 
+	// parser / exporter（stdio 独立进程：事件仅接审计，WS 由 daemon 侧广播）。
+	parserSvc := parser.NewService(parser.Options{
+		Logger: logger,
+		LLM: func() config.LLMConfig {
+			cfg, _ := config.LoadGlobal(configPath)
+			return cfg.LLM
+		},
+		Tasks: taskSvc,
+		OnEvent: func(ctx context.Context, workdir, action, target string) {
+			actor := auth.ActorFrom(ctx)
+			auditStore.Write(ctx, workdir, audit.Entry{
+				Actor: actor.Name, ActorClass: actor.Class,
+				Action: action, Target: target, Result: audit.ResultOK,
+			})
+		},
+	})
+	defer func() { _ = parserSvc.Close() }()
+	exporterSvc := exporter.NewService(exporter.Options{
+		Logger: logger,
+		Tasks:  taskSvc,
+		LLM: func() config.LLMConfig {
+			cfg, _ := config.LoadGlobal(configPath)
+			return cfg.LLM
+		},
+		OnExport: func(ctx context.Context, workdir, action, target string) {
+			actor := auth.ActorFrom(ctx)
+			auditStore.Write(ctx, workdir, audit.Entry{
+				Actor: actor.Name, ActorClass: actor.Class,
+				Action: action, Target: target, Result: audit.ResultOK,
+			})
+		},
+	})
+
 	deps := mcp.Deps{
 		Logger:   logger,
 		Tasks:    taskSvc,
 		Projects: project.NewService(registry, logger),
 		Perms:    permStore,
 		Skills:   skillSvc,
+		Parser:   parserSvc,
+		Exporter: exporterSvc,
 	}
 	srv := mcp.NewServer(deps)
 

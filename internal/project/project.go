@@ -131,6 +131,69 @@ func (s *Service) Import(ctx context.Context, workdir string) (Project, error) {
 	return Project{ID: id, Name: name, Workdir: clean, CreatedAt: now}, nil
 }
 
+// Init 仅初始化 {workdir}/.taskboard/ 元数据（QA P4-1 Q6：MCP project_init 语义），
+// **不注册**项目；幂等：目录已有 .taskboard/ 则直接返回。
+func (s *Service) Init(ctx context.Context, workdir string) error {
+	clean := filepath.Clean(workdir)
+	if !filepath.IsAbs(clean) {
+		return fmt.Errorf("%w: %s 不是绝对路径", ErrInvalidWorkdir, workdir)
+	}
+	info, err := os.Stat(clean)
+	if err != nil {
+		return fmt.Errorf("%w: %s 不存在或不可访问", ErrInvalidWorkdir, workdir)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: %s 不是目录", ErrInvalidWorkdir, workdir)
+	}
+	metaDir := filepath.Join(clean, ".taskboard")
+	if _, err := os.Stat(metaDir); err == nil {
+		s.logger.Info("project meta already initialized (idempotent)", "workdir", clean)
+		return nil
+	}
+	if err := s.initProjectDir(ctx, clean); err != nil {
+		return err
+	}
+	s.logger.Info("project meta initialized", "workdir", clean)
+	return nil
+}
+
+// ImportExisting 仅注册导入（QA P4-1 Q6：MCP project_import 语义），
+// **要求目录已初始化**（存在 {workdir}/.taskboard/meta.db），否则返回错误引导 init/create。
+// 幂等：已注册 → 返回已有记录。
+func (s *Service) ImportExisting(ctx context.Context, workdir string) (Project, error) {
+	clean := filepath.Clean(workdir)
+	if !filepath.IsAbs(clean) {
+		return Project{}, fmt.Errorf("%w: %s 不是绝对路径", ErrInvalidWorkdir, workdir)
+	}
+	if _, err := os.Stat(db.MetaDBPath(clean)); err != nil {
+		return Project{}, fmt.Errorf("%w: %s 尚未初始化为项目（请先执行 init/create）", ErrInvalidWorkdir, workdir)
+	}
+	if existing, ok, err := s.findByWorkdir(ctx, clean); err != nil {
+		return Project{}, err
+	} else if ok {
+		return existing, nil
+	}
+	name := filepath.Base(clean)
+	now := time.Now().Format(time.RFC3339)
+	res, err := s.registry.ExecContext(ctx,
+		`INSERT INTO projects (name, workdir, created_at) VALUES (?, ?, ?)`,
+		name, clean, now)
+	if err != nil {
+		return Project{}, fmt.Errorf("project: register %s: %w", clean, err)
+	}
+	id, _ := res.LastInsertId()
+	s.logger.Info("project imported (existing meta)", "id", id, "name", name, "workdir", clean)
+	return Project{ID: id, Name: name, Workdir: clean, CreatedAt: now}, nil
+}
+
+// Create 创建全新项目（QA P4-1 Q6：MCP project_create 语义）：先 Init（幂等），成功后再 ImportExisting。
+func (s *Service) Create(ctx context.Context, workdir string) (Project, error) {
+	if err := s.Init(ctx, workdir); err != nil {
+		return Project{}, err
+	}
+	return s.ImportExisting(ctx, workdir)
+}
+
 // List 返回全部项目，按最近打开时间倒序（从未打开者排最后）。
 func (s *Service) List(ctx context.Context) ([]Project, error) {
 	rows, err := s.registry.QueryContext(ctx,

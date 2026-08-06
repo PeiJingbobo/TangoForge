@@ -365,6 +365,8 @@ func (s *Server) MCPHandler() http.Handler {
 			Projects: s.projects,
 			Perms:    s.perms,
 			Skills:   s.skills,
+			Parser:   s.parserSvc,
+			Exporter: s.exporterSvc,
 		})
 		s.mcpHandler = srv.HTTPHandler()
 	})

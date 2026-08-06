@@ -4,8 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,16 +18,28 @@ import (
 
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
+	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"tangoforge/internal/exporter"
+	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
 )
 
 // newTestDeps 构造 MCP 测试依赖：临时项目（.taskboard + 默认权限）+ 业务服务全接线。
+// 含 mock LLM（import_preview / export 工具用）。
 func newTestDeps(t *testing.T) (Deps, string) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// mock LLM。
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body := fmt.Sprintf(`{"choices":[{"message":{"content":%s}}]}`, strconv.Quote(`{"tasks":[{"title":"导入任务","status":"todo"}]}`))
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(llmSrv.Close)
 
 	registry, err := db.Open(":memory:")
 	if err != nil {
@@ -65,12 +81,21 @@ func newTestDeps(t *testing.T) (Deps, string) {
 		t.Fatalf("import project: %v", err)
 	}
 
+	llmCfg := func() config.LLMConfig {
+		return config.LLMConfig{BaseURL: llmSrv.URL, Model: "mock", APIKind: "openai", TimeoutSec: 5, Retries: 0}
+	}
+	parserSvc := parser.NewService(parser.Options{Logger: logger, LLM: llmCfg, Tasks: taskSvc})
+	t.Cleanup(func() { _ = parserSvc.Close() })
+	exporterSvc := exporter.NewService(exporter.Options{Logger: logger, Tasks: taskSvc, LLM: llmCfg})
+
 	return Deps{
 		Logger:   logger,
 		Tasks:    taskSvc,
 		Projects: projSvc,
 		Perms:    permStore,
 		Skills:   skillSvc,
+		Parser:   parserSvc,
+		Exporter: exporterSvc,
 	}, dir
 }
 
