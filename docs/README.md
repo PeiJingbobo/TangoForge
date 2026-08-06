@@ -15,6 +15,9 @@ docs/
 ├── REQUIREMENTS.md         # 需求基线 v1.1（最高优先级）
 ├── REQUIREMENTS-REVIEW.md  # 需求评审 35 项 QA 决策记录
 ├── TECHNICAL.md            # 技术落地说明 v1.0
+├── UI-VISION.md            # 视觉要求与设计规范 v1.0（P5 前端视觉基线）
+├── design/                 # 🎨 视觉参考（静态 demo 等设计资产）
+│   └── visual-reference.html #  视觉参考 demo（配色板/排版/组件/场景/动态取色）
 ├── task/                   # 📋 开发任务计划（三件套）
 │   ├── MASTER-PLAN.md      #   主行动计划：阶段/里程碑/执行规则/完成定义
 │   ├── TASKS.md            #   可执行任务清单：TF-001~TF-031 逐条细节
@@ -73,6 +76,7 @@ docs/task/OVERVIEW.md （同步统计与泳道；里程碑达成后对照质量�
 | `REQUIREMENTS.md` | v1.1 | 需求基线（产品/功能/非功能/技术方案/API） | 需求评审通过后 |
 | `REQUIREMENTS-REVIEW.md` | – | 35 项 QA 决策记录（Q1~Q35） | 新一期评审追加 |
 | `TECHNICAL.md` | v1.0 | 技术落地规范（Go + 前端 shadcn-ui） | 技术决策变化 |
+| `UI-VISION.md` | v1.0 | 视觉要求与设计规范（P5 视觉基线，5 项铁律 + token + QA 记录） | 视觉需求变化（追加 QA 记录） |
 | `AGENTS.md`（docs 副本） | v1.3 | 开发约束（根目录为权威，本副本同步） | 根目录变更后同步 |
 
 ### 4.2 任务与过程类（本项目工作流）
@@ -92,6 +96,8 @@ docs/task/OVERVIEW.md （同步统计与泳道；里程碑达成后对照质量�
 - `REQUIREMENTS-REVIEW.md` — 需求评审 QA 记录
 - `REQUIREMENTS.md` — 需求基线
 - `TECHNICAL.md` — 技术落地说明
+- `UI-VISION.md` — 视觉要求与设计规范（P5 视觉基线）
+- `design/visual-reference.html` — 视觉参考 demo（唯一参考实现）
 - `log/README.md` — 日志目录规范
 - `record/README.md` — 总结目录规范
 - `task/MASTER-PLAN.md` — 主行动计划
