@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, beforeAll, afterAll } from 'vitest'
+import { server } from './server'
 
-// 每个测试后自动清理 DOM，避免用例间相互污染。
+// MSW 服务：拦截所有发往 DAEMON_BASE_URL 的请求
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
+  server.resetHandlers()
   cleanup()
 })
+afterAll(() => server.close())

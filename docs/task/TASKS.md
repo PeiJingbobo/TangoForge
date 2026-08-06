@@ -307,14 +307,15 @@
 - **产出文件**：`app/src/components/ui/*`（17 个）、`app/src/lib/theme.ts`、`app/src/components/theme/theme-toggle.tsx`、`app/src/components/layout/app-layout.tsx`、`app/src/App.tsx`（改造）、`app/src/styles/globals.css`、`app/src/features/{projects,tasks,settings}/*`（占位页）、`app/eslint.config.mjs`（ui 豁免）、`.npmrc`、`pnpm-lock.yaml`
 - **总结文件**：`docs/record/TF-022-前端基础-成功.md`
 
-### TF-023 API 客户端封装与类型对齐（P0，依赖 TF-022、TF-013）
+### TF-023 API 客户端封装与类型对齐（P0，依赖 TF-022、TF-013）✅ 已完成
 
 - **涉及模块**：`app/src/api`、`app/src/types`、`app/src/hooks`
 - **描述**：HTTP 客户端（携带 `X-UI-Token` + `X-Project`，统一 `{code,data}` 处理与错误码映射）；WebSocket 客户端（指数退避重连、事件→Query 失效映射表、多项目切换断开/重建）；`app/src/types/` 与后端 DTO 字段级同步；TanStack Query hooks（useTasks/useProjects/useGraph…）。
 - **验收标准**：
-  - [ ] 单测（MSW 拦截 HTTP + mock WS）：hooks、错误映射、断线重连
-  - [ ] 类型与后端结构体字段一致（接口变更需同步）
-- **产出文件**：`app/src/api/client.ts`、`app/src/api/ws.ts`、`app/src/types/*.ts`、`app/src/hooks/*.ts`
+  - [x] 单测（MSW 拦截 HTTP + mock WS）：hooks、错误映射、断线重连
+  - [x] 类型与后端结构体字段一致（接口变更需同步）
+- **产出文件**：`app/src/api/client.ts`、`app/src/api/ws.ts`、`app/src/types/models.ts`、`app/src/hooks/*`（10 个）、`app/src/stores/project.ts`、`app/src/test/server.ts`
+- **总结文件**：`docs/record/TF-023-API客户端封装-成功.md`
 
 ### TF-024 项目管理界面与守护进程集成（P1，依赖 TF-023、TF-004）
 
