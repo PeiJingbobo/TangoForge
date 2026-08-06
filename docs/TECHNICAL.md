@@ -316,7 +316,9 @@ app/                                # 前端工程（Electron + Vite）
 
 **WebSocket 事件 → 缓存同步（核心联动）**
 
-- 渲染进程建立 `/ws/events?project=<dir>` 长连接（携带 `X-UI-Token`）。
+- **连接由主进程持有**（Electron 官方最佳实践：渲染进程不做网络 I/O）；主进程 `EventSocket` 建立
+  `/ws/events?project=<dir>` 长连接（指数退避重连），事件经 `webContents.send('daemon:event')` 广播，
+  渲染进程经 preload 白名单 `events.on` 订阅，项目切换经 `events.setProject` 通知主进程断开重建。
 - 事件驱动 Query 失效/更新，映射表：
 
 | 事件 | 前端动作 |
@@ -332,16 +334,27 @@ app/                                # 前端工程（Electron + Vite）
 
 **HTTP 客户端约定**
 
-- 所有请求携带：`X-UI-Token`（UI 会话凭据，App 启动时从全局配置读取）+ `X-Project`（当前项目绝对路径）。
+- **渲染进程不直连 daemon**（Electron 官方性能/安全清单）：所有请求经 preload 白名单
+  `api.request` → 主进程代理 fetch（`daemon:apiRequest`，path 白名单 `/ping|/api/*`，
+  30s 超时），再回传渲染进程；Web/测试环境回退直连（MSW 拦截）。
+- 凭据：`X-UI-Token`（UI 会话凭据）**由主进程持有并在代理中注入**，不暴露渲染进程；
+  `X-Project`（当前项目绝对路径）由渲染进程随请求传递。
 - 统一响应处理：`code === 0` 取 `data`；否则按业务错误码映射为可读提示（错误码清单见 §3.4）。
+- 异步非阻塞：IPC invoke / 主进程 fetch 均为异步，UI 渲染不被阻断（加载态由 Query 层驱动）。
 
 ### 4.4 Electron 集成
 
-**进程模型与安全基线**
+**进程模型与安全基线（Electron 官方最佳实践：渲染进程只做 UI）**
 
 - `contextIsolation: true`、`nodeIntegration: false`、渲染进程启用 `sandbox`。
-- 渲染进程**只能通过 preload 暴露的白名单 IPC API** 与主进程通信（如 `daemon:ensureRunning`、`config:readUiToken`），禁止直接暴露 Node 能力。
-- 主进程负责：创建窗口、守护进程生命周期（拉起/探活/日志）、全局配置读取、应用菜单与快捷键。
+- **数据层全部下沉主进程**：HTTP 请求（`daemon:apiRequest` 代理）、WebSocket 连接（主进程 `EventSocket`
+  持有）、系统 IO（目录选择等）均由主进程完成，渲染进程只负责 UI 展示与交互，经白名单 IPC 异步委托：
+  - `api.request({ method, path, body, project })` → 主进程 fetch daemon（注入 token、path 白名单）；
+  - `events.setProject(project)` / `events.on(cb)` → 主进程 WS 连接管理 + 事件推送；
+  - `daemon.ensureRunning()` → 探活/拉起 daemon；`dialog.selectDirectory()` → 系统目录选择。
+- 渲染进程**只能通过 preload 暴露的白名单 IPC API** 与主进程通信，禁止直接暴露 Node 能力
+  （Electron 官方安全清单：不信任渲染进程、不开启 remote、白名单化 IPC）。
+- 主进程负责：创建窗口、守护进程生命周期（拉起/探活）、数据代理（HTTP/WS）、全局配置读取（含 UI 凭据）。
 
 **内嵌守护进程管理**
 

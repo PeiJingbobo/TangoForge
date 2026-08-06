@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { EventSocket, connectEvents, type SocketStatus } from './ws'
+import { EventSocket, type SocketStatus } from './event-socket'
 import type { WSEvent } from '@/types/models'
 
 /** 最小 Fake WebSocket（jsdom 无原生 WebSocket） */
@@ -10,7 +10,7 @@ class FakeWebSocket {
   url: string
   readyState = 0
   onopen: (() => void) | null = null
-  onmessage: ((ev: MessageEvent<string>) => void) | null = null
+  onmessage: ((ev: { data: string }) => void) | null = null
   onclose: (() => void) | null = null
   onerror: (() => void) | null = null
 
@@ -18,25 +18,24 @@ class FakeWebSocket {
     this.url = url
     FakeWebSocket.instances.push(this)
   }
-  close() {
+  close(): void {
     this.readyState = 3
     FakeWebSocket.closed.push(this)
   }
-  /** 测试辅助 */
-  simulateOpen() {
+  simulateOpen(): void {
     this.readyState = 1
     this.onopen?.()
   }
-  simulateMessage(data: string) {
-    this.onmessage?.({ data } as MessageEvent<string>)
+  simulateMessage(data: string): void {
+    this.onmessage?.({ data })
   }
-  simulateClose() {
+  simulateClose(): void {
     this.readyState = 3
     this.onclose?.()
   }
 }
 
-describe('EventSocket（mock WebSocket）', () => {
+describe('EventSocket（主进程 WS 客户端，mock WebSocket）', () => {
   const onEvent = vi.fn()
 
   beforeEach(() => {
@@ -51,10 +50,10 @@ describe('EventSocket（mock WebSocket）', () => {
     vi.useRealTimers()
   })
 
-  it('连接：携带 project 查询参数，open 后状态 open', () => {
+  it('连接：使用调用方传入的完整 URL，open 后状态 open', () => {
     const statuses: SocketStatus[] = []
     const sock = new EventSocket({
-      project: '/p1',
+      url: 'ws://127.0.0.1:19810/ws/events?project=%2Fp1',
       onEvent,
       onStatusChange: (s) => statuses.push(s),
     })
@@ -67,7 +66,7 @@ describe('EventSocket（mock WebSocket）', () => {
   })
 
   it('消息解析：合法事件回调，非法 JSON 忽略', () => {
-    const sock = new EventSocket({ project: '/p1', onEvent })
+    const sock = new EventSocket({ url: 'ws://x/ws/events', onEvent })
     sock.connect()
     const ws = FakeWebSocket.instances[0]
     ws.simulateMessage(
@@ -86,7 +85,7 @@ describe('EventSocket（mock WebSocket）', () => {
   })
 
   it('断线重连：指数退避，首次 1s 后重连', () => {
-    const sock = new EventSocket({ project: '/p1', onEvent, baseDelayMs: 1000 })
+    const sock = new EventSocket({ url: 'ws://x/ws/events', onEvent, baseDelayMs: 1000 })
     sock.connect()
     FakeWebSocket.instances[0].simulateClose()
     expect(FakeWebSocket.instances).toHaveLength(1) // 尚未重连
@@ -96,7 +95,12 @@ describe('EventSocket（mock WebSocket）', () => {
   })
 
   it('重连退避递增：第二次 2s，封顶 maxDelay', () => {
-    const sock = new EventSocket({ project: '/p1', onEvent, baseDelayMs: 1000, maxDelayMs: 4000 })
+    const sock = new EventSocket({
+      url: 'ws://x/ws/events',
+      onEvent,
+      baseDelayMs: 1000,
+      maxDelayMs: 4000,
+    })
     sock.connect()
     FakeWebSocket.instances[0].simulateClose()
     vi.advanceTimersByTime(1000)
@@ -107,7 +111,7 @@ describe('EventSocket（mock WebSocket）', () => {
   })
 
   it('disconnect 后不重连、不接收事件', () => {
-    const sock = new EventSocket({ project: '/p1', onEvent })
+    const sock = new EventSocket({ url: 'ws://x/ws/events', onEvent })
     sock.connect()
     sock.disconnect()
     FakeWebSocket.instances[0].simulateClose()
@@ -116,10 +120,13 @@ describe('EventSocket（mock WebSocket）', () => {
     expect(onEvent).not.toHaveBeenCalled()
   })
 
-  it('connectEvents 返回断开函数', () => {
-    const disconnect = connectEvents({ project: '/p1', onEvent })
-    expect(FakeWebSocket.instances).toHaveLength(1)
-    disconnect()
-    expect(FakeWebSocket.closed).toHaveLength(1)
+  it('项目切换语义：调用方 disconnect 旧实例 + 新实例（不共享连接）', () => {
+    const sockA = new EventSocket({ url: 'ws://x?project=A', onEvent })
+    sockA.connect()
+    const sockB = new EventSocket({ url: 'ws://x?project=B', onEvent })
+    sockB.connect()
+    sockA.disconnect()
+    sockB.disconnect()
+    expect(FakeWebSocket.closed).toHaveLength(2)
   })
 })

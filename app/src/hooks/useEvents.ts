@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { connectEvents } from '@/api/ws'
+import { subscribeEvents } from '@/api/ws'
 import { useProjectId } from '@/hooks/useProject'
 import type { WSEvent } from '@/types/models'
 
@@ -9,7 +9,7 @@ import type { WSEvent } from '@/types/models'
  * - task.*            → 任务列表 / 单任务 / 图
  * - state_machine.*   → 状态机
  * - import.*          → 草稿列表
- * 项目切换（pid 变化）自动断开旧连接、建立新连接。
+ * 事件连接由主进程持有（渲染进程仅订阅）；项目切换（pid 变化）自动重订阅。
  */
 export function useEventInvalidator(project?: string): void {
   const pid = useProjectId(project)
@@ -32,6 +32,6 @@ export function useEventInvalidator(project?: string): void {
       }
     }
 
-    return connectEvents({ project: pid, onEvent: handleEvent })
+    return subscribeEvents(pid, handleEvent)
   }, [pid, qc])
 }

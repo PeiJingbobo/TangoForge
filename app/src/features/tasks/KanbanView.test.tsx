@@ -64,13 +64,6 @@ describe('KanbanView', () => {
 
   beforeEach(() => {
     useProjectStore.setState({ project: '/data/projects/tf' })
-    // useEventInvalidator 需要 WebSocket（jsdom 无原生实现）
-    vi.stubGlobal(
-      'WebSocket',
-      class {
-        close(): void {}
-      },
-    )
     // @tanstack/react-virtual 需要 ResizeObserver 即时回调尺寸（jsdom 无布局）
     vi.stubGlobal(
       'ResizeObserver',

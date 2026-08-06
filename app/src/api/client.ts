@@ -52,10 +52,47 @@ function buildQuery(query?: RequestOptions['query']): string {
 }
 
 /**
- * 统一 HTTP 客户端：携带 X-UI-Token / X-Project，解析 {code,data} 信封。
- * 成功 → 返回 data；失败（业务码或网络错误）→ 抛 ApiError。
+ * 统一 HTTP 客户端（Electron 最佳实践：渲染进程不直接发网络请求）：
+ * - Electron 环境：经 preload 白名单 `window.tangoforge.api.request` → 主进程 fetch daemon
+ *   （X-UI-Token 由主进程注入，渲染进程不接触凭据；异步非阻塞，不卡 UI）；
+ * - Web / 测试环境（无 window.tangoforge）：回退直连 fetch（MSW 拦截）。
+ * 统一解析 {code,data} 信封；成功返回 data，失败抛 ApiError。
  */
 export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const ipcApi = window.tangoforge?.api
+  if (ipcApi) {
+    const result = (await ipcApi.request({
+      method: opts.method ?? 'GET',
+      path: `${path}${buildQuery(opts.query)}`,
+      body: opts.body,
+      project: opts.project,
+    })) as ApiProxyResult
+    return parseEnvelope<T>(result)
+  }
+  return fetchDirect<T>(path, opts)
+}
+
+/** 主进程代理返回：{ ok, status, body }，body 为完整响应体（统一信封或原始文本） */
+interface ApiProxyResult {
+  ok: boolean
+  status: number
+  body: unknown
+}
+
+function parseEnvelope<T>(result: ApiProxyResult): T {
+  const { status, body } = result
+  const envelope = (
+    typeof body === 'object' && body !== null ? body : null
+  ) as ApiEnvelope<T> | null
+  if (!envelope || envelope.code !== 0) {
+    const code = typeof envelope?.code === 'string' ? envelope.code : mapHttpStatus(status)
+    const message = envelope?.message || ERROR_MESSAGES[code] || `请求失败（${status}）`
+    throw new ApiError(code, message, envelope?.detail, status)
+  }
+  return envelope.data as T
+}
+
+async function fetchDirect<T>(path: string, opts: RequestOptions): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...opts.headers,

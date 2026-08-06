@@ -15,5 +15,5 @@
     "noUnusedParameters": true,
     "useDefineForClassFields": true
   },
-  "include": ["electron/**/*.ts", "vite.config.ts"]
+  "include": ["electron/**/*.ts", "electron.vite.config.ts"]
 }

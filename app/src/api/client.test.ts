@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { apiRequest, apiGet, ApiError, setUiToken, DAEMON_BASE_URL } from './client'
@@ -78,5 +78,50 @@ describe('HTTP 客户端', () => {
     )
     const err = await apiGet('/api/graph').catch((e: unknown) => e)
     expect((err as ApiError).message).toContain('循环依赖')
+  })
+})
+
+describe('IPC 代理路径（Electron 环境：渲染进程不直连 daemon）', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'tangoforge', { value: undefined, configurable: true })
+  })
+
+  it('走 window.tangoforge.api.request：成功信封解析（MSW 不参与）', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { code: 0, data: { id: 1 } },
+    }))
+    Object.defineProperty(window, 'tangoforge', { value: { api: { request } }, configurable: true })
+    const data = await apiGet<{ id: number }>('/api/projects', { project: '/p1' })
+    expect(data).toEqual({ id: 1 })
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'GET', path: '/api/projects', project: '/p1' }),
+    )
+  })
+
+  it('IPC 业务错误：业务码透传 → ApiError', async () => {
+    const request = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      body: { code: 'PERMISSION_DENIED', message: '权限不足', detail: 'actor=agent' },
+    }))
+    Object.defineProperty(window, 'tangoforge', { value: { api: { request } }, configurable: true })
+    const err = await apiGet('/api/tasks', { project: '/p1' }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).code).toBe('PERMISSION_DENIED')
+    expect((err as ApiError).status).toBe(403)
+    expect((err as ApiError).detail).toBe('actor=agent')
+  })
+
+  it('IPC 网络错误：主进程 fetch 失败透传 NETWORK_ERROR', async () => {
+    const request = vi.fn(async () => ({
+      ok: false,
+      status: 0,
+      body: { code: 'NETWORK_ERROR', message: '无法连接守护进程' },
+    }))
+    Object.defineProperty(window, 'tangoforge', { value: { api: { request } }, configurable: true })
+    const err = await apiGet('/api/projects').catch((e: unknown) => e)
+    expect((err as ApiError).code).toBe('NETWORK_ERROR')
   })
 })

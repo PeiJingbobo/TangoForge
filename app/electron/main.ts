@@ -1,6 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
-import { registerConfigIpc, registerDaemonIpc, registerDialogIpc } from './daemon'
+import { registerConfigIpc, registerDaemonIpc } from './daemon'
 
 // 安全基线（docs/TECHNICAL.md §4.4）：
 // contextIsolation: true、nodeIntegration: false、渲染进程 sandbox；
@@ -36,7 +36,6 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerDaemonIpc()
   registerConfigIpc()
-  registerDialogIpc()
 
   // App 启动时探活/拉起内嵌守护进程（docs/TECHNICAL.md §4.4）；不阻塞窗口创建。
   void import('./daemon').then(({ ensureDaemonRunning }) => ensureDaemonRunning())
