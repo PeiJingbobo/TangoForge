@@ -14,9 +14,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultLLMConfig 返回 LLM 默认配置（QA Q14 确认：60s / 重试 1 / 4096 / 并发 1）。
+// DefaultLLMConfig 返回 LLM 默认配置（QA Q14 确认：60s / 重试 1 / 4096 / 并发 1；api_kind 默认 openai）。
 func DefaultLLMConfig() LLMConfig {
 	return LLMConfig{
+		APIKind:     "openai",
 		TimeoutSec:  60,
 		Retries:     1,
 		MaxTokens:   4096,
@@ -37,6 +38,9 @@ func (c GlobalConfig) WithDefaults() GlobalConfig {
 	d := DefaultGlobalConfig()
 	if c.Port <= 0 {
 		c.Port = d.Port
+	}
+	if c.LLM.APIKind == "" {
+		c.LLM.APIKind = d.LLM.APIKind
 	}
 	if c.LLM.TimeoutSec <= 0 {
 		c.LLM.TimeoutSec = d.LLM.TimeoutSec

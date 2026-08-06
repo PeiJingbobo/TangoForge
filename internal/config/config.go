@@ -32,14 +32,18 @@ type GlobalConfig struct {
 	LLM LLMConfig `yaml:"llm"`
 }
 
-// LLMConfig LLM 服务配置项集合（QA Q14 确认）。
+// LLMConfig LLM 服务配置项集合（QA Q14 确认；QA P4-1 多协议扩展）。
 type LLMConfig struct {
-	// BaseURL OpenAI 兼容接口地址，如 http://localhost:11434/v1（Ollama）。
+	// BaseURL 接口地址。openai：{base}/chat/completions；
+	// anthropic：{base}/v1/messages（如 DeepSeek 兼容端点 https://api.deepseek.com/anthropic）；
+	// responses：{base}/v1/responses。
 	BaseURL string `yaml:"base_url"`
-	// APIKey 认证密钥（本地模型可留空）。
+	// APIKey 认证密钥（本地模型可留空）；为空时客户端回退读取环境变量 DEEPSEEK_API_KEY（QA P4-1）。
 	APIKey string `yaml:"api_key"`
-	// Model 模型名。
+	// Model 模型名（如 deepseek-v4-flash / claude-haiku-*）。
 	Model string `yaml:"model"`
+	// APIKind 协议类型：openai（默认）/ anthropic / responses（QA P4-1 多协议兼容）。
+	APIKind string `yaml:"api_kind"`
 	// TimeoutSec 请求超时（秒），默认 60。
 	TimeoutSec int `yaml:"timeout_sec"`
 	// Retries 重试次数，默认 1。

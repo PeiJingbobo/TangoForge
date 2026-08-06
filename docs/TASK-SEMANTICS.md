@@ -265,6 +265,40 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 | ~~TF-012 异步审计~~ | ✅ 已完成：§12.3（异步不阻塞、只追加、denied 记录） |
 | ~~TF-013 HTTP 核心端点~~ | ✅ 已完成：§10.1 错误码映射；§12.2 权限端点语义 |
 | ~~TF-014 WS/其余端点~~ | ✅ 已完成：§12.4（WS 事件与鉴权）、§12.5（graph）、§12.6（占位端点） |
-| TF-016 MCP / TF-021 CLI | 复用 §12 传输层语义（来源识别 FromMCP、权限表、审计） |
+| ~~TF-015 LLM 客户端~~ | ✅ 已完成：§14（三协议、结构化输出、错误集） |
+| TF-016 MCP / TF-021 CLI | 复用 §12 传输层语义（来源识别 FromMCP、权限表、审计）；QA P4-1：MCP 支持 stdio 与 HTTP 双传输（详见 TF-016 登记） |
+
+## 14. LLM 客户端语义（TF-015，QA P4-1 多协议扩展）
+
+### 14.1 协议与配置
+
+- 全局配置 `llm` 节新增 `api_kind` 字段：`openai`（默认）/ `anthropic` / `responses`。
+- 请求路径约定：openai → `{base_url}/chat/completions`；anthropic → `{base_url}/v1/messages`（DeepSeek 兼容端点 base_url 填 `https://api.deepseek.com/anthropic`）；responses → `{base_url}/v1/responses`。
+- **APIKey 空 → 回退环境变量 `DEEPSEEK_API_KEY`**（`llm.New` 统一处理）；base_url 尾部 `/` 自动去除。
+- 超时/重试/并发：TimeoutSec（默认 60s）、Retries（默认 1，即共 2 次尝试）、MaxTokens（默认 4096）、Concurrency（默认 1）。
+
+### 14.2 结构化输出（CompleteJSON）
+
+- openai：`response_format={"type":"json_object"}` + prompt 内嵌 Schema；
+- anthropic / responses：无原生 json 模式，靠 prompt 约束 + **后处理提取首个平衡 JSON 块**（容错代码围栏/前后缀文本）；
+- **提取失败 → `LLM_INVALID_RESPONSE`，调用方整次失败，禁止补默认值**（与 §3.3 导入失败语义一致）。
+
+### 14.3 重试与错误集
+
+- 重试条件：网络错误 / 超时 / 5xx / **429**；4xx（400/401/403/404）不重试（配置或鉴权错误，重试无意义）。
+- 错误集（传输层映射，TF-018/019 落地时统一）：
+
+  | 错误 | 含义 | HTTP 映射（规划） |
+  |------|------|------------------|
+  | `LLM_NOT_CONFIGURED` | base_url/model 为空 | 422 |
+  | `LLM_TIMEOUT` | 请求超时 | 422（可重试） |
+  | `LLM_API_ERROR` | LLM 服务返回 4xx/5xx（携带状态码与响应摘要） | 422 |
+  | `LLM_INVALID_RESPONSE` | 响应非 JSON / 无文本 / JSON 提取失败 | 422 |
+
+### 14.4 与 parser/exporter 的边界
+
+- `internal/llm` 为基础设施（只做协议与 JSON 通信），**不做业务判断**；
+- parser / exporter 负责 prompt 构造（状态机 states 注入、JSON Schema 描述）与结果语义校验（title/status 必填等）；
+- 导出 default 模式不依赖 LLM（仅 `template_mode=llm` 需要），LLM 未配置时 default 导出正常可用。
 
 *（文档完）*

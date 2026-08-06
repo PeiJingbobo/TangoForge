@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 0 | 0 | 7 |
+| P4 Agent 能力 | 7 | 1 | 0 | 6 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **14** | **0** | **17** |
+| **合计** | **31** | **15** | **0** | **16** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -210,12 +210,14 @@
 
 ### TF-015 LLM 客户端封装（P1，独立）
 
-- **涉及模块**：`internal/llm`
-- **描述**：OpenAI 兼容 HTTP 客户端：base_url、api_key、model、timeout、重试、max_tokens、并发控制；仅 JSON 结构化通信；供 parser/exporter 复用。
+- **涉及模块**：`internal/llm`、`internal/config`
+- **描述**：多协议 LLM HTTP 客户端（QA P4-1 扩展：`api_kind` = openai / anthropic / responses 三协议）；base_url、api_key（空回退环境变量 `DEEPSEEK_API_KEY`）、model、timeout、重试（网络/超时/5xx/429，4xx 不重试）、max_tokens、并发控制；`Complete` 文本 + `CompleteJSON` 结构化输出（openai 走 response_format，其余 prompt 约束 + 后处理提取首个平衡 JSON 块，提取失败整次失败）；仅 JSON 结构化通信；供 parser/exporter 复用。
 - **验收标准**：
-  - [ ] 单测（mock HTTP server）：请求构造、超时重试、JSON 解析、错误映射
-  - [ ] 不依赖具体厂商 SDK，配置可指向 Ollama 等本地模型
-- **产出文件**：`internal/llm/client.go`、`internal/llm/client_test.go`
+  - [x] 单测（mock HTTP server）：三协议请求构造与响应解析、超时重试（500/429 重试、400 不重试）、JSON 提取（围栏/数组/非法）、错误映射、并发度限制、环境变量回退
+  - [x] 不依赖具体厂商 SDK，配置可指向 Ollama 等本地模型与 DeepSeek（QA P4-1：base https://api.deepseek.com，model deepseek-v4-flash）
+- **产出文件**：`internal/llm/client.go`、`internal/llm/client_test.go`；`internal/config/config.go`/`global.go`（LLMConfig 增 `api_kind` 与默认值）；`docs/TASK-SEMANTICS.md` §14
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-015-LLM客户端封装-成功.md`
 
 ### TF-016 MCP 服务框架（P0，依赖 TF-003、TF-005、TF-010）
 
