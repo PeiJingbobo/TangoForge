@@ -570,8 +570,11 @@ func TestProjectNotFound(t *testing.T) {
 func TestWriteHook(t *testing.T) {
 	var calls int32
 	svc := NewService(Options{
-		OnWrite: func(_ context.Context, action, target string) {
+		OnWrite: func(_ context.Context, workdir, action, target string) {
 			atomic.AddInt32(&calls, 1)
+			if workdir == "" {
+				t.Error("workdir 不应为空")
+			}
 			if action != "task.created" && action != "task.updated" && action != "task.status_changed" {
 				t.Errorf("未知 action：%s", action)
 			}

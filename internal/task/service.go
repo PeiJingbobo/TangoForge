@@ -48,10 +48,14 @@ type Service interface {
 	Close() error
 }
 
-// WriteHook 写操作成功后的回调钩子（docs/TASK-SEMANTICS.md §9，Q14-A）。
-// action 取 task.created / task.updated / task.status_changed；target 为任务 ID。
-// TF-012 异步审计与 TF-014 WS 事件经此接入，不改 Service 签名。
-type WriteHook func(ctx context.Context, action, target string)
+// WriteHook 写操作成功后的回调钩子（docs/TASK-SEMANTICS.md §11，Q14-A）。
+//
+// 签名扩展（QA P3-1 确认）：携带 workdir（审计表在项目库、WS 事件需要 project 字段），
+// actor/actor_class 由调用方写入 ctx（auth.WithActor）后经 ctx 读取。
+// action 取 task.created / task.updated / task.status_changed / task.archived /
+// task.restored / task.deleted / state_machine.changed；target 为任务 ID（state_machine 为 workdir）。
+// TF-012 异步审计与 TF-014 WS 事件经此接入，不改 Service 业务签名。
+type WriteHook func(ctx context.Context, workdir, action, target string)
 
 // Options Service 构造选项。
 type Options struct {
@@ -220,7 +224,7 @@ func (s *service) Create(ctx context.Context, workdir string, in CreateInput) (T
 		return Task{}, err
 	}
 	s.logger.Debug("task created", "id", t.ID, "workdir", workdir)
-	s.emit(ctx, "task.created", t.ID)
+	s.emit(ctx, workdir, "task.created", t.ID)
 	return t, nil
 }
 
@@ -385,7 +389,7 @@ func (s *service) Update(ctx context.Context, workdir, id string, in UpdateInput
 		return Task{}, err
 	}
 	s.logger.Debug("task updated", "id", t.ID, "workdir", workdir)
-	s.emit(ctx, "task.updated", t.ID)
+	s.emit(ctx, workdir, "task.updated", t.ID)
 	return *t, nil
 }
 
@@ -433,7 +437,7 @@ func (s *service) ChangeStatus(ctx context.Context, workdir, id, status string) 
 		return Task{}, err
 	}
 	s.logger.Debug("task status changed", "id", t.ID, "status", status, "workdir", workdir)
-	s.emit(ctx, "task.status_changed", t.ID)
+	s.emit(ctx, workdir, "task.status_changed", t.ID)
 	return *t, nil
 }
 
@@ -481,9 +485,9 @@ func (s *service) checkParentCycle(ctx context.Context, repo TaskRepo, id, newPa
 }
 
 // emit 触发写钩子（nil 安全，TF-012/014 接入点）。
-func (s *service) emit(ctx context.Context, action, target string) {
+func (s *service) emit(ctx context.Context, workdir, action, target string) {
 	if s.onWrite != nil {
-		s.onWrite(ctx, action, target)
+		s.onWrite(ctx, workdir, action, target)
 	}
 }
 

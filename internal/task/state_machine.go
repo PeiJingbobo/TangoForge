@@ -120,7 +120,7 @@ func (s *service) UpdateStateMachine(ctx context.Context, workdir string, sm con
 		return config.StateMachine{}, fmt.Errorf("task: save state machine: %w", err)
 	}
 	s.logger.Debug("state machine updated", "workdir", workdir)
-	s.emit(ctx, "state_machine.changed", workdir)
+	s.emit(ctx, workdir, "state_machine.changed", workdir)
 	return norm, nil
 }
 

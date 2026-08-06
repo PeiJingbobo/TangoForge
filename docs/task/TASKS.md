@@ -13,11 +13,11 @@
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
-| P3 传输层与安全 | 5 | 2 | 0 | 3 |
+| P3 传输层与安全 | 5 | 3 | 0 | 2 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **11** | **0** | **20** |
+| **合计** | **31** | **12** | **0** | **19** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -172,9 +172,11 @@
 - **涉及模块**：`internal/audit`
 - **描述**：`audit_log` 表异步写入（Create/Update/Archive/Restore/StatusChange/Import/Export/权限与状态机修改 + **被拒请求 result=denied**）；读取不记录；审计查询与 `audit.log` 导出能力（导出端点放 TF-014）。
 - **验收标准**：
-  - [ ] 单测：写操作触发审计、读取不触发、异步不阻塞业务、denied 记录
-  - [ ] 审计表只追加、无更新端点
-- **产出文件**：`internal/audit/audit.go`、`internal/audit/audit_test.go`
+  - [x] 单测：写操作触发审计、读取不触发、异步不阻塞业务、denied 记录
+  - [x] 审计表只追加、无更新端点
+- **产出文件**：`internal/audit/audit.go`、`internal/audit/audit_test.go`、`internal/task/service.go` 等（WriteHook 签名扩展）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-012-异步审计-成功.md`
 
 ### TF-013 HTTP API 核心端点（P0，依赖 TF-003、TF-005~TF-008、TF-011、TF-012）
 

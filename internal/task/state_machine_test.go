@@ -379,7 +379,7 @@ func TestUpdateStateMachine_WriteHook(t *testing.T) {
 	var calls int32
 	var action string
 	svc := NewService(Options{
-		OnWrite: func(_ context.Context, a, _ string) {
+		OnWrite: func(_ context.Context, _, a, _ string) {
 			atomic.AddInt32(&calls, 1)
 			action = a
 		},

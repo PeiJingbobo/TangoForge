@@ -90,7 +90,7 @@ func (s *service) Archive(ctx context.Context, workdir, id string) (ArchiveResul
 		return ArchiveResult{}, fmt.Errorf("task: archive commit: %w", err)
 	}
 	s.logger.Debug("task archived", "id", t.ID, "children", children, "workdir", workdir)
-	s.emit(ctx, "task.archived", t.ID)
+	s.emit(ctx, workdir, "task.archived", t.ID)
 	return ArchiveResult{Task: *t, DependentCount: dep, ChildrenCleared: int(children)}, nil
 }
 
@@ -136,7 +136,7 @@ func (s *service) Restore(ctx context.Context, workdir, id string, opts RestoreO
 		return Task{}, err
 	}
 	s.logger.Debug("task restored", "id", t.ID, "status", target, "workdir", workdir)
-	s.emit(ctx, "task.restored", t.ID)
+	s.emit(ctx, workdir, "task.restored", t.ID)
 	return *t, nil
 }
 
@@ -179,7 +179,7 @@ func (s *service) Delete(ctx context.Context, workdir, id string) (Task, error) 
 		return Task{}, fmt.Errorf("task: delete commit: %w", err)
 	}
 	s.logger.Debug("task deleted", "id", t.ID, "workdir", workdir)
-	s.emit(ctx, "task.deleted", t.ID)
+	s.emit(ctx, workdir, "task.deleted", t.ID)
 	return *t, nil
 }
 

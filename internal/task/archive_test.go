@@ -41,7 +41,7 @@ func TestArchive_AlreadyArchivedIdempotent(t *testing.T) {
 	var mu sync.Mutex
 	actions := []string{}
 	svc := NewService(Options{
-		OnWrite: func(_ context.Context, a, _ string) { mu.Lock(); actions = append(actions, a); mu.Unlock() },
+		OnWrite: func(_ context.Context, _, a, _ string) { mu.Lock(); actions = append(actions, a); mu.Unlock() },
 	})
 	wd := t.TempDir()
 	initEnv(t, wd)
@@ -310,7 +310,7 @@ func TestWriteHook_ArchiveRestoreDelete(t *testing.T) {
 	var mu sync.Mutex
 	actions := []string{}
 	svc := NewService(Options{
-		OnWrite: func(_ context.Context, a, _ string) { mu.Lock(); actions = append(actions, a); mu.Unlock() },
+		OnWrite: func(_ context.Context, _, a, _ string) { mu.Lock(); actions = append(actions, a); mu.Unlock() },
 	})
 	wd := t.TempDir()
 	initEnv(t, wd)
