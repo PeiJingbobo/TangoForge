@@ -88,6 +88,31 @@ export const server = setupServer(
     }),
   ),
 
+  http.get(`${DAEMON_BASE_URL}/api/state-machine`, () =>
+    HttpResponse.json({
+      code: 0,
+      data: {
+        States: [
+          { Key: 'todo', Label: '待办', Color: '#9aa0a6' },
+          { Key: 'doing', Label: '进行中', Color: '#2292d8' },
+          { Key: 'done', Label: '已完成', Color: '#22c55e' },
+        ],
+        Transitions: [
+          { From: 'todo', To: ['doing'] },
+          { From: 'doing', To: ['done', 'todo'] },
+          { From: 'done', To: ['doing'] },
+        ],
+      },
+    }),
+  ),
+
+  http.get(`${DAEMON_BASE_URL}/api/graph`, () =>
+    HttpResponse.json({
+      code: 0,
+      data: { nodes: [], edges: [] },
+    }),
+  ),
+
   http.post(`${DAEMON_BASE_URL}/api/tasks`, () =>
     HttpResponse.json(
       {

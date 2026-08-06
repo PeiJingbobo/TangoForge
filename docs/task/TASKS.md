@@ -328,14 +328,15 @@
 - **产出文件**：`app/electron/daemon.ts`（实装）、`app/electron/main.ts`、`app/electron/preload.ts`（+dialog）、`app/src/features/projects/WorkspacePage.tsx`（实装+4 测试）、`app/src/lib/bootstrap.ts`
 - **总结文件**：`docs/record/TF-024-项目管理界面-成功.md`
 
-### TF-025 看板视图（P0，依赖 TF-023、TF-006、TF-007）
+### TF-025 看板视图（P0，依赖 TF-023、TF-006、TF-007）✅ 已完成
 
 - **涉及模块**：`app/src/features/tasks`、`app/src/components/kanban`
 - **描述**：按状态机动态生成列；卡片（标题、优先级色带红高灰低、标签徽章哈希着色、assignee）；拖拽触发状态流转 Mutation，`INVALID_TRANSITION` 回滚 + toast；虚拟滚动（≥ 1000 任务不卡）；按标签/状态过滤、搜索。
 - **验收标准**：
-  - [ ] 组件测试（RTL）：渲染、拖拽调用、非法流转回滚提示
-  - [ ] 5,000 条 mock 数据滚动流畅（虚拟滚动生效）
-- **产出文件**：`app/src/components/kanban/*`、`app/src/features/tasks/KanbanView.tsx`
+  - [x] 组件测试（RTL）：渲染、拖拽调用（drag-logic 单测 + useKanban 乐观回滚 3 例）、非法流转回滚提示（INVALID_TRANSITION toast + 回滚）
+  - [ ] 5,000 条 mock 数据滚动流畅（虚拟滚动生效，mac 实测项；实现：列内 @tanstack/react-virtual，estimateSize 108）
+- **产出文件**：`app/src/components/kanban/*`（5 个）、`app/src/features/tasks/KanbanView.tsx`、`app/src/hooks/useKanban.ts`
+- **总结文件**：`docs/record/TF-025-看板视图-成功.md`
 
 ### TF-026 任务详情与导航视图（P1，依赖 TF-023、TF-008）
 

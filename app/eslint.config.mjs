@@ -27,5 +27,12 @@ export default tseslint.config(
       'react-refresh/only-export-components': 'off',
     },
   },
+  // kanban/ 等组件目录：导出常量/工具与组件共存（优先级色带、拖拽工具等）
+  {
+    files: ['src/components/kanban/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   prettier,
 )
