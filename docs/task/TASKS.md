@@ -338,14 +338,15 @@
 - **产出文件**：`app/src/components/kanban/*`（5 个）、`app/src/features/tasks/KanbanView.tsx`、`app/src/hooks/useKanban.ts`
 - **总结文件**：`docs/record/TF-025-看板视图-成功.md`
 
-### TF-026 任务详情与导航视图（P1，依赖 TF-023、TF-008）
+### TF-026 任务详情与导航视图（P1，依赖 TF-023、TF-008）✅ 已完成
 
 - **涉及模块**：`app/src/features/tasks`
 - **描述**：任务详情/编辑（字段编辑、归档/还原、依赖编辑 + 无环提示）；导航三视图：树形列表（折叠/搜索）、时间线、状态分类。
 - **验收标准**：
-  - [ ] 组件测试：详情编辑、依赖环错误展示
-  - [ ] 树形视图与后端树结构一致
-- **产出文件**：`app/src/features/tasks/TaskDetail.tsx`、`app/src/features/tasks/TaskForm.tsx`、`app/src/components/common/TreeNav.tsx` 等
+  - [x] 组件测试：详情编辑（TaskForm 5 例 + TaskDetail 3 例）、依赖环错误展示（CIRCULAR_DEPENDENCY → toast 无环提示）
+  - [x] 树形视图与后端树结构一致（TreeNav 直接消费后端 tree，4 例）
+- **产出文件**：`app/src/features/tasks/TaskDetail.tsx`、`app/src/features/tasks/TaskForm.tsx`、`app/src/features/tasks/NavViews.tsx`、`app/src/components/common/TreeNav.tsx`、`app/src/features/tasks/constants.ts`
+- **总结文件**：`docs/record/TF-026-任务详情与导航-成功.md`
 
 ### TF-027 导入导出 UI（P1，依赖 TF-023、TF-018、TF-019）
 

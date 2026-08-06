@@ -5,7 +5,8 @@ import { AppLayout } from '@/components/layout/app-layout'
 import { Toaster } from '@/components/ui/sonner'
 import { WorkspacePage } from '@/features/projects/WorkspacePage'
 import { KanbanPage } from '@/features/tasks/KanbanPage'
-import { TaskDetailPage } from '@/features/tasks/TaskDetailPage'
+import { TaskDetailPage } from '@/features/tasks/TaskDetail'
+import { NavPage } from '@/features/tasks/NavViews'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { bootstrapDaemon } from '@/lib/bootstrap'
 
@@ -40,6 +41,7 @@ export default function App() {
             <Route index element={<WorkspacePage />} />
             <Route path="project/:projectId" element={<Navigate to="kanban" replace />} />
             <Route path="project/:projectId/kanban" element={<KanbanPage />} />
+            <Route path="project/:projectId/nav" element={<NavPage />} />
             <Route path="project/:projectId/tasks/:taskId" element={<TaskDetailPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
