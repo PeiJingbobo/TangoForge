@@ -8,6 +8,10 @@ import { KanbanPage } from '@/features/tasks/KanbanPage'
 import { TaskDetailPage } from '@/features/tasks/TaskDetail'
 import { NavPage } from '@/features/tasks/NavViews'
 import { GraphPage } from '@/features/tasks/GraphPage'
+import { ImportExportPage } from '@/features/tasks/ImportExportPage'
+import { PermissionsPage } from '@/features/permissions/PermissionsPage'
+import { SkillsPage } from '@/features/skills/SkillsPage'
+import { AuditPage } from '@/features/audit/AuditPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { bootstrapDaemon } from '@/lib/bootstrap'
 
@@ -23,13 +27,14 @@ const queryClient = new QueryClient({
 })
 
 /**
- * 路由骨架（React Router v7，docs/TECHNICAL.md §4.1）：
- * - /                      工作区（TF-024 项目列表）
- * - /project/:projectId/* 项目内（看板 TF-025、任务详情 TF-026）
- * - /settings              设置（TF-028）
+ * 路由（TF-029 布局重构）：
+ * - /                      项目概览（公共一级）
+ * - /settings              首选项（LLM/外观/守护进程，公共一级）
+ * - /project/:projectId/*  项目二级：kanban/nav/graph/io/permissions/skills/audit/tasks
+ * 项目内功能必须先激活项目（左侧列表），URL 即项目路径标识。
  */
 export default function App() {
-  // 启动引导：拉起 daemon + 注入 UI token（Electron 环境；Web 模式静默跳过）
+  // 启动引导：拉起 daemon（Electron 环境；Web 模式静默跳过）
   useEffect(() => {
     void bootstrapDaemon()
   }, [])
@@ -44,6 +49,10 @@ export default function App() {
             <Route path="project/:projectId/kanban" element={<KanbanPage />} />
             <Route path="project/:projectId/nav" element={<NavPage />} />
             <Route path="project/:projectId/graph" element={<GraphPage />} />
+            <Route path="project/:projectId/io" element={<ImportExportPage />} />
+            <Route path="project/:projectId/permissions" element={<PermissionsPage />} />
+            <Route path="project/:projectId/skills" element={<SkillsPage />} />
+            <Route path="project/:projectId/audit" element={<AuditPage />} />
             <Route path="project/:projectId/tasks/:taskId" element={<TaskDetailPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

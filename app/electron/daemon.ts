@@ -188,6 +188,7 @@ async function selectDirectory(): Promise<string | null> {
 
 export function registerDaemonIpc(): void {
   ipcMain.handle('daemon:ensureRunning', () => ensureDaemonRunning())
+  ipcMain.handle('daemon:status', () => isDaemonAlive())
   ipcMain.handle('daemon:apiRequest', (_e, req: ApiRequestPayload) => apiProxy(req))
   ipcMain.handle('daemon:events:setProject', (_e, project: string | null) => {
     setWsProject(project)

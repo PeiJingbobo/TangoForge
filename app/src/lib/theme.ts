@@ -134,7 +134,8 @@ export function accentForeground(base: RGB): string {
 
 export function resolveMode(mode: ThemeMode): ResolvedTheme {
   if (mode === 'system') {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    // matchMedia 缺失（jsdom 等）时兜底浅色
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   }
   return mode
 }

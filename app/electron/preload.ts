@@ -15,6 +15,8 @@ export interface ApiRequestPayload {
 const api = {
   daemon: {
     ensureRunning: (): Promise<boolean> => ipcRenderer.invoke('daemon:ensureRunning'),
+    /** 纯探活（不拉起），供 UI 状态指示点轮询 */
+    status: (): Promise<boolean> => ipcRenderer.invoke('daemon:status'),
   },
   /** HTTP 代理：主进程 fetch daemon（token 主进程持有，path 白名单） */
   api: {
