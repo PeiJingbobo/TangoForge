@@ -1,4 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { AppLayout } from '@/components/layout/app-layout'
+import { Toaster } from '@/components/ui/sonner'
+import { WorkspacePage } from '@/features/projects/WorkspacePage'
+import { KanbanPage } from '@/features/tasks/KanbanPage'
+import { TaskDetailPage } from '@/features/tasks/TaskDetailPage'
+import { SettingsPage } from '@/features/settings/SettingsPage'
 
 // 服务端状态统一走 TanStack Query（docs/TECHNICAL.md §4.3）：
 // 组件不直接持有服务端数据，一律经 Query hook 读取、Mutation 写入。
@@ -11,13 +18,28 @@ const queryClient = new QueryClient({
   },
 })
 
+/**
+ * 路由骨架（React Router v7，docs/TECHNICAL.md §4.1）：
+ * - /                      工作区（TF-024 项目列表）
+ * - /project/:projectId/* 项目内（看板 TF-025、任务详情 TF-026）
+ * - /settings              设置（TF-028）
+ */
 export default function App() {
-  // 占位骨架：路由（React Router v7）与业务页面按 docs/TECHNICAL.md §4.1 逐步实现。
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex min-h-screen items-center justify-center">
-        <h1 className="text-lg font-semibold">TangoForge</h1>
-      </div>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<WorkspacePage />} />
+            <Route path="project/:projectId" element={<Navigate to="kanban" replace />} />
+            <Route path="project/:projectId/kanban" element={<KanbanPage />} />
+            <Route path="project/:projectId/tasks/:taskId" element={<TaskDetailPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+      <Toaster />
     </QueryClientProvider>
   )
 }

@@ -296,15 +296,16 @@
 
 ## P5 前端应用（M5：UI 可用）
 
-### TF-022 前端基础：shadcn-ui + 路由 + 主题（P0，独立）
+### TF-022 前端基础：shadcn-ui + 路由 + 主题（P0，独立）✅ 已完成
 
 - **涉及模块**：`app/`
 - **描述**：shadcn-ui 初始化（`components.json` 已存在，`npx shadcn@latest init` + 按需 `add` 基础组件）；Tailwind CSS v4 + CSS 变量深浅双主题；React Router v7 路由骨架；`app/src/styles/globals.css` 主题变量落地。
 - **验收标准**：
-  - [ ] `pnpm typecheck` / `pnpm lint` 全绿
-  - [ ] 深浅主题切换生效；业务代码无硬编码色值
-  - [ ] 基础组件（Button/Input/Dialog/Toast 等）在 `ui/` 封装层可用
-- **产出文件**：`app/src/components/ui/*`、`app/src/App.tsx`（改造）、`app/src/styles/globals.css`
+  - [x] `pnpm typecheck` / `pnpm lint` 全绿（含 `format:check`）
+  - [x] 深浅主题切换生效；业务代码无硬编码色值（grep 抽查通过，色值仅存在于 token 源头 `theme.ts`/`globals.css`）
+  - [x] 基础组件（Button/Input/Dialog/Toast 等）在 `ui/` 封装层可用
+- **产出文件**：`app/src/components/ui/*`（17 个）、`app/src/lib/theme.ts`、`app/src/components/theme/theme-toggle.tsx`、`app/src/components/layout/app-layout.tsx`、`app/src/App.tsx`（改造）、`app/src/styles/globals.css`、`app/src/features/{projects,tasks,settings}/*`（占位页）、`app/eslint.config.mjs`（ui 豁免）、`.npmrc`、`pnpm-lock.yaml`
+- **总结文件**：`docs/record/TF-022-前端基础-成功.md`
 
 ### TF-023 API 客户端封装与类型对齐（P0，依赖 TF-022、TF-013）
 

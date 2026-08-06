@@ -13,92 +13,92 @@
 /** 任务实体（对应后端 Task）。 */
 export interface Task {
   /** UUID v4，服务端生成 */
-  id: string;
+  id: string
   /** 固定 1（项目库内冗余，勿依赖） */
-  project_id: number;
+  project_id: number
   /** 父任务 ID；null = 顶层任务 */
-  parent_id: string | null;
-  title: string;
-  description: string;
+  parent_id: string | null
+  title: string
+  description: string
   /** 项目状态机 key（todo/doing/done/archived…） */
-  status: string;
+  status: string
   /** 0-5，0=无优先级/最低，5=最高 */
-  priority: number;
-  tags: string[];
+  priority: number
+  tags: string[]
   /** 自由文本指派，可为空串 */
-  assignee: string;
+  assignee: string
   /** 被依赖任务 ID 数组 */
-  depends_on: string[];
+  depends_on: string[]
   /** 归档前状态（归档/还原专用） */
-  archived_from: string;
+  archived_from: string
   /** LLM 导入映射，内部字段 */
-  source_file: string;
-  source_section: string;
+  source_file: string
+  source_section: string
   /** RFC3339 */
-  created_at: string;
-  updated_at: string;
+  created_at: string
+  updated_at: string
 }
 
 /** 树形节点：Task 字段平铺 + children（List 非分页模式返回）。 */
 export type TaskTreeNode = Task & {
-  children: TaskTreeNode[];
-};
+  children: TaskTreeNode[]
+}
 
 /** 创建任务入参（对应后端 CreateInput）。 */
 export interface CreateTaskInput {
   /** null/缺省 = 顶层任务 */
-  parent_id?: string | null;
+  parent_id?: string | null
   /** 必填，去空白后非空 */
-  title: string;
-  description?: string;
+  title: string
+  description?: string
   /** 缺省 = todo；必须存在于项目状态机 */
-  status?: string;
+  status?: string
   /** number 0-5 或字符串别名（后端归一化）；缺省 = 0 */
-  priority?: number | string;
-  tags?: string[];
-  assignee?: string;
+  priority?: number | string
+  tags?: string[]
+  assignee?: string
   /** TF-005 仅存储，环校验 TF-008 */
-  depends_on?: string[];
+  depends_on?: string[]
 }
 
 /** 更新任务入参（对应后端 UpdateInput；禁止携带 status）。 */
 export interface UpdateTaskInput {
-  title?: string;
-  description?: string;
-  priority?: number | string;
+  title?: string
+  description?: string
+  priority?: number | string
   /** undefined = 不改；[] = 清空 */
-  tags?: string[];
-  assignee?: string;
+  tags?: string[]
+  assignee?: string
   /** undefined = 不改；[] = 清空 */
-  depends_on?: string[];
+  depends_on?: string[]
   /** 三重态：undefined = 不改 / null = 置为顶层 / string = 改父 */
-  parent_id?: string | null;
+  parent_id?: string | null
 }
 
 /** 列表过滤/分页参数（对应后端 ListFilter）。 */
 export interface TaskListFilter {
   /** 单值状态过滤；缺省 = 排除 archived；"archived" = 仅归档 */
-  status?: string;
+  status?: string
   /** 匹配 title/description（大小写不敏感） */
-  q?: string;
+  q?: string
   /** 0 = 返回全量任务树；>0 = 扁平分页（page 从 1 起） */
-  page?: number;
+  page?: number
   /** 分页大小，默认 100，上限 500 */
-  size?: number;
+  size?: number
 }
 
 /** 列表返回（对应后端 ListResult；树形或扁平分页二选一）。 */
 export interface TaskListResult {
   /** 非分页模式：全量任务树 */
-  tree?: TaskTreeNode[];
+  tree?: TaskTreeNode[]
   /** 分页模式：扁平 items */
-  items?: Task[];
-  total: number;
-  page: number;
-  size: number;
+  items?: Task[]
+  total: number
+  page: number
+  size: number
 }
 
 /** 状态变更入参（独立接口，Q8）。 */
 export interface ChangeStatusInput {
-  status: string;
+  status: string
 }
