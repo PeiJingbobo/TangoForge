@@ -12,12 +12,12 @@
 | 阶段 | 任务数 | 已完成 | 进行中 | 待开始 |
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
-| P2 任务核心域 | 5 | 1 | 0 | 4 |
+| P2 任务核心域 | 5 | 2 | 0 | 3 |
 | P3 传输层与安全 | 5 | 0 | 0 | 5 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **5** | **0** | **26** |
+| **合计** | **31** | **6** | **0** | **25** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -94,12 +94,15 @@
 ### TF-006 状态机校验（P0，依赖 TF-005）
 
 - **涉及模块**：`internal/task`
-- **描述**：项目级可配置状态机：从项目 `config.yaml` 的 `state_machine` 节加载（默认四态 `todo/doing/done` + 系统保留 `archived`）；状态流转校验（非法流转 `INVALID_TRANSITION`）；状态机编辑时**有任务占用的状态不可移除/重命名**（`STATUS_IN_USE`，返回占用任务数）。
+- **描述**：项目级可配置状态机：从项目 `config.yaml` 的 `state_machine` 节加载（默认四态 `todo/doing/done` + 系统保留 `archived`）；状态流转校验（非法流转 `INVALID_TRANSITION`）；状态机编辑时**有任务占用的状态不可移除/重命名**（`STATUS_IN_USE`，返回占用任务数）。流转校验语义（QA Q1-B 宽松 / Q3-A 空规则特例 / Q2-A 同态幂等）见 `docs/TASK-SEMANTICS.md` §5.1/§5.2。
 - **验收标准**：
-  - [ ] 单测覆盖：合法/非法流转矩阵、回退允许、archived 不可参与普通流转
-  - [ ] 占用状态移除被拒，错误携带占用数
-  - [ ] 状态机配置缺失时回退默认四态
-- **产出文件**：`internal/task/state_machine.go`、`internal/task/state_machine_test.go`
+  - [x] 单测覆盖：合法/非法流转矩阵、回退允许、archived 不可参与普通流转（含 Q1-B/Q3-A/Q2-A 语义用例）
+  - [x] 占用状态移除被拒，错误携带占用数（STATUS_IN_USE，Message 内嵌数量）
+  - [x] 状态机配置缺失时回退默认四态
+- **产出文件**：`internal/task/state_machine.go`、`internal/task/state_machine_test.go`、`internal/task/errors.go`（追加 INVALID_TRANSITION / STATUS_IN_USE）、`internal/task/service.go`（ChangeStatus 接入流转校验 + Get/UpdateStateMachine）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-006-状态机校验-成功.md`
+- **覆盖率**：`internal/task` 90.7%（> 90% 门槛）
 
 ### TF-007 归档 / 还原 / 物理删除（P0，依赖 TF-005）
 

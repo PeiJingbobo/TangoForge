@@ -82,9 +82,32 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 ## 5. 状态更新（ChangeStatus）语义
 
 - 独立接口，输入：任务 ID + 目标状态 key。
-- 校验：任务存在（`TASK_NOT_FOUND`）；目标状态存在于状态机 states 且 ≠ `archived`（`STATUS_NOT_FOUND`）。
-- **transitions 流转校验属 TF-006**（非法流转 → `INVALID_TRANSITION`）；TF-005 先落地"存在性校验 + 更新"，TF-006 在同一接口内追加流转校验，接口签名不变。
+- 校验链（TF-005 存在性 + TF-006 流转校验）：
+  1. 任务存在（`TASK_NOT_FOUND`）；
+  2. **同态流转（目标 = 当前）→ 幂等成功**：直接返回，不校验、不刷新 `updated_at`（Q2-A）；
+  3. 目标状态存在于状态机 states 且 ≠ `archived`（`STATUS_NOT_FOUND`）；
+  4. **流转校验**（§5.1）：非法 → `INVALID_TRANSITION`。
 - `archived` 只能由 archive/restore（TF-007）设置。
+
+### 5.1 状态机流转校验（TF-006）
+
+- 规则（QA Q1-B 宽松 + Q3-A 特例）：
+  - **transitions 整体为空**（states 自定义但无任何规则）→ **拒绝所有普通流转**（`INVALID_TRANSITION`，安全默认）；
+  - **transitions 非空**：目标状态在 `from` 规则的 `to` 列表中 → 放行；在 `from` 规则中但目标不在 `to` → `INVALID_TRANSITION`；
+  - **from 未定义规则** → 放行任意流转（宽松，Q1-B）。
+- 同态流转幂等（Q2-A）见 §5；`archived` 不参与任何普通流转。
+- 默认状态机（config.yaml 缺失/state_machine 节缺失回退）：`todo→[doing,done]`、`doing→[todo,done]`、`done→[doing,todo]`（回退允许）。
+
+### 5.2 状态机编辑（GetStateMachine / UpdateStateMachine，TF-006）
+
+- `GetStateMachine(ctx, workdir)`：读取当前定义（缺失回退默认四态）。
+- `UpdateStateMachine(ctx, workdir, sm)`：编辑校验 → 占用校验 → 持久化 `config.yaml`（**替换 state_machine 节，保留 export 等其它配置节**，Q8-A）。
+- **编辑校验规则**（Q5-A）：
+  - `states` 至少 1 个；key 必填、去空白、**唯一**（重复 → 参数非法）；
+  - key **不得为 `archived`**（系统保留态）；
+  - `transitions` 的 `from` / 每个 `to` 必须存在于 `states`（否则参数非法）；`to` 去重；`to` 可为空（该状态不可流转出去）。
+- **STATUS_IN_USE（Q7-A 口径）**：项目库中 `status = key` 的任务数（archived 任务不参与统计）；**占用状态不可删除、不可重命名 key**（`STATUS_IN_USE`，错误 Message 携带占用数）；**占用状态允许修改 label/color/transitions**（key 不变）。
+- 写入成功后触发写钩子 `state_machine.changed`（TF-014 WS 事件接入点）。
 
 ## 6. 列表（List）语义（QA Q10 / Q11 / Q12）
 
@@ -120,9 +143,11 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 | `PARENT_NOT_FOUND` | parent_id 指向的任务不存在或不属于该项目 |
 | `PARENT_CYCLE` | parent_id 变更引入父链环（A 的父为自身后代） |
 | `STATUS_NOT_FOUND` | 目标状态不在项目状态机 states（或为 archived 保留态） |
+| `INVALID_TRANSITION` | 非法状态流转（transitions 为空拒绝一切 / 目标不在 from 规则的 to 列表） |
+| `STATUS_IN_USE` | 状态被任务占用，不可删除/重命名（Message 携带占用任务数） |
 
 > 错误定义于 `internal/task/errors.go`（哨兵错误 + Code() 映射）；HTTP 状态码映射在 TF-013 落地。
-> TF-006 追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 追加归档相关语义；TF-008 追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
+> TF-006 已追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 追加归档相关语义；TF-008 追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
 
 ## 9. 并发与钩子
 
@@ -134,7 +159,7 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 | 任务 | 本文件涉及的边界 |
 |------|------------------|
-| TF-006 状态机校验 | ChangeStatus 追加 transitions 校验；状态机编辑校验 `STATUS_IN_USE` |
+| ~~TF-006 状态机校验~~ | ✅ 已完成：§5.1 流转校验 + §5.2 状态机编辑（含 `INVALID_TRANSITION` / `STATUS_IN_USE`） |
 | TF-007 归档/还原 | archive/restore 接口、级联置空 parent_id、物理删除规则 |
 | TF-008 依赖校验 | depends_on 存在性（`DEPENDENCY_NOT_FOUND`）与无环校验（`CIRCULAR_DEPENDENCY`） |
 | TF-009 覆盖率收口 | 本文件 §1–§9 语义全部纳入测试断言 |

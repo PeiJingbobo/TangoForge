@@ -32,8 +32,12 @@ type Service interface {
 	List(ctx context.Context, workdir string, f ListFilter) (ListResult, error)
 	// Update 任务详情更新（禁止修改 status，§4.1）。
 	Update(ctx context.Context, workdir, id string, in UpdateInput) (Task, error)
-	// ChangeStatus 独立的状态更新接口（§5；transitions 校验 TF-006 接入）。
+	// ChangeStatus 独立的状态更新接口（§5；transitions 校验已接入，TF-006）。
 	ChangeStatus(ctx context.Context, workdir, id, status string) (Task, error)
+	// GetStateMachine 读取项目状态机定义（缺失回退默认四态，§5.2）。
+	GetStateMachine(ctx context.Context, workdir string) (config.StateMachine, error)
+	// UpdateStateMachine 编辑状态机（编辑校验 + STATUS_IN_USE 占用校验 + 持久化，§5.2）。
+	UpdateStateMachine(ctx context.Context, workdir string, sm config.StateMachine) (config.StateMachine, error)
 	// Close 关闭全部缓存的项目库连接（进程退出/测试清理时调用）。
 	Close() error
 }
@@ -368,7 +372,9 @@ func (s *service) Update(ctx context.Context, workdir, id string, in UpdateInput
 }
 
 // ChangeStatus 独立状态更新（docs/TASK-SEMANTICS.md §5）。
-// TF-005：任务存在 + 状态存在于状态机 states（非 archived）；transitions 校验 TF-006。
+// ChangeStatus 独立状态更新（docs/TASK-SEMANTICS.md §5）。
+// 校验链：任务存在 → 同态幂等（Q2-A）→ 状态存在于状态机（非 archived）→
+// 流转校验（validateTransition，TF-006：Q1-B 宽松 / Q3-A 空规则特例）。
 func (s *service) ChangeStatus(ctx context.Context, workdir, id, status string) (Task, error) {
 	conn, err := s.projectDB(ctx, workdir)
 	if err != nil {
@@ -387,7 +393,19 @@ func (s *service) ChangeStatus(ctx context.Context, workdir, id, status string) 
 	if status == StatusArchived {
 		return Task{}, ErrStatusNotFound // archived 仅由归档/还原（TF-007）设置
 	}
-	if err := s.checkStatusExists(workdir, status); err != nil {
+	sm, err := loadStateMachine(workdir)
+	if err != nil {
+		return Task{}, err
+	}
+	if !stateExists(sm, status) {
+		return Task{}, fmt.Errorf("%w: %s", ErrStatusNotFound, status)
+	}
+	// 同态流转：幂等成功，不校验、不刷新 updated_at（Q2-A）。
+	if t.Status == status {
+		return *t, nil
+	}
+	// 流转校验（TF-006）。
+	if err := validateTransition(sm, t.Status, status); err != nil {
 		return Task{}, err
 	}
 
@@ -401,16 +419,14 @@ func (s *service) ChangeStatus(ctx context.Context, workdir, id, status string) 
 	return *t, nil
 }
 
-// checkStatusExists 校验状态存在于项目状态机 states（读取 config.yaml，缺失回退默认四态）。
+// checkStatusExists 校验状态存在于项目状态机 states（统一走 loadStateMachine）。
 func (s *service) checkStatusExists(workdir, status string) error {
-	cfg, err := config.LoadProject(workdir)
+	sm, err := loadStateMachine(workdir)
 	if err != nil {
-		return fmt.Errorf("task: load project config %s: %w", workdir, err)
+		return err
 	}
-	for _, st := range cfg.StateMachine.States {
-		if st.Key == status {
-			return nil
-		}
+	if stateExists(sm, status) {
+		return nil
 	}
 	return fmt.Errorf("%w: %s", ErrStatusNotFound, status)
 }
