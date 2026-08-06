@@ -435,4 +435,33 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 | `TEMPLATE_INVALID` | 422 | 模板非法（Parse 失败）/ llm 模式未生成模板 |
 | `LLM_*` | 422 | LLM 调用失败（§14.3） |
 
+## 19. CLI 语义（TF-021，QA P4-1 Q15-A）
+
+### 19.1 设计
+
+- **全部子命令转 HTTP 调用**（多端等价；`cmd/cli` 为传输层薄封装，不直接调用业务层）。
+- 全局参数：`--server <addr>`（默认 127.0.0.1:19810）、`--actor <name>`（默认 human，X-Actor 头，agent 身份查权限表）、`--json`（原始 JSON 输出；缺省人类可读）。
+- **`--project` 强制**（任务/导入/导出/graph/状态机/skills/permission/audit 子命令）；project 组子命令无（与 HTTP /api/projects 组一致）。
+- **自动拉起**（N6）：每次执行先 `GET /ping`；未运行 → 查找 daemon 二进制（同目录 `tangoforge-daemon[.exe]` → PATH）并 spawn → 轮询 /ping ≤5s；找不到 → 提示手动启动（TASKS.md 验收允许"可先提示"）。
+- `apiResp.code` 兼容数字 0 与字符串错误码（成功 {code:0} / 失败 {code:"XXX"}）。
+
+### 19.2 子命令清单
+
+| 子命令 | 说明 |
+|--------|------|
+| `projects list\|import <dir>\|remove <id>` | 项目注册表（remove 仅 UI，agent 身份会被拒） |
+| `tasks list\|get\|create\|update\|status\|archive\|restore\|delete` | 任务全操作（status=ChangeStatus 走 task.update_status 权限） |
+| `import preview\|drafts\|confirm\|discard` | 导入草稿流（preview 支持 --file 或 --content+--source-file） |
+| `export [run]\|template <示例文件>` | 导出与 LLM 模板生成 |
+| `graph` | 全景图（人类可读摘要 + --json 全量） |
+| `state-machine get\|update <file.json>` | 状态机读写（update 文件为 states+transitions JSON） |
+| `skills [info <name>]` | Skill 列表/详情 |
+| `permission` | Agent 权限范围（✓/✗ 列表） |
+| `audit [export]` | 审计查询/导出 |
+
+### 19.3 与 HTTP 的一致性
+
+- 同一守护进程、同一权限表、同一审计；CLI 冒烟与 HTTP 结果一致（M4 验证清单 §B 复现）。
+- `mcp` 子命令为 stdio MCP 服务（§16），不经 HTTP（QA P4-1 特例）。
+
 *（文档完）*

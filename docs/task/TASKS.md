@@ -14,10 +14,10 @@
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
-| P4 Agent 能力 | 7 | 6 | 0 | 1 |
+| P4 Agent 能力 | 7 | 7 | 0 | 0 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **20** | **0** | **11** |
+| **合计** | **31** | **21** | **0** | **10** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -283,11 +283,14 @@
 ### TF-021 CLI 子命令（P1，依赖 TF-013 端点就绪）
 
 - **涉及模块**：`cmd/cli`
-- **描述**：CLI 全部子命令转为 HTTP 调用（等价操作）：`projects`、`tasks`（list/create/update/archive/restore）、`import`、`export`、`graph`、`state-machine`、`skills`、`permission`、`audit`；`--project` 强制、`--actor` 覆盖（默认 human）、`--server` 连接地址。
+- **描述**：CLI 全部子命令转为 HTTP 调用（等价操作）：`projects`（list/import/remove）、`tasks`（list/get/create/update/status/archive/restore/delete）、`import`（preview/drafts/confirm/discard）、`export`（run/template）、`graph`、`state-machine`（get/update）、`skills`、`permission`、`audit`（query/export）；`--project` 强制（任务类）、`--actor` 覆盖（默认 human）、`--server`（默认 127.0.0.1:19810）、`--json`；自动拉起（QA P4-1 Q15-A：spawn 同目录 daemon 二进制 + 轮询 /ping ≤5s，找不到提示手动启动）。
 - **验收标准**：
-  - [ ] CLI 冒烟与 HTTP 等价（同一守护进程，结果一致）
-  - [ ] 缺 `--project` 报错；未运行守护进程时提示自动拉起（可先提示）
-- **产出文件**：`cmd/cli/main.go`（改造）、`cmd/cli/cmd_tasks.go`、`cmd/cli/cmd_projects.go`、`cmd/cli/cmd_import.go` 等
+  - [x] CLI 冒烟与 HTTP 等价（同一守护进程：projects import → UI 授权 → tasks 全生命周期 → export → graph → state-machine → permission；结果一致）
+  - [x] 缺 `--project` 报错；未运行守护进程时提示自动拉起（daemon 同名二进制自动拉起 / 找不到时提示手动启动）
+  - [x] 真实冒烟脚本 `scripts/cli_smoke.sh`（SMOKE PASS）
+- **产出文件**：`cmd/cli/main.go`（改造）、`cmd/cli/client.go`、`cmd/cli/cmd_tasks.go`、`cmd/cli/cmd_import.go`、`cmd/cli/cmd_other.go`、`scripts/cli_smoke.sh`、`docs/TASK-SEMANTICS.md` §19
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-021-CLI子命令-成功.md`
 
 ---
 
