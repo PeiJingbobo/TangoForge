@@ -55,6 +55,8 @@ var (
 	ErrAPIStatus = errors.New("llm: 服务返回错误状态")
 	// ErrInvalidResponse 响应解析失败（非 JSON / 无文本内容 / JSON 提取失败）。
 	ErrInvalidResponse = errors.New("llm: 响应格式不合规")
+	// ErrTruncated 响应被 max_tokens 截断（finish_reason=length；推理模型推理 token 耗尽）。
+	ErrTruncated = errors.New("llm: 响应被截断")
 )
 
 // APIStatusError 携带 LLM 服务端状态码的错误（errors.As 可提取）。
@@ -361,19 +363,34 @@ func (c *Client) parseResponse(data []byte) (string, error) {
 		return b.String(), nil
 
 	default: // openai
-		// {"choices":[{"message":{"content":"..."}}]}
+		// {"choices":[{"message":{"content":"...","reasoning_content":"..."},"finish_reason":"..."}]}
 		var choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		}
 		if err := json.Unmarshal(obj["choices"], &choices); err != nil {
 			return "", fmt.Errorf("%w: 解析 choices: %v", ErrInvalidResponse, err)
 		}
-		if len(choices) == 0 || strings.TrimSpace(choices[0].Message.Content) == "" {
-			return "", fmt.Errorf("%w: choices 无内容", ErrInvalidResponse)
+		if len(choices) == 0 {
+			return "", fmt.Errorf("%w: choices 为空（响应结构异常）", ErrInvalidResponse)
 		}
-		return choices[0].Message.Content, nil
+		content := strings.TrimSpace(choices[0].Message.Content)
+		if content == "" {
+			// finish_reason=length 且 content 空：推理模型（reasoning_content 字段）的
+			// max_tokens 被推理 token 耗尽（2026-08-06 实测 deepseek-v4-flash 8191/8192 均为推理）。
+			if choices[0].FinishReason == "length" {
+				reasoning := len(choices[0].Message.ReasoningContent)
+				return "", fmt.Errorf("%w: 响应被 max_tokens 截断（finish_reason=length）"+
+					"，推理 token 占用 %d，content 尚未输出；请调大 llm.max_tokens（≥8192，建议 16384）"+
+					"或改用非推理模型（如 deepseek-chat）", ErrTruncated, reasoning)
+			}
+			return "", fmt.Errorf("%w: choices 无内容（finish_reason=%s）",
+				ErrInvalidResponse, choices[0].FinishReason)
+		}
+		return content, nil
 	}
 }
 
@@ -472,6 +489,8 @@ func ErrorCode(err error) string {
 		return "LLM_API_ERROR"
 	case errors.Is(err, ErrInvalidResponse):
 		return "LLM_INVALID_RESPONSE"
+	case errors.Is(err, ErrTruncated):
+		return "LLM_TRUNCATED"
 	}
 	return ""
 }

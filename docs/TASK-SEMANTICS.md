@@ -294,6 +294,9 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
   | `LLM_TIMEOUT` | 请求超时 | 422（可重试） |
   | `LLM_API_ERROR` | LLM 服务返回 4xx/5xx（携带状态码与响应摘要） | 422 |
   | `LLM_INVALID_RESPONSE` | 响应非 JSON / 无文本 / JSON 提取失败 | 422 |
+  | `LLM_TRUNCATED` | 响应被 max_tokens 截断（finish_reason=length）——**推理模型（如 deepseek-v4-flash）推理 token 耗尽导致 content 为空** | 422 |
+
+> 2026-08-06 实测：`deepseek-v4-flash`（推理型）解析 14.5KB 文档时 8192 tokens 全部用于 `reasoning_content`，content 为 0（finish_reason=length）；`reasoning_effort=low` 仅降至 7662 推理 token 仍不足；改用 `deepseek-chat`（非推理）后 content 直接输出，`max_tokens: 8192` 可完整解析 94 任务文档。**导入/解析等结构化输出场景建议用非推理模型 + max_tokens ≥8192**。
 
 ### 14.4 与 parser/exporter 的边界
 
