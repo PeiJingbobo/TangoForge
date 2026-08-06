@@ -317,15 +317,16 @@
 - **产出文件**：`app/src/api/client.ts`、`app/src/api/ws.ts`、`app/src/types/models.ts`、`app/src/hooks/*`（10 个）、`app/src/stores/project.ts`、`app/src/test/server.ts`
 - **总结文件**：`docs/record/TF-023-API客户端封装-成功.md`
 
-### TF-024 项目管理界面与守护进程集成（P1，依赖 TF-023、TF-004）
+### TF-024 项目管理界面与守护进程集成（P1，依赖 TF-023、TF-004）✅ 已完成
 
 - **涉及模块**：`app/src/features/projects`、`app/electron`
 - **描述**：项目列表/导入界面（选择目录→导入→初始化引导）；Electron 主进程：启动检测 `127.0.0.1:19810` 探活 → 拉起内嵌 daemon → 等待 `/ping` → 读取全局配置 `ui_token` 并注入渲染进程；退出不关守护进程。
 - **验收标准**：
-  - [ ] 应用启动可自动拉起守护进程并进入项目列表
-  - [ ] 导入目录后 `.taskboard/` 自动初始化
-  - [ ] preload 白名单 IPC（daemon:ensureRunning / config:readUiToken）
-- **产出文件**：`app/electron/daemon.ts`、`app/electron/main.ts`、`app/electron/preload.ts`（改造）、`app/src/features/projects/*`
+  - [x] 应用启动可自动拉起守护进程并进入项目列表（daemon.ts 探活/spawn/轮询 + bootstrap 注入 token；mac 实测在 P5 关闭前人工验证）
+  - [x] 导入目录后 `.taskboard/` 自动初始化（后端 Import 语义确认：未注册目录自动 init；前端选目录→import→跳转）
+  - [x] preload 白名单 IPC（daemon:ensureRunning / config:readUiToken / dialog:selectDirectory）
+- **产出文件**：`app/electron/daemon.ts`（实装）、`app/electron/main.ts`、`app/electron/preload.ts`（+dialog）、`app/src/features/projects/WorkspacePage.tsx`（实装+4 测试）、`app/src/lib/bootstrap.ts`
+- **总结文件**：`docs/record/TF-024-项目管理界面-成功.md`
 
 ### TF-025 看板视图（P0，依赖 TF-023、TF-006、TF-007）
 

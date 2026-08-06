@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AppLayout } from '@/components/layout/app-layout'
@@ -6,6 +7,7 @@ import { WorkspacePage } from '@/features/projects/WorkspacePage'
 import { KanbanPage } from '@/features/tasks/KanbanPage'
 import { TaskDetailPage } from '@/features/tasks/TaskDetailPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { bootstrapDaemon } from '@/lib/bootstrap'
 
 // 服务端状态统一走 TanStack Query（docs/TECHNICAL.md §4.3）：
 // 组件不直接持有服务端数据，一律经 Query hook 读取、Mutation 写入。
@@ -25,6 +27,11 @@ const queryClient = new QueryClient({
  * - /settings              设置（TF-028）
  */
 export default function App() {
+  // 启动引导：拉起 daemon + 注入 UI token（Electron 环境；Web 模式静默跳过）
+  useEffect(() => {
+    void bootstrapDaemon()
+  }, [])
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

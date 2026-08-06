@@ -9,6 +9,10 @@ const api = {
   config: {
     readUiToken: (): Promise<string> => ipcRenderer.invoke('config:readUiToken'),
   },
+  dialog: {
+    /** 系统目录选择器；取消返回 null */
+    selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory'),
+  },
 }
 
 contextBridge.exposeInMainWorld('tangoforge', api)
