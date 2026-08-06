@@ -42,6 +42,8 @@ type Server struct {
 	projects *project.Service
 	perms    *auth.PermissionStore
 	audit    *audit.Store
+	// TF-014 WS 事件广播中心。
+	hub *hub
 
 	httpSrv  *http.Server
 	lnMu     sync.Mutex
@@ -69,14 +71,17 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) 
 			Detail: "permission denied",
 		})
 	}
+	hub := newHub()
 	taskSvc := task.NewService(task.Options{
 		Logger: logger,
 		OnWrite: func(ctx context.Context, workdir, action, target string) {
+			// 写钩子双通道：异步审计（TF-012）+ WS 事件广播（TF-014）。
 			actor := auth.ActorFrom(ctx)
 			auditStore.Write(ctx, workdir, audit.Entry{
 				Actor: actor.Name, ActorClass: actor.Class,
 				Action: action, Target: target, Result: audit.ResultOK,
 			})
+			hub.Publish(workdir, action, map[string]any{"id": target})
 		},
 	})
 
@@ -88,6 +93,7 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger) 
 		projects: project.NewService(registry, logger),
 		perms:    permStore,
 		audit:    auditStore,
+		hub:      hub,
 	}
 	s.httpSrv = &http.Server{Handler: s.Handler()}
 	return s
@@ -156,6 +162,8 @@ func (s *Server) perm(action string, h http.HandlerFunc) http.HandlerFunc {
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/ping", s.handlePing)
+	// WS 事件订阅（独立于 /api 中间件链，handleWS 内自行完成来源过滤/项目校验/权限）。
+	r.Get("/ws/events", s.handleWS)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(s.remoteAccessMiddleware)
@@ -191,6 +199,21 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/permissions", s.perm("permission.read", s.handlePermissionGet))
 			// PUT /api/permissions 仅 UI（回环 + X-UI-Token 由识别层保证），handler 内二次校验 actor==ui。
 			r.Put("/permissions", s.handlePermissionPut)
+
+			// TF-014：graph / audit。
+			r.Get("/graph", s.perm("graph.read", s.handleGraph))
+			r.Get("/audit", s.perm("audit.read", s.handleAuditQuery))
+			r.Get("/audit/export", s.perm("audit.read", s.handleAuditExport))
+
+			// TF-014 占位（依赖 P4 业务层，QA P3-3）：import/export/skill。
+			r.Post("/import", s.perm("import.run", s.handleImportPlaceholder))
+			r.Get("/import/drafts", s.perm("import.run", s.handleImportDraftsPlaceholder))
+			r.Post("/import/drafts/{id}/confirm", s.perm("import.confirm", s.handleImportDraftConfirmPlaceholder))
+			r.Delete("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftDiscardPlaceholder))
+			r.Post("/export", s.perm("export.run", s.handleExportPlaceholder))
+			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplatePlaceholder))
+			r.Get("/skills", s.perm("skill.read", s.handleSkillsPlaceholder))
+			r.Get("/skills/{name}", s.perm("skill.read", s.handleSkillInfoPlaceholder))
 		})
 
 		r.Get("/", func(w http.ResponseWriter, _ *http.Request) {

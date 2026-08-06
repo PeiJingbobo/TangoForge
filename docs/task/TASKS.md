@@ -13,11 +13,11 @@
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
-| P3 传输层与安全 | 5 | 4 | 0 | 1 |
+| P3 传输层与安全 | 5 | 5 | 0 | 0 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **13** | **0** | **18** |
+| **合计** | **31** | **14** | **0** | **17** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -195,10 +195,14 @@
 - **涉及模块**：`internal/api`
 - **描述**：`/ws/events?project=` 事件推送（`task.* / import.* / export.* / project.* / permission.* / skill.* / state_machine.*`，事件结构 `{type, project, data, ts}`）；导入/导出/图/Skill/审计端点：`POST /api/import`、草稿三件套、`POST /api/export`、`POST /api/export/template/generate`、`GET /api/graph`、`GET /api/skills`、`GET /api/skills/:name`、`GET /api/audit`、`GET /api/audit/export`。WS 建连校验对应项目 `task.read`。
 - **验收标准**：
-  - [ ] WS 客户端可收到写操作事件（task.created 等）
-  - [ ] 远程 WS 无 Token → 401；未授权项目 → 403
-  - [ ] graph 返回全量元数据（服务端不聚簇）
-- **产出文件**：`internal/api/ws.go`、`internal/api/handlers_import.go`、`internal/api/handlers_export.go`、`internal/api/handlers_graph.go`、`internal/api/handlers_audit.go`
+  - [x] WS 客户端可收到写操作事件（task.created 等）
+  - [x] 远程 WS 无 Token → 401；未授权项目 → 403
+  - [x] graph 返回全量元数据（服务端不聚簇）
+- **产出文件**：`internal/api/ws.go`、`internal/api/handlers_graph.go`、`internal/api/handlers_audit.go`、`internal/api/handlers_placeholder.go`、`internal/api/handlers_ws_test.go`（import/export/skill 端点随 P4 TF-018/019/020 替换占位，QA P3-3）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-014-WebSocket与其余端点-成功.md`
+
+> **✅ M3 里程碑达成（2026-08-06）**：P3 传输层与安全全部完成，真实 daemon 冒烟通过（curl 全链路 + WS 事件可达），质量门禁打勾见 MASTER-PLAN §7。
 
 ---
 

@@ -167,9 +167,18 @@ TF-030 CI（依赖绝大部分任务完成）
 - [x] 无 P0/P1 遗留问题；已知问题全部登记在总结"遗留问题"节；（✅ P1/P2 无遗留；P3 起新任务按清单推进）
 - [x] 受影响文档（AGENTS.md / REQUIREMENTS.md / TECHNICAL.md / docs/README.md 索引）已同步。（✅ TASK-SEMANTICS.md 已随各任务同步；REQUIREMENTS/TECHNICAL 基线未改动，无需修订）
 
+**P3 退出检查（2026-08-06 ✅，M3 里程碑达成）**：
+
+- [x] 本阶段全部任务（TF-010~014）状态 = `已完成`，总结/日志齐备；
+- [x] `CGO_ENABLED=0 go test ./...` 全绿、`go vet ./...` 干净、`internal/task` 覆盖率 **92.3%**（≥ 90%）；
+- [x] **真实 daemon 冒烟全部通过**：`/ping` 200 → 导入项目 → 建任务 → 流转 → 非法流转 422 → 归档/还原 → 审计查询/导出 → agent 403 → **WS 事件实时可达**（task.created）；
+- [x] 安全闭环验证：UI 凭据仅回环、远程无 Token 401、agent 默认只读（task.create 403 + denied 审计）、权限修改仅 UI、state_machine.read 默认 403；
+- [x] 遗留登记：import/export/skill 端点占位（501 NOT_IMPLEMENTED），随 P4 TF-018/019/020 替换（QA P3-3 确认范围）。
+
 **里程碑未达成的处理**：不得进入下一阶段；回退至对应任务补齐，再重新验收。
 
 > **✅ M2 任务引擎可用（2026-08-06 达成）**：P2 关闭，可进入 P3（传输层与安全）。
+> **✅ M3 API 可用（2026-08-06 达成）**：P3 关闭（TF-010~014 全 ✅），可进入 P4（Agent 能力）。
 
 ---
 

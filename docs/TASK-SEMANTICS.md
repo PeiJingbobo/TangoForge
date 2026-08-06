@@ -188,16 +188,71 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 | `DEPENDENCY_NOT_FOUND` | depends_on 引用不存在的任务 |
 | `CIRCULAR_DEPENDENCY` | depends_on 引入循环依赖（含自依赖） |
 
-> 错误定义于 `internal/task/errors.go`（哨兵错误 + Code() 映射）；HTTP 状态码映射在 TF-013 落地。
+> 错误定义于 `internal/task/errors.go`（哨兵错误 + Code() 映射）；HTTP 状态码映射于 `internal/api/errors.go`（TF-013 落地，QA P3-7）。
 > TF-006 已追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 已追加 `DELETE_NOT_ALLOWED`；TF-008 已追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
+
+### 10.1 错误码 → HTTP 状态映射（TF-013，QA P3-7）
+
+| HTTP | 错误码 |
+|------|--------|
+| 404 | `PROJECT_NOT_FOUND` / `TASK_NOT_FOUND` / `PARENT_NOT_FOUND` |
+| 400 | `TASK_INVALID` / `DELETE_NOT_ALLOWED` / `PROJECT_INVALID`（项目目录非法） |
+| 422 | `INVALID_TRANSITION` / `STATUS_IN_USE` / `STATUS_NOT_FOUND` / `PARENT_CYCLE` / `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY` |
+| 403 | `PERMISSION_DENIED` / `REMOTE_ACCESS_DISABLED` |
+| 401 | `UNAUTHORIZED`（远程无/错 Bearer；UI 凭据仅回环） |
+| 501 | `NOT_IMPLEMENTED`（import/export/skill 占位，P4 替换） |
+| 500 | `INTERNAL`（未识别错误） |
 
 ## 11. 并发与钩子
 
 - **并发写**：最后写入生效，不加乐观锁（REQUIREMENTS-REVIEW Q27-A），靠审计追溯（审计 TF-012 落地）。
-- **写钩子（Q14-A）**：Service 构造时可选注入 `OnWrite(ctx, action, target)` 回调，写操作成功后调用（当前为 nil 安全）；TF-012 异步审计、TF-014 WS 事件经此钩子接入，**不改 Service 签名**。动作：`task.created / task.updated / task.status_changed / task.archived / task.restored / task.deleted / state_machine.changed`。
+- **写钩子（Q14-A，签名扩展 QA P3-1）**：Service 构造时可选注入 `OnWrite(ctx, workdir, action, target)` 回调，写操作成功后调用（nil 安全）；**携带 workdir**（审计表在项目库、WS 事件需要 project 字段），actor/actor_class 由调用方写入 ctx（`auth.WithActor`）后经 `auth.ActorFrom` 读取。动作：`task.created / task.updated / task.status_changed / task.archived / task.restored / task.deleted / state_machine.changed`。TF-012 异步审计与 TF-014 WS 事件经此钩子接入（api 层组合双通道）。
 - 连接管理（Q1-A）：Service 内部按 workdir 打开并缓存项目库连接（map + mutex，`SetMaxOpenConns(1)`），方法签名携带 workdir；不依赖全局注册表连接（Q2-B）。
 
-## 12. 与后续任务的边界
+## 12. P3 传输层语义（TF-010 ~ TF-014）
+
+### 12.1 来源识别（TF-010，docs/TECHNICAL.md §3.3）
+
+- 5 级优先级：① 回环 + `X-UI-Token` 匹配 → ui（不查权限表）；② 非回环 → 必须 `Authorization: Bearer <api_token>`（缺失/错误/未配置 → 401），有效 → agent（actor = X-Actor 或 unknown）；③ 回环 + `X-Actor`（CLI 默认 human）→ agent；④ 无任何凭据 → unknown（仍查权限表，安全默认）。
+- **UI 凭据仅回环有效**：非回环携带正确 X-UI-Token 也不构成 ui（仍需 Bearer）。
+- **api_token 为空 → 远程一律 401**（安全默认）。
+- Token 比较用 `crypto/subtle` 恒定时间。
+- 识别结果写入 ctx（`auth.WithActor/ActorFrom`），写钩子/审计/WS 统一读取。
+
+### 12.2 权限模型（TF-011，REQUIREMENTS.md §7.1）
+
+- 权限以项目为单位存项目库 `permissions` 表（`project_id` 固定 1，v1 全集 16 项）；**默认只读 5 项 true**（task.read / graph.read / skill.read / project.read / permission.read）。
+- 中间件：`actor_class=ui` 直接放行；其余查表，未授权 403 `PERMISSION_DENIED` + denied 审计；**行缺失/未知 action → denied**（安全默认）。
+- `GET /api/permissions` 返回**全量 16 项**（含 allowed=false，QA P3-6），action=permission.read。
+- `PUT /api/permissions` **仅 UI**（回环 + X-UI-Token；actor==ui 校验）；请求体**全量覆盖** `{"actions": {...}}`，未提交项重置 false，未知 action 拒绝（QA P3-5）。
+- `/api/projects` 组豁免 X-Project（QA P3-2）：GET/POST 放行（project.read 默认授予，无项目上下文不逐项查表）；`DELETE /api/projects/:id` 仅 UI。
+- `PATCH /api/tasks/:id` 动态权限：body 含 status → 二次校验 `task.update_status`（ensureAction）；其余字段 → `task.update`（路由静态挂载）。
+
+### 12.3 异步审计（TF-012，REQUIREMENTS.md §7.5）
+
+- `audit_log` 表（项目库）**异步写入**（channel + 单消费者，不阻塞业务；满则回退同步写保序不丢）；**只追加，无更新/删除端点**。
+- 字段 `ts, actor, actor_class, action, target, result, detail`；result ∈ ok/denied/error；**被拒请求（权限 403）写 denied**。
+- **读取操作不记录**（无读钩子）。
+- action 复用写钩子事件名（task.created 等）；denied 记录的 action 为权限 action。
+- `GET /api/audit`：`filter[actor]/filter[action]` + page/size（默认 100 上限 500），ts 倒序，action=audit.read（默认关闭）。
+- `GET /api/audit/export`：text/plain（行格式 `ts|actor|actor_class|action|target|result|detail` 含表头），**不写盘**（QA P3-8）。
+
+### 12.4 WebSocket（TF-014，REQUIREMENTS.md §5.3）
+
+- `GET /ws/events?project=<workdir>`：事件结构 `{type, project, data, ts}`；type 复用写钩子 action（task.created 等），data 含 `{id}`。
+- **独立鉴权链**（不在 /api 树下）：来源过滤 → 项目注册校验 → 来源识别（远程 401）→ `task.read` 权限（ui 放行，未授权 403）→ 升级订阅。
+- 事件按 project 分组广播（跨项目隔离）；慢消费者（缓冲 64 满）断开。
+
+### 12.5 全景图（TF-014，REQUIREMENTS.md §6）
+
+- `GET /api/graph`（graph.read）：nodes = 全量未归档任务（排除 archived）+ edges（`parent` / `dependency` 两类）；**服务端不聚簇**（聚簇仅前端展示层）。
+- 方向语义（§9）：`A.depends_on=[B]` → edge `B→A`（dependency）。
+
+### 12.6 占位端点（QA P3-3）
+
+- `/api/import*`、`/api/export*`、`/api/skills*` 本次注册路由并返回 501 `NOT_IMPLEMENTED`；P4 TF-018/019/020 落地时替换真实 handler。
+
+## 13. 与后续任务的边界
 
 | 任务 | 本文件涉及的边界 |
 |------|------------------|
@@ -205,6 +260,11 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 | ~~TF-007 归档/还原/物理删除~~ | ✅ 已完成：§8 删除语义（幂等归档、级联置空、RestoreOptions、`DELETE_NOT_ALLOWED`） |
 | ~~TF-008 依赖校验~~ | ✅ 已完成：§9 依赖语义（存在性、自依赖、多跳环，`DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`） |
 | ~~TF-009 覆盖率收口~~ | ✅ 已完成：P2 结束时 `internal/task` 覆盖率 ≥ 90%（check_coverage.sh 强制） |
-| TF-012 审计 / TF-014 WS | 经 §11 写钩子接入 |
+| ~~TF-010 来源识别~~ | ✅ 已完成：§12.1（5 级判定、UI 凭据仅回环、恒定时间比较） |
+| ~~TF-011 权限模型~~ | ✅ 已完成：§12.2（默认只读、全量覆盖、仅 UI 可改） |
+| ~~TF-012 异步审计~~ | ✅ 已完成：§12.3（异步不阻塞、只追加、denied 记录） |
+| ~~TF-013 HTTP 核心端点~~ | ✅ 已完成：§10.1 错误码映射；§12.2 权限端点语义 |
+| ~~TF-014 WS/其余端点~~ | ✅ 已完成：§12.4（WS 事件与鉴权）、§12.5（graph）、§12.6（占位端点） |
+| TF-016 MCP / TF-021 CLI | 复用 §12 传输层语义（来源识别 FromMCP、权限表、审计） |
 
 *（文档完）*
