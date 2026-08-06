@@ -133,36 +133,65 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 - 返回 Task 本体，**不含 children**（任务树由 List 提供）。
 
-## 8. 错误码清单
+## 8. 归档 / 还原 / 物理删除语义（TF-007）
+
+### 8.1 归档（Archive）
+
+- 签名：`Archive(ctx, workdir, id) (ArchiveResult, error)`；`ArchiveResult{ Task, DependentCount, ChildrenCleared }`。
+- 行为：`status → archived`，记录 `archived_from = 归档前状态`，刷新 `updated_at`；**直接子任务（`parent_id = id`）级联置空为顶层**（`ChildrenCleared` 返回数量）；**全部在事务内原子完成**（QA Q3：任一步失败即整体回滚，无半状态）。
+- **幂等（Q2-B）**：已归档任务再次归档 → 直接返回当前状态（不重复记录、不触发钩子）。
+- **DependentCount（Q1-A）**：未归档任务中 `depends_on` 包含该任务 ID 的个数——**不阻断归档**，仅提示（调用方/UI 决定是否继续）。
+- 钩子：`task.archived`（级联置空为副作用，不单独触发）。
+- **UI 确认流（Q3）**：App UI 归档前若检测到存在子任务（可依据 `ChildrenCleared` 或列表查询），先弹确认框由用户选择归档方式（确认级联置空 / 取消）。
+
+### 8.2 还原（Restore）
+
+- 签名：`Restore(ctx, workdir, id, opts RestoreOptions) (Task, error)`；`RestoreOptions{ FallbackTodo bool }`。
+- 校验：仅 `archived` 任务可还原（非归档 → `TASK_INVALID`）；任务不存在 → `TASK_NOT_FOUND`。
+- 目标状态：`archived_from` 记录的状态；**`archived_from` 为空（异常数据）→ 回退 `todo`**（Q6-A）。
+- **目标状态已从状态机删除（Q5）**：默认拒绝 `STATUS_NOT_FOUND`；`FallbackTodo: true` 时回退 `todo`。
+- 还原后**清空 `archived_from`**，刷新 `updated_at`；钩子：`task.restored`。
+- **UI 确认流（Q5）**：App UI 还原前检查 `archived_from` 状态是否存在（或捕获 `STATUS_NOT_FOUND`），由用户选择：取消（完善状态机后重试）或 回退 todo（以 `FallbackTodo: true` 重调）。
+
+### 8.3 物理删除（Delete）
+
+- 签名：`Delete(ctx, workdir, id) (Task, error)`；返回**被删任务快照**（Q9-A）。
+- 校验：**仅 `archived`（回收站）任务可物理删除**；非归档 → `DELETE_NOT_ALLOWED`（新错误码）。
+- **级联规则（Q8-A）**：物理删除父任务时，子任务**不可一并物理删除**（无级联删除能力），仅**级联置空 `parent_id`** 保留为顶层；回收站中子任务自身仍可单独物理删除；删除与置空在事务内原子完成。
+- 钩子：`task.deleted`。
+- **UI 确认流（Q8）**：App UI 物理删除前检测子任务，由用户选择处置方式（确认级联置空 / 取消）。
+
+## 9. 错误码清单
 
 | 错误码 | 语义 |
 |--------|------|
 | `PROJECT_NOT_FOUND` | workdir 无 `.taskboard/meta.db`（未导入为项目） |
 | `TASK_NOT_FOUND` | 任务不存在（含跨项目查询——不同项目库本就查不到） |
-| `TASK_INVALID` | 参数非法：title 空 / priority 非法 / 其他入参错误 |
+| `TASK_INVALID` | 参数非法：title 空 / priority 非法 / 非归档任务还原 / 其他入参错误 |
 | `PARENT_NOT_FOUND` | parent_id 指向的任务不存在或不属于该项目 |
 | `PARENT_CYCLE` | parent_id 变更引入父链环（A 的父为自身后代） |
-| `STATUS_NOT_FOUND` | 目标状态不在项目状态机 states（或为 archived 保留态） |
+| `STATUS_NOT_FOUND` | 目标状态不在项目状态机 states（或为 archived 保留态 / 还原目标状态已删除） |
 | `INVALID_TRANSITION` | 非法状态流转（transitions 为空拒绝一切 / 目标不在 from 规则的 to 列表） |
 | `STATUS_IN_USE` | 状态被任务占用，不可删除/重命名（Message 携带占用任务数） |
+| `DELETE_NOT_ALLOWED` | 物理删除仅限回收站（archived）任务，非归档任务拒绝 |
 
 > 错误定义于 `internal/task/errors.go`（哨兵错误 + Code() 映射）；HTTP 状态码映射在 TF-013 落地。
-> TF-006 已追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 追加归档相关语义；TF-008 追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
+> TF-006 已追加 `INVALID_TRANSITION` / `STATUS_IN_USE`；TF-007 已追加 `DELETE_NOT_ALLOWED`；TF-008 追加 `DEPENDENCY_NOT_FOUND` / `CIRCULAR_DEPENDENCY`。
 
-## 9. 并发与钩子
+## 10. 并发与钩子
 
 - **并发写**：最后写入生效，不加乐观锁（REQUIREMENTS-REVIEW Q27-A），靠审计追溯（审计 TF-012 落地）。
-- **写钩子（Q14-A）**：Service 构造时可选注入 `OnWrite(ctx, action, target)` 回调，写操作成功后调用（当前为 nil 安全）；TF-012 异步审计、TF-014 WS 事件经此钩子接入，**不改 Service 签名**。
+- **写钩子（Q14-A）**：Service 构造时可选注入 `OnWrite(ctx, action, target)` 回调，写操作成功后调用（当前为 nil 安全）；TF-012 异步审计、TF-014 WS 事件经此钩子接入，**不改 Service 签名**。动作：`task.created / task.updated / task.status_changed / task.archived / task.restored / task.deleted / state_machine.changed`。
 - 连接管理（Q1-A）：Service 内部按 workdir 打开并缓存项目库连接（map + mutex，`SetMaxOpenConns(1)`），方法签名携带 workdir；不依赖全局注册表连接（Q2-B）。
 
-## 10. 与后续任务的边界
+## 11. 与后续任务的边界
 
 | 任务 | 本文件涉及的边界 |
 |------|------------------|
 | ~~TF-006 状态机校验~~ | ✅ 已完成：§5.1 流转校验 + §5.2 状态机编辑（含 `INVALID_TRANSITION` / `STATUS_IN_USE`） |
-| TF-007 归档/还原 | archive/restore 接口、级联置空 parent_id、物理删除规则 |
+| ~~TF-007 归档/还原/物理删除~~ | ✅ 已完成：§8 删除语义（幂等归档、级联置空、RestoreOptions、`DELETE_NOT_ALLOWED`） |
 | TF-008 依赖校验 | depends_on 存在性（`DEPENDENCY_NOT_FOUND`）与无环校验（`CIRCULAR_DEPENDENCY`） |
-| TF-009 覆盖率收口 | 本文件 §1–§9 语义全部纳入测试断言 |
-| TF-012 审计 / TF-014 WS | 经 §9 写钩子接入 |
+| TF-009 覆盖率收口 | 本文件 §1–§10 语义全部纳入测试断言 |
+| TF-012 审计 / TF-014 WS | 经 §10 写钩子接入 |
 
 *（文档完）*

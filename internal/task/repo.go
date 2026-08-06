@@ -22,21 +22,36 @@ type TaskRepo interface {
 	List(ctx context.Context) ([]Task, error)
 	// Update 全字段覆盖更新（service 已构造最终值）。
 	Update(ctx context.Context, t *Task) error
+	// Delete 物理删除任务（仅回收站任务，由 service 校验）。
+	Delete(ctx context.Context, id string) error
+	// ClearParentsByParentID 将 parent_id=parentID 的任务级联置空为顶层，返回受影响行数。
+	ClearParentsByParentID(ctx context.Context, parentID string, updatedAt time.Time) (int64, error)
+}
+
+// dbtx 抽象 *sql.DB 与 *sql.Tx：业务层（service）控制事务边界（分层铁律），
+// 事务内创建 newSQLRepoTx 复用同一套 SQL 实现。
+type dbtx interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // sqlRepo TaskRepo 的 SQLite 实现（modernc.org/sqlite，纯 Go）。
 type sqlRepo struct {
-	db *sql.DB
+	q dbtx
 }
 
-// newSQLRepo 构造绑定指定连接（项目库）的 repo。
-func newSQLRepo(db *sql.DB) TaskRepo { return &sqlRepo{db: db} }
+// newSQLRepo 构造绑定项目库连接（非事务）的 repo。
+func newSQLRepo(db *sql.DB) TaskRepo { return &sqlRepo{q: db} }
+
+// newSQLRepoTx 构造绑定事务的 repo（归档/物理删除等原子操作使用）。
+func newSQLRepoTx(tx *sql.Tx) TaskRepo { return &sqlRepo{q: tx} }
 
 const taskColumns = `id, project_id, parent_id, title, description, status, priority,
 	tags, assignee, depends_on, archived_from, source_file, source_section, created_at, updated_at`
 
 func (r *sqlRepo) Create(ctx context.Context, t *Task) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO tasks (`+taskColumns+`) VALUES
+	_, err := r.q.ExecContext(ctx, `INSERT INTO tasks (`+taskColumns+`) VALUES
 		(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.ProjectID, nullStr(t.ParentID), t.Title, t.Description, t.Status,
 		t.Priority, jsonArr(t.Tags), t.Assignee, jsonArr(t.DependsOn),
@@ -49,7 +64,7 @@ func (r *sqlRepo) Create(ctx context.Context, t *Task) error {
 }
 
 func (r *sqlRepo) GetByID(ctx context.Context, id string) (*Task, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE id = ?`, id)
+	row := r.q.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE id = ?`, id)
 	t, err := scanTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -61,7 +76,7 @@ func (r *sqlRepo) GetByID(ctx context.Context, id string) (*Task, error) {
 }
 
 func (r *sqlRepo) List(ctx context.Context) ([]Task, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+taskColumns+` FROM tasks`)
+	rows, err := r.q.QueryContext(ctx, `SELECT `+taskColumns+` FROM tasks`)
 	if err != nil {
 		return nil, fmt.Errorf("task: list: %w", err)
 	}
@@ -79,7 +94,7 @@ func (r *sqlRepo) List(ctx context.Context) ([]Task, error) {
 }
 
 func (r *sqlRepo) Update(ctx context.Context, t *Task) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE tasks SET
+	_, err := r.q.ExecContext(ctx, `UPDATE tasks SET
 		parent_id=?, title=?, description=?, status=?, priority=?, tags=?, assignee=?,
 		depends_on=?, archived_from=?, source_file=?, source_section=?, updated_at=?
 		WHERE id=?`,
@@ -90,6 +105,25 @@ func (r *sqlRepo) Update(ctx context.Context, t *Task) error {
 		return fmt.Errorf("task: update %s: %w", t.ID, err)
 	}
 	return nil
+}
+
+// Delete 物理删除任务（仅回收站任务，调用方已校验 archived）。
+func (r *sqlRepo) Delete(ctx context.Context, id string) error {
+	if _, err := r.q.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("task: delete %s: %w", id, err)
+	}
+	return nil
+}
+
+// ClearParentsByParentID 将直接子任务级联置空为顶层（归档/物理删除父任务时，TF-007）。
+func (r *sqlRepo) ClearParentsByParentID(ctx context.Context, parentID string, updatedAt time.Time) (int64, error) {
+	res, err := r.q.ExecContext(ctx,
+		`UPDATE tasks SET parent_id = NULL, updated_at = ? WHERE parent_id = ?`,
+		formatTime(updatedAt), parentID)
+	if err != nil {
+		return 0, fmt.Errorf("task: clear parent %s: %w", parentID, err)
+	}
+	return res.RowsAffected()
 }
 
 // rowScanner 兼容 *sql.Row 与 *sql.Rows。

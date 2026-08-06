@@ -12,12 +12,12 @@
 | 阶段 | 任务数 | 已完成 | 进行中 | 待开始 |
 |------|--------|--------|--------|--------|
 | P1 基础设施与数据层 | 4 | 4 | 0 | 0 |
-| P2 任务核心域 | 5 | 2 | 0 | 3 |
+| P2 任务核心域 | 5 | 3 | 0 | 2 |
 | P3 传输层与安全 | 5 | 0 | 0 | 5 |
 | P4 Agent 能力 | 7 | 0 | 0 | 7 |
 | P5 前端应用 | 7 | 0 | 0 | 7 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **6** | **0** | **25** |
+| **合计** | **31** | **7** | **0** | **24** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -107,11 +107,15 @@
 ### TF-007 归档 / 还原 / 物理删除（P0，依赖 TF-005）
 
 - **涉及模块**：`internal/task`
-- **描述**：删除语义落地：归档（`status=archived` + 记录 `archived_from`）；还原（回到 `archived_from`）；物理删除仅限回收站（archived）任务；**归档/物理删除父任务时子任务级联置空 `parent_id`**；物理删除子任务严格禁止；归档被依赖任务时返回"被 N 个任务依赖"提示。
+- **描述**：删除语义落地：归档（`status=archived` + 记录 `archived_from`，**幂等 Q2-B**）；还原（回到 `archived_from`，缺失回退 todo，目标状态已删除可 `FallbackTodo`）；物理删除仅限回收站（archived）任务；**归档/物理删除父任务时子任务级联置空 `parent_id`**（事务原子，`ChildrenCleared` 返回数量）；物理删除子任务严格禁止（Q8-A：仅级联置空，不提供级联删除）；归档被依赖任务时返回"被 N 个任务依赖"提示（`DependentCount`，不阻断）。删除语义细节见 `docs/TASK-SEMANTICS.md` §8。
 - **验收标准**：
-  - [ ] 单测覆盖：归档/还原往返、级联置空、回收站物理删除、删除被依赖任务的提示
-  - [ ] 物理删除非 archived 任务被拒绝
-- **产出文件**：`internal/task/archive.go`、`internal/task/archive_test.go`
+  - [x] 单测覆盖：归档/还原往返、级联置空（含孙任务不受影响）、回收站物理删除、删除被依赖任务的提示
+  - [x] 物理删除非 archived 任务被拒绝（`DELETE_NOT_ALLOWED`）
+  - [x] 幂等归档（Q2-B）、`RestoreOptions.FallbackTodo`（Q5）、事务原子
+- **产出文件**：`internal/task/archive.go`、`internal/task/archive_test.go`、`internal/task/repo.go`（dbtx 事务化 + Delete + ClearParentsByParentID）、`internal/task/errors.go`（追加 DELETE_NOT_ALLOWED）、`internal/task/service.go`（Archive/Restore/Delete 接口）
+- **状态**：已完成（2026-08-06）
+- **总结文件**：`docs/record/TF-007-归档还原物理删除-成功.md`
+- **覆盖率**：`internal/task` 88.8%（错误分支缺口登记至 TF-009 收口）
 
 ### TF-008 依赖关系与无环校验（P1，依赖 TF-005）
 

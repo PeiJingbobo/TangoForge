@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// 业务错误码（docs/TASK-SEMANTICS.md §8）。
+// 业务错误码（docs/TASK-SEMANTICS.md §9）。
 //
 // HTTP 状态码映射在 TF-013 落地；TF-008 追加 DEPENDENCY_NOT_FOUND / CIRCULAR_DEPENDENCY。
 const (
@@ -17,6 +17,7 @@ const (
 	CodeStatusNotFound    = "STATUS_NOT_FOUND"
 	CodeInvalidTransition = "INVALID_TRANSITION"
 	CodeStatusInUse       = "STATUS_IN_USE"
+	CodeDeleteNotAllowed  = "DELETE_NOT_ALLOWED"
 )
 
 // Error 业务错误：携带机器可读 Code 与人类可读 Message。
@@ -46,6 +47,8 @@ var (
 	ErrStatusNotFound    = &Error{Code: CodeStatusNotFound, Message: "状态不在项目状态机中"}
 	ErrInvalidTransition = &Error{Code: CodeInvalidTransition, Message: "非法状态流转"}
 	ErrStatusInUse       = &Error{Code: CodeStatusInUse, Message: "状态被任务占用"}
+	// ErrDeleteNotAllowed 物理删除仅限回收站（archived）任务。
+	ErrDeleteNotAllowed = &Error{Code: CodeDeleteNotAllowed, Message: "物理删除仅限回收站（archived）中的任务"}
 )
 
 // NewInvalid 构造携带具体原因的 TASK_INVALID 错误。
