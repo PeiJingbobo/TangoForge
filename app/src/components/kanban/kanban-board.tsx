@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -50,9 +50,27 @@ export function KanbanBoard({
   )
 
   const activeTask = activeId ? tasks.find((t) => t.id === activeId) : null
-  const effective = getEffectiveStatus ?? ((t: Task) => t.status)
+  // 引用稳定（useMemo）：effective 参与 byStatusMap 的 useMemo 依赖，不能每帧新建
+  const effective = useMemo(
+    () => getEffectiveStatus ?? ((t: Task) => t.status),
+    [getEffectiveStatus],
+  )
 
-  const byStatus = (key: string): Task[] => tasks.filter((t) => effective(t) === key)
+  // 按状态分组结果 memo 化（引用稳定）：拖拽中 DndContext 高频触发消费组件重渲染，
+  // 若每次 filter 新建数组 → 列 items 重算 → 虚拟滚动测量抖动 ↔ dnd-kit ResizeObserver 测量
+  // 互相触发 setState → Maximum update depth exceeded 白屏。稳定引用可打破该反馈环。
+  const byStatusMap = useMemo(() => {
+    const map = new Map<string, Task[]>()
+    for (const s of states) map.set(s.Key, [])
+    for (const t of tasks) {
+      const key = effective(t)
+      const bucket = map.get(key)
+      if (bucket) bucket.push(t)
+    }
+    return map
+  }, [tasks, states, effective])
+
+  const byStatus = (key: string): Task[] => byStatusMap.get(key) ?? []
 
   const handleDragStart = (e: DragStartEvent) => {
     const id = String(e.active.id)
@@ -70,6 +88,8 @@ export function KanbanBoard({
   const handleDragOver = (e: DragOverEvent) => {
     if (!dragState || !e.over) return
     const overId = String(e.over.id)
+    // over 为 active 自身（拖起未移动/回到原位）：不更新占位，避免原位置下方出现占位符
+    if (overId === dragState.activeId) return
     const overTask = tasks.find((t) => t.id === overId)
     const container = overTask ? effective(overTask) : overId
     setDragState({
