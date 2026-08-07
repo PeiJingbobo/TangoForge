@@ -274,6 +274,11 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/state-machine", s.perm("state_machine.read", s.handleStateMachineGet))
 			r.Put("/state-machine", s.perm("state_machine.write", s.handleStateMachinePut))
 
+			// TF-032 项目配置（设置页数据源）：GET 读整份（state_machine.read）；
+			// PUT 全量覆盖 state_machine+export，仅 UI（handler 内二次校验 actor==ui）。
+			r.Get("/project-config", s.perm("state_machine.read", s.handleProjectConfigGet))
+			r.Put("/project-config", s.handleProjectConfigPut)
+
 			r.Get("/permissions", s.perm("permission.read", s.handlePermissionGet))
 			// PUT /api/permissions 仅 UI（回环 + X-UI-Token 由识别层保证），handler 内二次校验 actor==ui。
 			r.Put("/permissions", s.handlePermissionPut)

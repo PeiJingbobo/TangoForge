@@ -36,6 +36,16 @@ export interface StateMachineDTO {
   Transitions: StateMachineTransition[]
 }
 
+/* ---------- project-config（GET/PUT /api/project-config，TF-032，⚠️ PascalCase） ---------- */
+export interface ExportConfigDTO {
+  TemplatePath: string
+}
+/** 项目 config.yaml 全量视图（state_machine + export；PUT 为全量覆盖，仅 UI） */
+export interface ProjectConfigDTO {
+  StateMachine: StateMachineDTO
+  Export: ExportConfigDTO
+}
+
 /* ---------- graph（GET /api/graph） ---------- */
 export interface GraphEdge {
   from: string

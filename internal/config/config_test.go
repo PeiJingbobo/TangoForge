@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -258,5 +259,111 @@ func TestConfigPaths(t *testing.T) {
 	}
 	if got := ProjectConfigPath(`D:\work`); got != filepath.Join(`D:\work`, ".taskboard", "config.yaml") {
 		t.Errorf("ProjectConfigPath = %s", got)
+	}
+}
+
+// ---------- UpdateProjectFile（部分更新，保留未知节，TF-032） ----------
+
+func TestUpdateProjectFile_PreservesUnknownSections(t *testing.T) {
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, ".taskboard"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	content := `
+state_machine:
+  states:
+    - { key: todo, label: 待办, color: "#9aa0a6" }
+export:
+  template_path: "custom.tmpl"
+future_feature:
+  enabled: true
+  note: 未知扩展节，必须原样保留
+`
+	if err := os.WriteFile(ProjectConfigPath(workdir), []byte(content), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	err := UpdateProjectFile(workdir, func(cfg *ProjectConfig) {
+		cfg.StateMachine.States = []State{
+			{Key: "backlog", Label: "待排期", Color: "#666"},
+			{Key: "done", Label: "完成", Color: "#0a0"},
+		}
+		cfg.Export.TemplatePath = "new.tmpl"
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	// 已知节已更新。
+	cfg, err := LoadProject(workdir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(cfg.StateMachine.States) != 2 || cfg.StateMachine.States[0].Key != "backlog" {
+		t.Errorf("states = %+v", cfg.StateMachine.States)
+	}
+	if cfg.Export.TemplatePath != "new.tmpl" {
+		t.Errorf("template_path = %q", cfg.Export.TemplatePath)
+	}
+	// 未知节原样保留。
+	data, err := os.ReadFile(ProjectConfigPath(workdir))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	raw := string(data)
+	if !strings.Contains(raw, "future_feature:") || !strings.Contains(raw, "未知扩展节，必须原样保留") {
+		t.Errorf("unknown section lost:\n%s", raw)
+	}
+}
+
+func TestUpdateProjectFile_MissingFileCreatesWithDefaults(t *testing.T) {
+	workdir := t.TempDir()
+	err := UpdateProjectFile(workdir, func(cfg *ProjectConfig) {
+		cfg.Export.TemplatePath = "my.tmpl"
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	cfg, err := LoadProject(workdir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(cfg.StateMachine.States) != 3 {
+		t.Errorf("states = %d, want default 3", len(cfg.StateMachine.States))
+	}
+	if cfg.Export.TemplatePath != "my.tmpl" {
+		t.Errorf("template_path = %q", cfg.Export.TemplatePath)
+	}
+}
+
+func TestUpdateProjectFile_EmptyStatesFallsBackToDefault(t *testing.T) {
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, ".taskboard"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(ProjectConfigPath(workdir), []byte("state_machine: {}\nexport: {}\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	err := UpdateProjectFile(workdir, func(cfg *ProjectConfig) {})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	cfg, err := LoadProject(workdir)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(cfg.StateMachine.States) != 3 {
+		t.Errorf("states should fall back to default 3, got %d", len(cfg.StateMachine.States))
+	}
+}
+
+func TestUpdateProjectFile_InvalidYAMLReturnsError(t *testing.T) {
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, ".taskboard"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(ProjectConfigPath(workdir), []byte("state_machine: [broken"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := UpdateProjectFile(workdir, func(*ProjectConfig) {}); err == nil {
+		t.Error("expected error for invalid yaml")
 	}
 }

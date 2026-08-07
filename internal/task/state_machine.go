@@ -76,8 +76,30 @@ func (s *service) GetStateMachine(ctx context.Context, workdir string) (config.S
 // UpdateStateMachine 编辑状态机（docs/TASK-SEMANTICS.md §5.2）。
 //
 // 校验链：编辑校验（validateStateMachineEdit）→ 占用校验（STATUS_IN_USE）→
-// 持久化 config.yaml（替换 state_machine 节，保留 export 等其它节）→ 写钩子。
+// 持久化 config.yaml（部分更新：替换 state_machine 节，保留 export 等其它节）→ 写钩子。
 func (s *service) UpdateStateMachine(ctx context.Context, workdir string, sm config.StateMachine) (config.StateMachine, error) {
+	// 1+2. 编辑校验 + 占用校验（与 /api/project-config 全量写入共用，TF-032）。
+	norm, err := s.ValidateStateMachineUpdate(ctx, workdir, sm)
+	if err != nil {
+		return config.StateMachine{}, err
+	}
+
+	// 3. 持久化（部分更新，保留其它配置节，Q8-A / TF-032）。
+	if err := config.UpdateProjectFile(workdir, func(cfg *config.ProjectConfig) {
+		cfg.StateMachine = norm
+	}); err != nil {
+		return config.StateMachine{}, fmt.Errorf("task: save state machine: %w", err)
+	}
+	s.logger.Debug("state machine updated", "workdir", workdir)
+	s.emit(ctx, workdir, "state_machine.changed", workdir)
+	return norm, nil
+}
+
+// ValidateStateMachineUpdate 校验状态机编辑（编辑校验 + 占用校验），不做持久化。
+//
+// 供 /api/project-config 全量写入（PUT）等需要「校验但不单独落盘」的场景复用，
+// 避免状态机校验逻辑在两处漂移。返回规范化后的状态机。
+func (s *service) ValidateStateMachineUpdate(ctx context.Context, workdir string, sm config.StateMachine) (config.StateMachine, error) {
 	conn, err := s.projectDB(ctx, workdir)
 	if err != nil {
 		return config.StateMachine{}, err
@@ -109,18 +131,6 @@ func (s *service) UpdateStateMachine(ctx context.Context, workdir string, sm con
 			}
 		}
 	}
-
-	// 3. 持久化（保留其它配置节，Q8-A）。
-	cfg, err := config.LoadProject(workdir)
-	if err != nil {
-		return config.StateMachine{}, fmt.Errorf("task: load project config %s: %w", workdir, err)
-	}
-	cfg.StateMachine = norm
-	if err := config.SaveProject(workdir, cfg); err != nil {
-		return config.StateMachine{}, fmt.Errorf("task: save state machine: %w", err)
-	}
-	s.logger.Debug("state machine updated", "workdir", workdir)
-	s.emit(ctx, workdir, "state_machine.changed", workdir)
 	return norm, nil
 }
 

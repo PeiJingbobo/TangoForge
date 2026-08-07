@@ -15,6 +15,7 @@ import { PermissionsPage } from '@/features/permissions/PermissionsPage'
 import { SkillsPage } from '@/features/skills/SkillsPage'
 import { AuditPage } from '@/features/audit/AuditPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
+import { ProjectSettingsPage } from '@/features/settings/ProjectSettingsPage'
 import { bootstrapDaemon } from '@/lib/bootstrap'
 
 // 服务端状态统一走 TanStack Query（docs/TECHNICAL.md §4.3）：
@@ -32,7 +33,7 @@ const queryClient = new QueryClient({
  * 路由（TF-029 布局重构）：
  * - /                      项目概览（公共一级）
  * - /settings              首选项（LLM/外观/守护进程，公共一级）
- * - /project/:projectId/*  项目二级：kanban/nav/graph/io/permissions/skills/audit/tasks
+ * - /project/:projectId/*  项目二级：kanban/nav/graph/io/permissions/skills/audit/settings/tasks
  * 项目内功能必须先激活项目（左侧列表），URL 即项目路径标识。
  */
 export default function App() {
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="permissions" element={<PermissionsPage />} />
               <Route path="skills" element={<SkillsPage />} />
               <Route path="audit" element={<AuditPage />} />
+              <Route path="settings" element={<ProjectSettingsPage />} />
               <Route path="tasks/:taskId" element={<TaskDetailPage />} />
             </Route>
             <Route path="settings" element={<SettingsPage />} />

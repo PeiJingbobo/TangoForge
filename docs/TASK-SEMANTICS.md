@@ -101,7 +101,8 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 ### 5.2 状态机编辑（GetStateMachine / UpdateStateMachine，TF-006）
 
 - `GetStateMachine(ctx, workdir)`：读取当前定义（缺失回退默认四态）。
-- `UpdateStateMachine(ctx, workdir, sm)`：编辑校验 → 占用校验 → 持久化 `config.yaml`（**替换 state_machine 节，保留 export 等其它配置节**，Q8-A）。
+- `UpdateStateMachine(ctx, workdir, sm)`：编辑校验 → 占用校验 → 持久化 `config.yaml`（**替换 state_machine 节，保留 export 等其它配置节**，Q8-A；持久化经 `config.UpdateProjectFile` 部分更新，未知节保留，TF-032 §20）。
+- 校验与占用逻辑抽为 `ValidateStateMachineUpdate`（不做持久化），供 `/api/project-config` 全量写入复用（TF-032 §20）。
 - **编辑校验规则**（Q5-A）：
   - `states` 至少 1 个；key 必填、去空白、**唯一**（重复 → 参数非法）；
   - key **不得为 `archived`**（系统保留态）；
@@ -473,5 +474,31 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 - 同一守护进程、同一权限表、同一审计；CLI 冒烟与 HTTP 结果一致（M4 验证清单 §B 复现）。
 - `mcp` 子命令为 stdio MCP 服务（§16），不经 HTTP（QA P4-1 特例）。
+
+## 20. 项目配置语义（TF-032，设置页）
+
+> 背景：项目设置页（`/project/:projectId/settings`）可视化编辑项目 `config.yaml`
+> （`{workdir}/.taskboard/config.yaml`，仅 `state_machine` + `export` 两节，未来可扩展）。
+> QA 决策：结构化表单 + YAML 原文兜底；显式保存；后端新增 `GET/PUT /api/project-config`，
+> 写仅 UI；**部分更新保留未知节**。
+
+### 20.1 端点语义
+
+- `GET /api/project-config`：读取完整 `ProjectConfig`（缺失回退默认配置）；权限 **`state_machine.read`**（复用，不新增 action）。
+- `PUT /api/project-config`：**全量覆盖** `state_machine` + `export` 两节；**仅 UI**（回环 + X-UI-Token，识别层保证，handler 内二次校验 `actor==ui`；Agent / 远程 403，与 `PUT /api/permissions`、`PUT /api/config` 同策略）。
+- 请求/响应体为 PascalCase DTO：`{"StateMachine":{States,Transitions},"Export":{TemplatePath}}`（与 state-machine 端点一致，无 json tag 默认字段名）。
+
+### 20.2 校验链与写盘
+
+- 校验链：`state_machine` 复用 task 业务层 **`ValidateStateMachineUpdate`**（编辑校验 + `STATUS_IN_USE` 占用校验，TF-006 §5.2 同规则，与 `PUT /api/state-machine` 共用不漂移）；`export.template_path` 仅做基本校验（空 = 默认模板）。
+- 写盘：`config.UpdateProjectFile(workdir, mutate)`——**部分更新**：读原 YAML → 仅替换 `state_machine` / `export` 两个顶层 key，**未知节（未来扩展字段）原样保留**（与 `SaveProject` 全量替换不同；`UpdateStateMachine` 亦已迁移至部分更新，全局单一写路径）。
+- 审计：`project_config.updated`（result=ok）；WS 事件：`project_config.changed`（与 task 写钩子双通道同构）。
+- 错误：编辑校验失败 → 400 `TASK_INVALID`（§10 映射）；占用 → 422 `STATUS_IN_USE`（Message 携带占用数）；写盘失败 → 500 `CONFIG_SAVE_FAILED`；读取失败 → 500 `CONFIG_LOAD_FAILED`。
+
+### 20.3 前端交互约定（设置页）
+
+- 表单与 YAML 区是同一 draft 的两种视图：表单编辑同步刷新 YAML（未手动编辑时）；**手动编辑 YAML 后保存以 YAML 为准**（`yamlDirty`），可「从表单生成」覆盖。
+- 显式保存（sticky 底部操作栏）：「保存修改」提交，「放弃修改」恢复服务端值；后端校验失败 toast 提示并**保留修改**供重试。
+- YAML 区展示**磁盘格式**（snake_case：`state_machine` / `export` / `template_path`）；解析兼容 PascalCase 键。
 
 *（文档完）*

@@ -15,9 +15,10 @@
 | P2 任务核心域 | 5 | 5 | 0 | 0 |
 | P3 传输层与安全 | 5 | 5 | 0 | 0 |
 | P4 Agent 能力 | 7 | 7 | 0 | 0 |
-| P5 前端应用 | 7 | 0 | 0 | 7 |
+| P5 前端应用 | 7 | 7 | 0 | 0 |
+| P5.5 项目设置页 | 1 | 1 | 0 | 0 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **31** | **21** | **0** | **10** |
+| **合计** | **32** | **29** | **0** | **3** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -367,6 +368,23 @@
   - [x] 权限修改仅 UI 可操作（界面勾选 + PUT 全量覆盖；接口层已双重校验）
 - **产出文件**：`app/src/components/graph/*`、`app/src/features/permissions/*`、`app/src/features/skills/*`、`app/src/features/tasks/GraphPage.tsx`、`app/src/features/settings/SettingsPage.tsx`（实装）
 - **总结文件**：`docs/record/TF-028-全景地图与权限Skill-成功.md`
+
+---
+
+## P5.5 项目设置页（M5.5：config.yaml 可视化编辑）
+
+### TF-032 项目设置页（P1，依赖 TF-006、TF-013、TF-023）✅ 已完成
+
+- **涉及模块**：`internal/config`、`internal/api`、`internal/task`、`app/src/features/settings`、`app/src/components/project`
+- **描述**：项目设置页 `/project/:projectId/settings`（tab「设置」入口）可视化编辑项目 `config.yaml`：
+  - 后端：`config.UpdateProjectFile` 部分更新（**保留未知节**，与 `SaveProject` 全量替换区分）；`GET/PUT /api/project-config`（GET 权限 `state_machine.read`，**PUT 仅 UI**）；校验复用 `task.ValidateStateMachineUpdate`（编辑校验 + `STATUS_IN_USE`，从 `UpdateStateMachine` 抽取，持久化统一迁移部分更新）；审计 `project_config.updated` + WS `project_config.changed`。
+  - 前端：状态机编辑器（states 增删改 + 颜色取色器 + transitions from/to 编辑 + 恢复默认）+ 导出模板路径（可编辑，留空默认）+ 高级区 YAML 原文（与表单同 draft 双视图，手动编辑保存以 YAML 为准，兼容磁盘 snake_case / DTO PascalCase 键）；显式保存（sticky 底部操作栏：保存/放弃），校验失败 toast 并保留修改。
+- **QA 决策**：结构化表单 + YAML 兜底；显式保存；导出模板展示 + 可编辑；后端新增端点写仅 UI（见 `docs/TASK-SEMANTICS.md` §20）。
+- **验收标准**：
+  - [x] Go：config/task/api 单测全绿（未知节保留、非 UI PUT 403、非法流转 400、占用 422 STATUS_IN_USE、审计/WS 事件）
+  - [x] 前端：ProjectSettingsPage 8 例（回显/表单提交/导出提交/YAML 提交/YAML 非法/占用失败保留/删除状态/放弃修改）；全量 140 用例 + typecheck + lint 全绿
+- **产出文件**：`internal/config/project.go`（UpdateProjectFile）、`internal/api/handlers_project_config.go`、`internal/api/handlers_project_config_test.go`、`internal/task/state_machine.go`（抽取校验 + 部分更新）、`app/src/hooks/useProjectConfig.ts`、`app/src/features/settings/ProjectSettingsPage.tsx`(+test)、`app/src/components/project/project-panel.tsx`（tab）、`app/src/App.tsx`（路由）、`app/src/stores/project.ts`（sections）
+- **总结文件**：`docs/record/TF-032-项目设置页-成功.md`
 
 ---
 

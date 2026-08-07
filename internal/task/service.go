@@ -38,6 +38,9 @@ type Service interface {
 	GetStateMachine(ctx context.Context, workdir string) (config.StateMachine, error)
 	// UpdateStateMachine 编辑状态机（编辑校验 + STATUS_IN_USE 占用校验 + 持久化，§5.2）。
 	UpdateStateMachine(ctx context.Context, workdir string, sm config.StateMachine) (config.StateMachine, error)
+	// ValidateStateMachineUpdate 校验状态机编辑（编辑校验 + 占用校验，不做持久化），
+	// 供 /api/project-config 全量写入复用（TF-032）。
+	ValidateStateMachineUpdate(ctx context.Context, workdir string, sm config.StateMachine) (config.StateMachine, error)
 	// Archive 归档任务（删除语义 §8.1：status→archived + archived_from + 级联置空原子；幂等 Q2-B）。
 	Archive(ctx context.Context, workdir, id string) (ArchiveResult, error)
 	// Restore 还原归档任务（§8.2：恢复到 archived_from；FallbackTodo 处理状态已删除 Q5）。

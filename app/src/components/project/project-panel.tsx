@@ -1,12 +1,21 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useParams } from 'react-router'
-import { LayoutGrid, GitBranch, Map, Upload, ShieldCheck, BookOpen, ScrollText } from 'lucide-react'
+import {
+  LayoutGrid,
+  GitBranch,
+  Map,
+  Upload,
+  ShieldCheck,
+  BookOpen,
+  ScrollText,
+  Settings,
+} from 'lucide-react'
 import { isProjectSection, useProjectStore } from '@/stores/project'
 import { cn } from '@/lib/utils'
 
 /**
  * 项目面板（TF-029 布局重构）：
- * 以项目为单位的功能（看板/导航/全景图/导入导出/权限/Skills/审计/任务详情）
+ * 以项目为单位的功能（看板/导航/全景图/导入导出/权限/Skills/审计/设置/任务详情）
  * 全部封装在本组件内；仅当路由位于 /project/:projectId/* 时渲染（一级菜单下不出现）。
  * URL 中的 projectId 即当前项目（进入时同步全局 store，供 API 层读取）。
  */
@@ -18,6 +27,7 @@ const PROJECT_TABS = [
   { to: 'permissions', label: '权限', icon: ShieldCheck },
   { to: 'skills', label: 'Skills', icon: BookOpen },
   { to: 'audit', label: '审计', icon: ScrollText },
+  { to: 'settings', label: '设置', icon: Settings },
 ]
 
 export function ProjectPanel() {

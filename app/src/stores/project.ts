@@ -10,6 +10,7 @@ export const PROJECT_SECTIONS = [
   'permissions',
   'skills',
   'audit',
+  'settings',
 ] as const
 
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number]
