@@ -136,6 +136,7 @@ export const ACTION_KEYS = [
   'export.run',
   'graph.read',
   'skill.read',
+  'skill.install',
   'state_machine.read',
   'state_machine.write',
   'audit.read',
@@ -144,14 +145,44 @@ export const ACTION_KEYS = [
 export type ActionKey = (typeof ACTION_KEYS)[number]
 export type PermissionMap = Record<ActionKey, boolean>
 
-/* ---------- skills ---------- */
-export interface Skill {
+/* ---------- skills（TF-033 重设计：技能包模型 + 宿主安装） ---------- */
+
+/** 技能包（SKILL.md，内置 embed + 全局技能库 ~/.taskboard-app/skills/） */
+export interface SkillPackage {
   name: string
   version: string
   description: string
+  hosts: string[]
+  when_to_use: string
   instructions: string
   content: string
+  source: 'builtin' | 'user'
   updated_at: string
+}
+
+/** 宿主安装结果（单包） */
+export interface SkillInstallResult {
+  name: string
+  host: string
+  action: 'install' | 'update' | 'uninstall'
+  version: string
+  ok: boolean
+  error?: string
+}
+
+/** 某宿主下单个技能包安装状态 */
+export interface InstalledSkill {
+  name: string
+  version: string
+  state: 'missing' | 'current' | 'stale'
+}
+
+/** 宿主安装状态 */
+export interface HostStatus {
+  key: string
+  label: string
+  scope: 'project' | 'user'
+  installed: InstalledSkill[]
 }
 
 /* ---------- audit ---------- */

@@ -72,6 +72,8 @@ var HTTPEndpoints = []Endpoint{
 	{"POST", "/api/skills/install", "skill.install", "安装技能包到宿主位置"},
 	{"POST", "/api/skills/uninstall", "skill.install", "卸载技能包"},
 	{"PUT", "/api/skills/packages/{name}", "ui-only", "写入自定义技能包（全局库）"},
+	{"GET", "/api/skill-template", "skill.read", "全局默认 Skill 模板"},
+	{"PUT", "/api/skill-template", "ui-only", "写入自定义 Skill 模板（仅 UI）"},
 }
 
 // MCPTools 工具表（与 internal/mcp registerTools 同步，改动必须更新）。

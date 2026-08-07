@@ -258,6 +258,14 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/", s.handleConfigPut)
 		})
 
+		// 全局 Skill 模板组（QA-S4）：豁免 X-Project（模板存于全局技能库，与项目无关）；
+		// GET 任意识别来源（模板无敏感信息），PUT 仅 UI（handler 内二次校验）。
+		r.Route("/skill-template", func(r chi.Router) {
+			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
+			r.Get("/", s.handleSkillTemplateGet)
+			r.Put("/", s.handleSkillTemplatePut)
+		})
+
 		// 主业务组：X-Project → 来源识别 → 动作权限。
 		r.Group(func(r chi.Router) {
 			r.Use(s.projectMiddleware)

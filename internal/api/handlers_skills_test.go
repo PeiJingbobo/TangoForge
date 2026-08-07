@@ -268,3 +268,37 @@ func TestSkills_InstallToUserHost(t *testing.T) {
 		t.Fatalf("用户级安装文件缺失: %v", err)
 	}
 }
+
+func TestSkillTemplate_GetPut(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+
+	// GET 默认模板（内置兜底，豁免 X-Project）。
+	rec := uiReq(t, srv, http.MethodGet, "/api/skill-template", "", "")
+	body := mustCode(t, rec, http.StatusOK, "template get")
+	var tmpl struct {
+		Data map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &tmpl); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, body)
+	}
+	if !strings.Contains(tmpl.Data["content"], "name:") {
+		t.Fatalf("默认模板应含 frontmatter: %q", tmpl.Data["content"])
+	}
+
+	// PUT 自定义模板（仅 UI）→ 再次 GET 返回新内容。
+	content := "---\nname: {{name}}\ndescription: {{description}}\nversion: \"0.1.0\"\n---\n# 模板正文\n"
+	payload, _ := json.Marshal(map[string]string{"content": content})
+	rec = uiReq(t, srv, http.MethodPut, "/api/skill-template", "", string(payload))
+	mustCode(t, rec, http.StatusOK, "template put")
+	rec = uiReq(t, srv, http.MethodGet, "/api/skill-template", "", "")
+	body = mustCode(t, rec, http.StatusOK, "template get after put")
+	_ = json.Unmarshal([]byte(body), &tmpl)
+	if !strings.Contains(tmpl.Data["content"], "{{name}}") {
+		t.Fatalf("PUT 后模板未更新: %q", tmpl.Data["content"])
+	}
+
+	// Agent PUT → 403。
+	rec = agentReq(t, srv, http.MethodPut, "/api/skill-template", "", string(payload))
+	mustCode(t, rec, http.StatusForbidden, "agent template put forbidden")
+}

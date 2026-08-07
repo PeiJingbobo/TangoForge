@@ -9,12 +9,14 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useConfig, useUpdateConfig, isConfigInvalid } from '@/hooks/useConfig'
 import { useThemeMode, type ThemeMode } from '@/hooks/useThemeMode'
+import { useSkillTemplate, useSkillTemplateWrite } from '@/hooks/useSkills'
 import { cn } from '@/lib/utils'
 
 /**
  * 全局首选项（TF-029）：LLM / 外观 / 守护进程 分组。
  * 实时保存（无确定按钮）：字段变更即保存；后端校验（config.Validate）失败 → toast 提示并回滚输入。
  * LLM / 守护进程为全局配置（GET/PUT /api/config，仅 UI）；外观偏好本地持久化（localStorage）。
+ * TF-033：新增「Skill 模板」tab（默认技能包模板编辑，QA-S4）。
  */
 export function SettingsPage() {
   const { isError, error, refetch, isFetching } = useConfig()
@@ -51,6 +53,7 @@ export function SettingsPage() {
           <TabsTrigger value="llm">LLM</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
           <TabsTrigger value="daemon">守护进程</TabsTrigger>
+          <TabsTrigger value="skill">Skill 模板</TabsTrigger>
         </TabsList>
         <TabsContent value="llm" className="pt-6">
           <LLMSection />
@@ -61,7 +64,66 @@ export function SettingsPage() {
         <TabsContent value="daemon" className="pt-6">
           <DaemonSection />
         </TabsContent>
+        <TabsContent value="skill" className="pt-6">
+          <SkillTemplateSection />
+        </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+/* ---------- Skill 模板（TF-033 QA-S4） ---------- */
+
+function SkillTemplateSection() {
+  const { data, isLoading } = useSkillTemplate()
+  const write = useSkillTemplateWrite()
+  const [draft, setDraft] = useState<string | null>(null)
+  const content = draft ?? data?.content ?? ''
+
+  if (isLoading) return <Skeleton className="h-56 w-full" />
+  if (!data) return <p className="text-sm text-muted-foreground">Skill 模板加载失败。</p>
+
+  const dirty = draft !== null && draft !== data.content
+
+  const save = () => {
+    if (draft === null) return
+    write.mutate(draft, {
+      onSuccess: () => {
+        toast.success('Skill 模板已保存（~/.taskboard-app/skills/_template/SKILL.md）')
+        setDraft(null)
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : '保存失败'),
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label>默认 Skill 模板</Label>
+        <p className="mt-1 text-caption text-muted-foreground">
+          新建/内置技能包的骨架（SKILL.md，frontmatter 含
+          name/description/version/hosts/when_to_use）。 保存到全局技能库{' '}
+          <code className="font-mono text-[11px]">~/.taskboard-app/skills/_template/SKILL.md</code>
+          。
+        </p>
+      </div>
+      <textarea
+        value={content}
+        onChange={(e) => setDraft(e.target.value)}
+        className="h-72 w-full resize-y rounded-lg border border-divider bg-background p-3 font-mono text-xs leading-relaxed"
+        aria-label="Skill 模板内容"
+      />
+      <div className="flex items-center gap-2">
+        <Button onClick={save} disabled={!dirty || write.isPending}>
+          {write.isPending && <Loader2 className="size-4 animate-spin" />}
+          保存模板
+        </Button>
+        {dirty && (
+          <Button variant="outline" onClick={() => setDraft(null)}>
+            放弃修改
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

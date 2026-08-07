@@ -178,6 +178,21 @@ func (s *Service) DefaultTemplate(ctx context.Context) (string, error) {
 	return string(data), nil
 }
 
+// WriteTemplate 将自定义默认模板写入 {home}/.taskboard-app/skills/_template/SKILL.md。
+// 模板允许占位符（name/description 等），不做 frontmatter 强校验（区别于普通包）。
+func (s *Service) WriteTemplate(ctx context.Context, content string) error {
+	dir := filepath.Join(s.GlobalSkillsDir(), TemplateDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("skill: mkdir template: %w", err)
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("skill: write template %s: %w", path, err)
+	}
+	s.logger.Info("skill template updated", "path", path)
+	return nil
+}
+
 // --- 内部：内置包 ---
 
 func (s *Service) listBuiltin() ([]Package, error) {

@@ -10,7 +10,7 @@ import { useProjectStore } from '@/stores/project'
 import { server } from '@/test/server'
 import { DAEMON_BASE_URL } from '@/api/client'
 import { toast } from 'sonner'
-import type { PermissionMap } from '@/types/models'
+import type { PermissionMap, SkillPackage, HostStatus } from '@/types/models'
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -30,6 +30,7 @@ const ACTIONS: PermissionMap = {
   'export.run': false,
   'graph.read': false,
   'skill.read': false,
+  'skill.install': false,
   'state_machine.read': false,
   'state_machine.write': false,
   'audit.read': false,
@@ -46,10 +47,10 @@ describe('PermissionsPanel', () => {
     )
   })
 
-  it('渲染 16 项权限勾选', async () => {
+  it('渲染 17 项权限勾选', async () => {
     render(<PermissionsPanel />, { wrapper })
     await waitFor(() => expect(screen.getByLabelText('权限 task.read')).toBeInTheDocument())
-    expect(screen.getAllByRole('checkbox')).toHaveLength(16)
+    expect(screen.getAllByRole('checkbox')).toHaveLength(17)
   })
 
   it('勾选变更 → 保存（PUT 全量覆盖）', async () => {
@@ -73,38 +74,142 @@ describe('PermissionsPanel', () => {
 })
 
 describe('SkillsPanel', () => {
-  const SKILL = {
-    name: 'tangoforge-usage',
+  const PKG: SkillPackage = {
+    name: 'taskboard-basic',
     version: '1.0.0',
     description: 'TangoForge 使用指南',
-    instructions: '# tangoforge-usage\n\n第一步：先调用 skill_info',
+    hosts: ['AGENTS.md', 'CLAUDE.md', '.cursor/rules', 'copilot', 'user-claude', 'user-codebuddy'],
+    when_to_use: '需要管理任务时',
+    instructions: '# taskboard-basic\n\n使用 task_read',
     content: 'full content',
-    updated_at: '2026-08-06T10:00:00+08:00',
+    source: 'builtin',
+    updated_at: '',
   }
+
+  const STATUS: HostStatus[] = [
+    {
+      key: 'AGENTS.md',
+      label: 'AGENTS.md（CodeBuddy/通用）',
+      scope: 'project',
+      installed: [{ name: 'taskboard-basic', version: '1.0.0', state: 'current' }],
+    },
+    {
+      key: 'CLAUDE.md',
+      label: 'CLAUDE.md（Claude Code）',
+      scope: 'project',
+      installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
+    },
+    {
+      key: '.cursor/rules',
+      label: '.cursor/rules（Cursor）',
+      scope: 'project',
+      installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
+    },
+    {
+      key: 'copilot',
+      label: '.github/copilot-instructions.md（Copilot）',
+      scope: 'project',
+      installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
+    },
+    {
+      key: 'user-claude',
+      label: '~/.claude/skills（Claude 全局）',
+      scope: 'user',
+      installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
+    },
+    {
+      key: 'user-codebuddy',
+      label: '~/.workbuddy/skills（WorkBuddy 全局）',
+      scope: 'user',
+      installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
+    },
+  ]
 
   beforeEach(() => {
     useProjectStore.setState({ project: '/data/projects/tf' })
     server.use(
-      http.get(`${DAEMON_BASE_URL}/api/skills`, () =>
-        HttpResponse.json({ code: 0, data: [SKILL] }),
+      http.get(`${DAEMON_BASE_URL}/api/skills/packages`, () =>
+        HttpResponse.json({ code: 0, data: [PKG] }),
       ),
-      http.get(`${DAEMON_BASE_URL}/api/skills/tangoforge-usage`, () =>
-        HttpResponse.json({ code: 0, data: SKILL }),
+      http.get(`${DAEMON_BASE_URL}/api/skills/status`, () =>
+        HttpResponse.json({ code: 0, data: STATUS }),
       ),
     )
   })
 
-  it('渲染 Skill 列表', async () => {
+  it('渲染技能库 + 安装状态矩阵', async () => {
     render(<SkillsPanel />, { wrapper })
-    await waitFor(() => expect(screen.getByText('tangoforge-usage')).toBeInTheDocument())
-    expect(screen.getByText(/v1.0.0/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText('taskboard-basic').length).toBeGreaterThan(0))
+    // 安装向导宿主选项。
+    expect(screen.getByText('AGENTS.md')).toBeInTheDocument()
+    // 状态矩阵 current 徽章。
+    expect(screen.getAllByText('已安装').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('未安装').length).toBeGreaterThan(0)
   })
 
-  it('点击查看详情（instructions 全文）', async () => {
+  it('安装向导：选宿主 + 勾选包 → 批量安装（POST install）', async () => {
     const user = userEvent.setup()
+    let installBody: unknown = null
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/skills/install`, async ({ request }) => {
+        installBody = await request.json()
+        return HttpResponse.json({
+          code: 0,
+          data: [
+            {
+              name: 'taskboard-basic',
+              host: 'AGENTS.md',
+              action: 'install',
+              version: '1.0.0',
+              ok: true,
+            },
+          ],
+        })
+      }),
+    )
     render(<SkillsPanel />, { wrapper })
-    await waitFor(() => expect(screen.getByText('tangoforge-usage')).toBeInTheDocument())
-    await user.click(screen.getByText('tangoforge-usage'))
-    await waitFor(() => expect(screen.getByText(/第一步：先调用 skill_info/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('taskboard-basic').length).toBeGreaterThan(0))
+    // 安装向导区选宿主（首个 AGENTS.md Badge）。
+    await user.click(screen.getAllByRole('button', { name: /AGENTS.md/ })[0])
+    // 安装向导区勾选技能包（首个 taskboard-basic Badge）。
+    await user.click(screen.getAllByRole('button', { name: /taskboard-basic/ })[0])
+    await user.click(screen.getByRole('button', { name: /安装到 AGENTS.md/ }))
+    await waitFor(() =>
+      expect(installBody).toEqual({ host: 'AGENTS.md', packages: ['taskboard-basic'] }),
+    )
+  })
+
+  it('卸载需二次确认（Dialog）', async () => {
+    const user = userEvent.setup()
+    let uninstallCalled = false
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/skills/uninstall`, async () => {
+        uninstallCalled = true
+        return HttpResponse.json({
+          code: 0,
+          data: [{ name: 'taskboard-basic', host: 'AGENTS.md', action: 'uninstall', ok: true }],
+        })
+      }),
+    )
+    render(<SkillsPanel />, { wrapper })
+    await waitFor(() => expect(screen.getAllByText('已安装').length).toBeGreaterThan(0))
+    // AGENTS.md 行有「卸载」按钮（表内有多个卸载，取第一个）。
+    const uninstallBtns = screen.getAllByRole('button', { name: '卸载' })
+    await user.click(uninstallBtns[0])
+    await waitFor(() => expect(screen.getByText('确认卸载技能包')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '确认卸载' }))
+    await waitFor(() => expect(uninstallCalled).toBe(true))
+  })
+
+  it('AGENTS.md 提示词复制（中英切换）', async () => {
+    const user = userEvent.setup()
+    const clipboard = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    render(<SkillsPanel />, { wrapper })
+    await waitFor(() => expect(screen.getByText(/放入 AGENTS.md 的推荐提示词/)).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'English' }))
+    await user.click(screen.getByRole('button', { name: '复制' }))
+    await waitFor(() => expect(clipboard).toBeCalled())
+    expect(clipboard.mock.calls[0][0]).toContain('TangoForge is the task management middleware')
+    clipboard.mockRestore()
   })
 })
