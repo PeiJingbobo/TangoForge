@@ -309,6 +309,11 @@
 /* ─────────────────────────────────────────────────────────────
  * 过渡动画（TF 抽屉/弹窗；无 tw-animate 依赖，手写 keyframes）：
  * Radix Dialog 在 data-state=open/closed 期间保持挂载，等待动画结束再卸载。
+ *
+ * 注意（TF-035 修复）：弹窗居中由 Tailwind v4 独立 `translate` 属性承担
+ * （-translate-x-1/2 -translate-y-1/2），keyframes **不得再包含 translate**，
+ * 否则与 translate 属性复合造成动画期间偏移翻倍、结束后跳变（闪烁卡顿）。
+ * 此处仅动画 opacity + scale，translate 属性常驻保证位置稳定。
  * ───────────────────────────────────────────────────────────── */
 @keyframes tf-fade-in {
   from {
@@ -345,21 +350,21 @@
 @keyframes tf-dialog-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -48%) scale(0.96);
+    transform: scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: scale(1);
   }
 }
 @keyframes tf-dialog-out {
   from {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: scale(1);
   }
   to {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.96);
+    transform: scale(0.96);
   }
 }
 
