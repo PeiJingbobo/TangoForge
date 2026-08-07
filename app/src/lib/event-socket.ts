@@ -3,10 +3,11 @@ import type { WSEvent } from '../types/models'
 export type SocketStatus = 'connecting' | 'open' | 'closed'
 
 /**
- * 最小 WebSocket 形态（兼容浏览器 DOM 与 Node undici 两套全局类型）：
+ * 最小 WebSocket 形态（兼容浏览器 DOM 与 Node undici/ws 两套全局类型）：
  * 主进程（tsconfig.node 无 DOM lib）与渲染进程（DOM lib）均可编译。
+ * Node 环境（Electron 主进程）无全局 WebSocket，由 createSocket 注入 ws 实现。
  */
-interface RawSocket {
+export interface RawSocket {
   onopen: (() => void) | null
   onmessage: ((ev: { data: string }) => void) | null
   onclose: (() => void) | null
@@ -23,6 +24,11 @@ export interface EventSocketOptions {
   baseDelayMs?: number
   /** 最大重连间隔 ms，默认 30_000 */
   maxDelayMs?: number
+  /**
+   * Socket 工厂（可选）：默认使用全局 WebSocket（浏览器/测试环境）。
+   * Electron 主进程（Node 20 无全局 WebSocket）必须注入基于 ws 包的实现。
+   */
+  createSocket?: (url: string) => RawSocket
 }
 
 /**
@@ -38,6 +44,7 @@ export class EventSocket {
   private readonly onStatusChange?: (status: SocketStatus) => void
   private readonly baseDelayMs: number
   private readonly maxDelayMs: number
+  private readonly createSocket: (url: string) => RawSocket
 
   private ws: RawSocket | null = null
   private retryCount = 0
@@ -51,6 +58,7 @@ export class EventSocket {
     this.onStatusChange = opts.onStatusChange
     this.baseDelayMs = opts.baseDelayMs ?? 1000
     this.maxDelayMs = opts.maxDelayMs ?? 30_000
+    this.createSocket = opts.createSocket ?? ((u) => new WebSocket(u) as unknown as RawSocket)
   }
 
   connect(): void {
@@ -77,7 +85,7 @@ export class EventSocket {
   private open(): void {
     if (this.terminated) return
     this.setStatus('connecting')
-    const ws = new WebSocket(this.url) as unknown as RawSocket
+    const ws = this.createSocket(this.url)
     this.ws = ws
 
     ws.onopen = () => {

@@ -3,7 +3,8 @@ import { spawn, type ChildProcess } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { EventSocket } from '../src/lib/event-socket'
+import WS from 'ws'
+import { EventSocket, type RawSocket } from '../src/lib/event-socket'
 import type { WSEvent } from '../src/types/models'
 
 /**
@@ -166,6 +167,9 @@ function setWsProject(project: string | null): void {
   const sock = new EventSocket({
     url: `ws://127.0.0.1:${DAEMON_PORT}/ws/events?project=${encodeURIComponent(project)}`,
     onEvent: broadcast,
+    // Electron 主进程（Node 20）无全局 WebSocket，注入 ws 包实现。
+    // ws 的 message 事件 data 为 Buffer，RawSocket 声明 string——运行时 Buffer 可隐式 toString。
+    createSocket: (url) => new WS(url) as unknown as RawSocket,
   })
   eventSocket = sock
   sock.connect()
