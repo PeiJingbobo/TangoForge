@@ -464,11 +464,11 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - `template_mode: default`（默认）：项目配置 `export.template_path` 非空 → 自定义模板；空 → 内置默认模板（`internal/exporter/templates/default.tmpl`）。
 - `template_mode: llm`：必须已通过 template/generate 生成模板（config.template_path 指向），否则 `TEMPLATE_INVALID`。
 - 模板引擎 Go `text/template`（禁止其他模板语言）；函数（TF-038 扩充，LLM 生成模板可用）：`join` / `header level title`（输出 2+level 个 `#`）/ `dateFormat time [layout]`（RFC3339 字符串或时间对象 → 默认 `2006-01-02`，可自定义布局）/ `now` / `upper` / `lower` / `trim` / `title` / `hasPrefix` / `hasSuffix`。
-- **默认模板往返格式**（可被 TF-018 parser 重新导入）：Front Matter（title/generated_at）+ `##`/`###` 标题层级 + `- 状态: <key>` 元数据行 + 优先级/标签/负责人行。
+- **默认模板往返格式**（可被 TF-018 parser 重新导入）：Front Matter（title/generated_at）+ `##`/`###` 标题层级 + `- 状态: <key>` 元数据行 + 优先级/标签/负责人行 + `依赖: <标题列表>`（TF-039：依赖导出为**标题**而非 UUID，parser 按标题解析往返一致）。
 
 ### 18.2 导出目标与结果
 
-- `target: overwrite`：path 必填（覆盖指定文件）；`target: copy`：path 缺省 `{workdir}/.taskboard/export.md`。
+- `target: overwrite`：path 必填（覆盖指定文件）；`target: copy`：path 缺省 `{workdir}/.taskboard/export-<时间戳>.md`（TF-039：每次导出独立文件，避免覆盖上一次结果）。
 - 服务端写盘 + 响应返回 `{content, path}`（content 供预览）。
 - 数据：默认排除 archived 的全量任务树（深度优先展平，Level 从 0 起）。
 - 成功 → 事件 `export.complete`（target=path）+ 审计一条。

@@ -95,9 +95,9 @@ func TestRender_DefaultTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	// 默认 copy 路径 = {workdir}/.taskboard/export.md。
-	if res.Path != filepath.Join(wd, ".taskboard", "export.md") {
-		t.Fatalf("path: %s", res.Path)
+	// 默认 copy 路径 = {workdir}/.taskboard/export-<时间戳>.md（TF-039 每次导出独立文件）。
+	if !strings.HasPrefix(filepath.Base(res.Path), "export-") || !strings.HasSuffix(res.Path, ".md") {
+		t.Fatalf("path 应为 export-<时间戳>.md: %s", res.Path)
 	}
 	if _, err := os.Stat(res.Path); err != nil {
 		t.Fatalf("导出文件不存在: %v", err)
@@ -112,6 +112,30 @@ func TestRender_DefaultTemplate(t *testing.T) {
 		if !strings.Contains(res.Content, want) {
 			t.Fatalf("导出内容缺少 %q:\n%s", want, res.Content)
 		}
+	}
+}
+
+// TF-039：依赖导出为标题（可读）而非 UUID；copy 模式每次导出独立文件不覆盖。
+func TestRender_DepTitlesAndUniquePath(t *testing.T) {
+	wd, ts := newEnv(t)
+	seedTasks(t, ts, wd)
+	svc := newService(t, "", ts)
+
+	// 父任务依赖子任务：导出内容应出现子任务标题，而非 UUID。
+	res, err := svc.Render(context.Background(), wd, RenderOptions{Target: "copy"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(res.Content, "依赖: 子任务") {
+		t.Fatalf("依赖应导出标题「子任务」:\n%s", res.Content)
+	}
+	// 再次导出 → 不同路径（时间戳秒级，两次调用文件不覆盖）。
+	res2, err := svc.Render(context.Background(), wd, RenderOptions{Target: "copy"})
+	if err != nil {
+		t.Fatalf("Render2: %v", err)
+	}
+	if res.Path == res2.Path {
+		t.Fatalf("两次导出路径相同（文件被覆盖）: %s", res.Path)
 	}
 }
 

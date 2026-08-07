@@ -46,9 +46,20 @@ func TestExport_CopyDefault(t *testing.T) {
 	if !strings.Contains(out, `"code":0`) || !strings.Contains(out, "导出任务") {
 		t.Fatalf("导出响应: %s", out)
 	}
-	// 缺省 copy 路径已写盘。
-	if _, err := os.Stat(filepath.Join(dir, ".taskboard", "export.md")); err != nil {
-		t.Fatalf("export.md 未生成: %v", err)
+	// 缺省 copy 路径已写盘（export-<时间戳>.md，TF-039）。
+	entries, err := os.ReadDir(filepath.Join(dir, ".taskboard"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "export-") && strings.HasSuffix(e.Name(), ".md") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("export-<时间戳>.md 未生成")
 	}
 }
 

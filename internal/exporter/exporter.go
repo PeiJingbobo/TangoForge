@@ -96,6 +96,9 @@ type RenderResult struct {
 type FlatTask struct {
 	task.Task
 	Level int `json:"-"`
+	// DepTitles 依赖任务的标题（与 DependsOn 一一对应；TF-039 可读性：
+	// 导出显示标题而非 UUID，parser 导入按标题解析，往返一致）。
+	DepTitles []string `json:"dep_titles,omitempty"`
 }
 
 // Render 从任务库渲染 Markdown 并写盘（QA P4-1 §18.2）。
@@ -125,6 +128,8 @@ func (s *Service) Render(ctx context.Context, workdir string, opts RenderOptions
 	}
 	flat := make([]FlatTask, 0)
 	flattenTree(list.Tree, 0, &flat)
+	// TF-039：依赖 ID → 标题映射（parser 导入按标题解析，往返一致且可读）。
+	resolveDepTitles(flat)
 
 	// 2. 模板选择与渲染。
 	tmplText, err := s.loadTemplate(workdir, mode)
@@ -190,7 +195,8 @@ func (s *Service) GenerateTemplate(ctx context.Context, workdir string, example 
 
 模板数据：
 - .Project.Name（项目名）、.GeneratedAt（时间戳 RFC3339）
-- .Tasks：[]FlatTask 展平列表，每项含 Task 全部字段（Title/Description/Status/Priority/Tags/Assignee/DependsOn/CreatedAt/UpdatedAt）与 Level（层级，顶层 0）
+- .Tasks：[]FlatTask 展平列表，每项含 Task 全部字段（Title/Description/Status/Priority/Tags/Assignee/CreatedAt/UpdatedAt）与 Level（层级，顶层 0）
+- 依赖可读性（重要）：.DepTitles 是依赖任务的**标题列表**（与 .DependsOn 一一对应），渲染依赖时请用 .DepTitles（如 {{join .DepTitles ", "}}）而非 UUID 列表
 
 可用函数（只能使用以下函数，不得发明其他函数名）：
 - header level title —— 输出 2+level 个 # 的标题
@@ -288,6 +294,31 @@ func flattenTree(nodes []*task.TaskTreeNode, level int, out *[]FlatTask) {
 	}
 }
 
+// resolveDepTitles 将每个任务的 DependsOn（UUID 列表）映射为标题列表（TF-039）。
+// 依赖任务不在当前导出集合（已归档等）→ 保留原 ID 兜底，不丢失信息。
+func resolveDepTitles(flat []FlatTask) {
+	titleByID := make(map[string]string, len(flat))
+	for _, f := range flat {
+		if f.Title != "" {
+			titleByID[f.ID] = f.Title
+		}
+	}
+	for i := range flat {
+		if len(flat[i].DependsOn) == 0 {
+			continue
+		}
+		titles := make([]string, 0, len(flat[i].DependsOn))
+		for _, id := range flat[i].DependsOn {
+			if t, ok := titleByID[id]; ok {
+				titles = append(titles, t)
+			} else {
+				titles = append(titles, id) // 依赖不在集合内：原样保留 ID
+			}
+		}
+		flat[i].DepTitles = titles
+	}
+}
+
 // resolveTargetPath 解析输出路径（QA P4-1 §18.2）。
 func resolveTargetPath(workdir, target, path string) (string, error) {
 	if target == "overwrite" {
@@ -296,9 +327,18 @@ func resolveTargetPath(workdir, target, path string) (string, error) {
 		}
 		return filepath.Clean(path), nil
 	}
-	// copy：path 缺省 {workdir}/.taskboard/export.md。
+	// copy：path 缺省 {workdir}/.taskboard/export-<时间戳>.md——
+	// 每次导出独立文件；同秒已存在时追加序号（-2、-3…）确保绝不覆盖（TF-039）。
 	if strings.TrimSpace(path) == "" {
-		path = filepath.Join(workdir, ".taskboard", "export.md")
+		stamp := time.Now().Format("20060102-150405")
+		base := filepath.Join(workdir, ".taskboard", "export-"+stamp)
+		path = base + ".md"
+		for i := 2; ; i++ {
+			if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+				break
+			}
+			path = fmt.Sprintf("%s-%d.md", base, i)
+		}
 	}
 	return filepath.Clean(path), nil
 }

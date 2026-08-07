@@ -8,6 +8,6 @@ generated_at: "{{.GeneratedAt}}"
 {{if .Description}}{{.Description}}
 {{end}}- 状态: {{.Status}}
 - 优先级: {{.Priority}}{{if .Tags}} | 标签: {{join .Tags ", "}}{{end}}{{if .Assignee}} | 负责人: {{.Assignee}}{{end}}
-{{if .DependsOn}}依赖: {{join .DependsOn ", "}}
+{{if .DepTitles}}依赖: {{join .DepTitles ", "}}
 {{end}}
 {{end}}
