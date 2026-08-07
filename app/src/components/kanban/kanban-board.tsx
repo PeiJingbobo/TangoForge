@@ -116,9 +116,9 @@ export function KanbanBoard({
         onDragEnd(e)
       }}
     >
-      {/* 看板容器与列同色（bg-muted）：列间间隙不再露出页面背景，形成统一看板面板；
+      {/* 看板容器与列同色（bg-muted）：横向排列不换行，列超出容器宽时横向滚动；
           间距 gap-3.5 与边缘 padding 保持现有节奏 */}
-      <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3.5 rounded-[14px] bg-muted p-2.5">
+      <div className="flex h-full gap-3.5 overflow-x-auto rounded-[14px] bg-muted p-2.5">
         {states.map((col) => (
           <KanbanColumn
             key={col.Key}

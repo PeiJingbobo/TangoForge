@@ -76,7 +76,7 @@ export function KanbanColumn({ col, tasks, placeholderIndex, onOpenTask }: Kanba
     <div
       ref={setNodeRef}
       className={cn(
-        'flex h-full min-h-0 flex-col rounded-[14px] bg-muted p-2.5',
+        'flex h-full min-h-0 min-w-[280px] flex-1 flex-col rounded-[14px] bg-muted p-2.5',
         isOver && 'ring-2 ring-primary-300',
       )}
     >
