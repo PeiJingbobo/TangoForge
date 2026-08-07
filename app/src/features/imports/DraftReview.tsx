@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ArrowLeft, Check, Loader2, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,6 @@ import { useDraftDetail, useUpdateDraftTasks } from '@/hooks/useDraftDetail'
 import { useConfirmDraft, useDiscardDraft } from '@/hooks/useImports'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useProjectId } from '@/hooks/useProject'
-import { useRef } from 'react'
 import type { ParsedTask } from '@/types/models'
 import type { StateMachineState } from '@/types/models'
 import type { Task, TaskTreeNode, UpdateTaskInput } from '@/types/task'
@@ -27,13 +26,15 @@ import type { Task, TaskTreeNode, UpdateTaskInput } from '@/types/task'
 /**
  * 草稿审阅（TF 优化）：虚拟任务体系（草稿任务树）三视图预览 + 任务详情编辑。
  * 树形/时间线/状态分类与任务导航一致；任务点击 → 抽屉编辑（保存经 PUT 落草稿）。
+ * 依赖关系以草稿内临时唯一 id（ParsedTask.id）引用，与任务标题解耦——
+ * LLM 解析/编辑保存均不改标题语义；旧草稿标题引用渲染层规范化为 id。
  * 顶部操作：返回/关闭/丢弃/确认导入。
  */
 
-// 草稿任务 → 树节点（路径作 id："1"/"1.2"）
-function toTreeNode(t: ParsedTask, path: string): TaskTreeNode {
+// 草稿任务 → 树节点（id 用草稿临时唯一编号，TreeNav 折叠/选中以 id 为键；children 由 walkAll 填充）
+function toTreeNode(t: ParsedTask): TaskTreeNode {
   return {
-    id: path,
+    id: t.id,
     project_id: 1,
     parent_id: null,
     title: t.title,
@@ -48,14 +49,14 @@ function toTreeNode(t: ParsedTask, path: string): TaskTreeNode {
     source_section: '',
     created_at: '',
     updated_at: '',
-    children: (t.children ?? []).map((c, i) => toTreeNode(c, `${path}.${i + 1}`)),
+    children: [],
   }
 }
 
-// 草稿任务 → 伪 Task（详情编辑用；depends_on 为标题引用）
-function toTask(t: ParsedTask, path: string): Task {
+// 草稿任务 → 伪 Task（详情编辑用；id 为草稿临时唯一编号，依赖引用同空间可直接匹配）
+function toTask(t: ParsedTask): Task {
   return {
-    id: path,
+    id: t.id,
     project_id: 1,
     parent_id: null,
     title: t.title,
@@ -99,26 +100,42 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
   const discardDraft = useDiscardDraft(pid)
   const { data: sm } = useStateMachine(pid)
   const [tasks, setTasks] = useState<ParsedTask[] | null>(null)
-  const [editPath, setEditPath] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   // 本地任务树（优先编辑态，否则加载明细）
   const states = sm?.States ?? []
 
-  const treeNodes = useMemo(
-    () => (tasks ?? detail?.tasks ?? []).map((t, i) => toTreeNode(t, `${i + 1}`)),
-    [tasks, detail],
-  )
-  const flatTasks = useMemo(() => {
-    const walk = (list: ParsedTask[], prefix: string): Task[] =>
-      list.flatMap((t, i) => {
+  const { treeNodes, flatTasks, pathById, byId } = useMemo(() => {
+    const tree = tasks ?? detail?.tasks ?? []
+    const nodesOut: TaskTreeNode[] = []
+    const flatsOut: Task[] = []
+    const pathOut = new Map<string, string>() // 临时 id → 树路径（replaceAtPath 用）
+    const idOut = new Map<string, ParsedTask>() // 临时 id → 原始任务
+    const walkAll = (list: ParsedTask[], prefix: string, bucket: TaskTreeNode[]) => {
+      list.forEach((t, i) => {
         const path = prefix ? `${prefix}.${i + 1}` : `${i + 1}`
-        return [toTask(t, path), ...walk(t.children ?? [], path)]
+        // 后端 ensureTaskIDs 保证 id 非空；兜底 path 防止旧数据异常
+        const id = t.id || path
+        const withId = { ...t, id }
+        pathOut.set(id, path)
+        idOut.set(id, withId)
+        bucket.push(toTreeNode(withId))
+        flatsOut.push(toTask(withId))
+        walkAll(t.children ?? [], path, bucket[bucket.length - 1].children)
       })
-    return walk(tasks ?? detail?.tasks ?? [], '')
+    }
+    walkAll(tree, '', nodesOut)
+    // 依赖引用规范化：旧草稿标题引用 → 临时 id（id 优先，标题兜底）
+    const idSet = new Set(flatsOut.map((t) => t.id))
+    const byTitle = new Map(flatsOut.map((t) => [t.title, t.id]))
+    for (const t of flatsOut) {
+      t.depends_on = t.depends_on.map((ref) => (idSet.has(ref) ? ref : (byTitle.get(ref) ?? ref)))
+    }
+    return { treeNodes: nodesOut, flatTasks: flatsOut, pathById: pathOut, byId: idOut }
   }, [tasks, detail])
 
-  const editTask = editPath ? flatTasks.find((t) => t.id === editPath) : undefined
+  const editTask = editId ? (byId.has(editId) ? toTask(byId.get(editId)!) : undefined) : undefined
 
   if (isLoading) {
     return (
@@ -133,8 +150,12 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
   }
 
   const persistEdit = (latest: Task) => {
-    // 伪 Task → ParsedTask（回写树）
+    const path = pathById.get(latest.id)
+    const original = byId.get(latest.id)
+    if (!path) return
+    // 伪 Task → ParsedTask（保留临时 id 与子任务树，回写树）
     const next: ParsedTask = {
+      id: original?.id ?? latest.id,
       title: latest.title,
       description: latest.description,
       status: latest.status,
@@ -142,8 +163,9 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
       tags: latest.tags,
       assignee: latest.assignee,
       depends_on: latest.depends_on,
+      children: original?.children,
     }
-    const updated = replaceAtPath(tasks ?? detail?.tasks ?? [], latest.id, next)
+    const updated = replaceAtPath(tasks ?? detail?.tasks ?? [], path, next)
     setTasks(updated)
     setBusy(true)
     updateTasks.mutate(
@@ -235,13 +257,13 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
           <TabsTrigger value="status">状态分类</TabsTrigger>
         </TabsList>
         <TabsContent value="tree" className="pt-4">
-          <TreeNav tree={treeNodes} onSelect={setEditPath} />
+          <TreeNav tree={treeNodes} onSelect={setEditId} />
         </TabsContent>
         <TabsContent value="timeline" className="pt-4">
-          <TimelineView tasks={flatTasks} onOpen={setEditPath} />
+          <TimelineView tasks={flatTasks} onOpen={setEditId} />
         </TabsContent>
         <TabsContent value="status" className="pt-4">
-          <StatusView tasks={flatTasks} states={states} onOpen={setEditPath} />
+          <StatusView tasks={flatTasks} states={states} onOpen={setEditId} />
         </TabsContent>
       </Tabs>
 
@@ -249,7 +271,7 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
       <DraftTaskDrawer
         open={Boolean(editTask)}
         onOpenChange={(o) => {
-          if (!o) setEditPath(null)
+          if (!o) setEditId(null)
         }}
         task={editTask}
         states={states}

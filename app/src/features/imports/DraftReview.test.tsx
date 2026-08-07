@@ -19,6 +19,7 @@ const DETAIL = {
   created_at: '2026-08-07T08:00:00+08:00',
   tasks: [
     {
+      id: 'T1',
       title: '顶层任务 A',
       description: '描述A',
       status: 'todo',
@@ -29,15 +30,17 @@ const DETAIL = {
       children: [],
     },
     {
+      id: 'T2',
       title: '顶层任务 B',
       description: '',
       status: 'doing',
       priority: 4,
       tags: ['前端'],
       assignee: 'PB',
-      depends_on: ['顶层任务 A'],
+      depends_on: ['T1'],
       children: [
         {
+          id: 'T3',
           title: '子任务 C',
           description: '',
           status: 'todo',
@@ -135,6 +138,21 @@ describe('DraftReview（草稿审阅）', () => {
         ]),
       }),
     )
+  })
+
+  it('依赖经临时 id 引用：打开任务抽屉展示被依赖任务标题（与标题解耦）', async () => {
+    const user = userEvent.setup()
+    render(<DraftReview draftId="d1" onExit={() => {}} />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '任务 顶层任务 B' })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: '任务 顶层任务 B' }))
+    // 依赖区展示被依赖任务标题（T1 → 顶层任务 A）
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '编辑标题' })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: '移除依赖 顶层任务 A' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /添加依赖/ })).toBeInTheDocument()
   })
 
   it('确认导入 → toast + onExit', async () => {

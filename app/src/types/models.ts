@@ -74,14 +74,17 @@ export interface ImportConfirmResult {
   archived: number
 }
 
-/** 草稿解析任务（虚拟任务体系：状态机 key / 优先级 0-5 / 依赖标题引用） */
+/** 草稿解析任务（虚拟任务体系：状态机 key / 优先级 0-5 / 依赖经临时 id 引用） */
 export interface ParsedTask {
+  /** 草稿内临时唯一编号（LLM 生成；依赖 depends_on 引用该 id，与标题解耦） */
+  id: string
   title: string
   description: string
   status: string
   priority: number
   tags: string[]
   assignee: string
+  /** 被依赖任务的临时 id（旧草稿可能为标题引用，渲染层会规范化） */
   depends_on: string[]
   children?: ParsedTask[]
 }
