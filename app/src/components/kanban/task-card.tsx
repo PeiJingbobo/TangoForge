@@ -48,13 +48,21 @@ export const TaskTag = memo(function TaskTag({ tag }: { tag: string }) {
 interface TaskCardProps {
   task: Task
   onOpen?: (id: string) => void
+  /**
+   * DragOverlay 浮层模式：正常显示（不隐藏、不加拖拽半透明）。
+   * 列表中的 active 卡片保留 DOM（dnd-kit 测量依赖）但完全隐形（opacity-0）。
+   */
+  overlay?: boolean
 }
 
 /**
  * 看板任务卡片（UI-VISION：唯一允许的卡片形态——可点击/可拖拽/可对比）。
  * 左侧优先级色带 + 标题 + 标签 + 负责人。
+ * 拖拽中：列表内的 active 卡片 opacity-0 隐形但保留 DOM（供 dnd-kit 测量 rect，
+ * 移除会导致 DragOverlay 测量循环 → Maximum update depth exceeded 白屏）；
+ * 视觉由 DragOverlay 的 overlay 副本接管。
  */
-export const TaskCard = memo(function TaskCard({ task, onOpen }: TaskCardProps) {
+export const TaskCard = memo(function TaskCard({ task, onOpen, overlay = false }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
   })
@@ -76,7 +84,9 @@ export const TaskCard = memo(function TaskCard({ task, onOpen }: TaskCardProps) 
       aria-label={`任务 ${task.title}`}
       className={cn(
         'group relative mb-2 cursor-grab rounded-[14px] border border-border bg-card px-3.5 py-3 pl-4 transition-shadow hover:border-primary-300 hover:shadow-[var(--shadow-card)] active:cursor-grabbing',
-        isDragging && 'z-10 opacity-60 shadow-[var(--shadow-card)]',
+        // 列表内被拖卡片：完全隐形（保留占位与测量）；overlay 副本正常显示 + 浮起阴影
+        isDragging && !overlay && 'z-10 opacity-0',
+        overlay && 'shadow-[var(--shadow-card)]',
       )}
     >
       {/* 优先级色带 */}

@@ -30,7 +30,7 @@ interface DragState {
   activeId: string
   /** 目标容器（当前悬停列 key） */
   overContainer: string
-  /** 目标插入 index（不含 active 的列内位置） */
+  /** 目标插入 index（含 active 的列内位置）；-1 = 未移动，不显示占位符 */
   overIndex: number
 }
 
@@ -59,11 +59,11 @@ export function KanbanBoard({
     const task = tasks.find((t) => t.id === id)
     if (!task) return
     setActiveId(id)
-    const container = effective(task)
+    // 初始不显示占位符（over 仍为自身，避免与隐藏的 active 卡片形成双空位）；首次 dragOver 后显示
     setDragState({
       activeId: id,
-      overContainer: container,
-      overIndex: resolveOverIndex(byStatus(container), id, id),
+      overContainer: effective(task),
+      overIndex: -1,
     })
   }
 
@@ -101,15 +101,18 @@ export function KanbanBoard({
           <KanbanColumn
             key={col.Key}
             col={col}
-            tasks={byStatus(col.Key).filter((t) => t.id !== activeId)}
+            // active 卡片保留在列内（dnd-kit 测量依赖），由 TaskCard 隐形；占位符指示目标
+            tasks={byStatus(col.Key)}
             placeholderIndex={
-              dragState?.overContainer === col.Key ? dragState.overIndex : undefined
+              dragState?.overContainer === col.Key && dragState.overIndex >= 0
+                ? dragState.overIndex
+                : undefined
             }
             onOpenTask={onOpenTask}
           />
         ))}
       </div>
-      <DragOverlay>{activeTask ? <TaskCard task={activeTask} /> : null}</DragOverlay>
+      <DragOverlay>{activeTask ? <TaskCard task={activeTask} overlay /> : null}</DragOverlay>
     </DndContext>
   )
 }

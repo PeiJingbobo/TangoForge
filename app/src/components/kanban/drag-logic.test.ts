@@ -59,31 +59,31 @@ describe('resolveDragTarget（拖拽目标解析）', () => {
   })
 })
 
-describe('resolveOverIndex（拖拽目标插入位置）', () => {
+describe('resolveOverIndex（拖拽目标插入位置，含 active 的列内 index）', () => {
   const col = [mk('A', 'todo'), mk('B', 'todo'), mk('C', 'todo'), mk('D', 'todo')]
 
   it('同列向前拖（active C → over B）→ 插 B 前（index 1）', () => {
     expect(resolveOverIndex(col, 'B', 'C')).toBe(1)
   })
 
-  it('同列向后拖（active B → over C）→ 插 C 后（index 2）', () => {
-    expect(resolveOverIndex(col, 'C', 'B')).toBe(2)
+  it('同列向后拖（active B → over C）→ 插 C 后（index 3）', () => {
+    expect(resolveOverIndex(col, 'C', 'B')).toBe(3)
   })
 
-  it('原地（over 自身）→ 原位（index 1）', () => {
-    expect(resolveOverIndex(col, 'B', 'B')).toBe(1)
+  it('原地（over 自身）→ 插自身后（index 2）', () => {
+    expect(resolveOverIndex(col, 'B', 'B')).toBe(2)
   })
 
-  it('同列拖到末尾卡片（active A → over D）→ 插末尾（index 3）', () => {
-    expect(resolveOverIndex(col, 'D', 'A')).toBe(3)
+  it('同列拖到末尾卡片（active A → over D）→ 插末尾（index 4）', () => {
+    expect(resolveOverIndex(col, 'D', 'A')).toBe(4)
   })
 
   it('跨列（active 不在本列 → over X）→ 插 X 前（index 0）', () => {
     expect(resolveOverIndex(col, 'A', 'outside')).toBe(0)
   })
 
-  it('列空白（over 未命中）→ 末尾', () => {
-    expect(resolveOverIndex(col, 'todo-column-id', 'C')).toBe(3)
+  it('列空白（over 未命中）→ 末尾（含 active 的 length）', () => {
+    expect(resolveOverIndex(col, 'todo-column-id', 'C')).toBe(4)
   })
 
   it('空列 + 跨列拖入 → index 0', () => {
