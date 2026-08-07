@@ -34,7 +34,7 @@ function TaskRow({ task, onClick }: { task: Task; onClick: (id: string) => void 
 }
 
 /** 时间线视图：按创建时间倒序（行式，非卡片） */
-function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: string) => void }) {
+export function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: string) => void }) {
   const sorted = useMemo(
     () => [...tasks].sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [tasks],
@@ -52,7 +52,7 @@ function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: string) =
 }
 
 /** 状态分类视图：按状态机分组（背景色差分区） */
-function StatusView({
+export function StatusView({
   tasks,
   states,
   onOpen,

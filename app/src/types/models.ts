@@ -74,6 +74,23 @@ export interface ImportConfirmResult {
   archived: number
 }
 
+/** 草稿解析任务（虚拟任务体系：状态机 key / 优先级 0-5 / 依赖标题引用） */
+export interface ParsedTask {
+  title: string
+  description: string
+  status: string
+  priority: number
+  tags: string[]
+  assignee: string
+  depends_on: string[]
+  children?: ParsedTask[]
+}
+
+/** 草稿明细（审阅界面数据源：完整任务树） */
+export interface DraftDetail extends ImportDraft {
+  tasks: ParsedTask[]
+}
+
 /* ---------- export（TF-019） ---------- */
 export interface RenderOptions {
   template_mode?: 'default' | 'llm'

@@ -84,4 +84,13 @@ describe('DraftsPanel（草稿确认流）', () => {
     await waitFor(() => expect(toastSpy).toBeCalled())
     toastSpy.mockRestore()
   })
+
+  it('提供 onReview 时渲染审阅按钮并回调', async () => {
+    const onReview = vi.fn()
+    const user = userEvent.setup()
+    render(<DraftsPanel onReview={onReview} />, { wrapper })
+    await waitFor(() => expect(screen.getByText('backlog.md')).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /审阅草稿/ }))
+    expect(onReview).toHaveBeenCalledWith('d1')
+  })
 })
