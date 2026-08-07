@@ -111,3 +111,35 @@ func TestExport_TemplateGenerateInvalid(t *testing.T) {
 		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
 	}
 }
+
+// TF-038：GET /api/export/template 返回模板内容（default=内置；llm 未生成 → TEMPLATE_INVALID）。
+func TestExport_TemplateContent(t *testing.T) {
+	srv := exportTestServer(t, "")
+	dir := importProjectViaAPI(t, srv)
+
+	// default：返回内置模板（含 Front Matter 特征）。
+	rec := uiReq(t, srv, http.MethodGet, "/api/export/template?mode=default", dir, "")
+	out := mustCode(t, rec, http.StatusOK, "default template")
+	if !strings.Contains(out, "generated_at") || !strings.Contains(out, "header") {
+		t.Fatalf("default 模板内容: %s", out)
+	}
+
+	// llm 未生成 → TEMPLATE_INVALID。
+	rec = uiReq(t, srv, http.MethodGet, "/api/export/template?mode=llm", dir, "")
+	out = mustCode(t, rec, http.StatusUnprocessableEntity, "llm not generated")
+	if apiCode(t, out) != "TEMPLATE_INVALID" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
+
+	// 生成 LLM 模板后再查 → 返回生成的模板。
+	srv2 := exportTestServer(t, "LLM-TPL: {{header .Level .Title}}")
+	dir2 := importProjectViaAPI(t, srv2)
+	body, _ := json.Marshal(map[string]any{"example": "# 示例\n"})
+	rec = uiReq(t, srv2, http.MethodPost, "/api/export/template/generate", dir2, string(body))
+	mustCode(t, rec, http.StatusOK, "generate")
+	rec = uiReq(t, srv2, http.MethodGet, "/api/export/template?mode=llm", dir2, "")
+	out = mustCode(t, rec, http.StatusOK, "llm template")
+	if !strings.Contains(out, "LLM-TPL") {
+		t.Fatalf("llm 模板内容: %s", out)
+	}
+}

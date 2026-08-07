@@ -265,6 +265,21 @@ func (s *Service) loadTemplate(workdir, mode string) (string, error) {
 	return string(data), nil
 }
 
+// TemplateContent 返回指定模式的模板文本（导出对话框模板预览用；TF-038）。
+// llm 模式未生成 → ErrTemplateInvalid（前端据此自动引导「用 LLM 生成模板」）。
+func (s *Service) TemplateContent(_ context.Context, workdir, mode string) (string, error) {
+	if err := validateWorkdir(workdir); err != nil {
+		return "", err
+	}
+	if mode == "" {
+		mode = "default"
+	}
+	if mode != "default" && mode != "llm" {
+		return "", fmt.Errorf("%w: 未知 template_mode %q", ErrExportFailed, mode)
+	}
+	return s.loadTemplate(workdir, mode)
+}
+
 // flattenTree 深度优先展平任务树（Level 从 0 起）。
 func flattenTree(nodes []*task.TaskTreeNode, level int, out *[]FlatTask) {
 	for _, n := range nodes {

@@ -45,3 +45,19 @@ func (s *Server) handleExportTemplateGenerate(w http.ResponseWriter, r *http.Req
 		"path":     workdir + "/.taskboard/generated-template.tmpl",
 	}})
 }
+
+// handleExportTemplateContent GET /api/export/template?mode=default|llm（export.run，TF-038）：
+// 返回当前模板文本供导出对话框预览。llm 未生成 → TEMPLATE_INVALID（前端引导生成）。
+func (s *Server) handleExportTemplateContent(w http.ResponseWriter, r *http.Request) {
+	workdir := projectFromRequest(r)
+	mode := r.URL.Query().Get("mode")
+	tmpl, err := s.exporterSvc.TemplateContent(r.Context(), workdir, mode)
+	if err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]string{
+		"template": tmpl,
+		"mode":     mode,
+	}})
+}

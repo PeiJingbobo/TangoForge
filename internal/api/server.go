@@ -311,6 +311,8 @@ func (s *Server) Handler() http.Handler {
 			// TF-019 已落地：Markdown 导出与模板（exporter）。
 			r.Post("/export", s.perm("export.run", s.handleExport))
 			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplateGenerate))
+			// TF-038：模板内容预览（导出对话框展示当前模板；llm 未生成 → TEMPLATE_INVALID）。
+			r.Get("/export/template", s.perm("export.run", s.handleExportTemplateContent))
 
 			// TF-033 已重构：Skill 技能包生命周期（获取/编辑/宿主安装/状态）。
 			// 兼容旧端点 /api/skills、/api/skills/{name}（skill.read）语义迁移到包列表/详情。

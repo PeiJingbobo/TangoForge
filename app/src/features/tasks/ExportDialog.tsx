@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Download, Loader2, Sparkles } from 'lucide-react'
+import { Download, FileCode2, Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,13 +14,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { useExportMarkdown, useGenerateTemplate } from '@/hooks/useExports'
+import { useExportMarkdown, useExportTemplate, useGenerateTemplate } from '@/hooks/useExports'
 import type { RenderResult } from '@/types/models'
 
 /**
- * 导出对话框（TF-027）：
+ * 导出对话框（TF-027 / TF-038 模板预览）：
  * 模板模式（default/llm）+ 目标（overwrite/copy）+ 渲染预览 + 执行（已写盘）。
- * LLM 生成模板入口（示例文档 → 生成 .tmpl 并更新项目配置）。
+ * - 切换模式时展示对应模板内容（GET /api/export/template）；
+ * - 尚未生成 LLM 模板 → 自动展开「用 LLM 生成模板」表单（TEMPLATE_INVALID 触发）。
+ * - LLM 生成模板入口（示例文档 → 生成 .tmpl 并更新项目配置）。
  */
 export interface ExportDialogProps {
   open: boolean
@@ -38,6 +40,30 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const [example, setExample] = useState('')
 
   const busy = exportMarkdown.isPending || generateTemplate.isPending
+
+  // 当前模式模板内容（llm 未生成 → query 抛 TEMPLATE_INVALID）。
+  const { data: tmplData, isFetching: tmplLoading, refetch } = useExportTemplate(templateMode)
+  const tmpl = tmplData?.template
+
+  // 关闭对话框时重置状态。
+  useEffect(() => {
+    if (!open) {
+      setResult(null)
+      setShowTemplateGen(false)
+      setExample('')
+      setTemplateMode('default')
+      setTarget('copy')
+      setPath('')
+    }
+  }, [open])
+
+  // 切换模板模式：LLM 未生成（query 失败）→ 自动展开生成表单。
+  useEffect(() => {
+    if (!open) return
+    if (templateMode === 'llm' && tmpl === undefined && !tmplLoading) {
+      setShowTemplateGen(true)
+    }
+  }, [open, templateMode, tmpl, tmplLoading])
 
   const run = () => {
     if (target === 'overwrite' && !path.trim()) {
@@ -70,6 +96,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         toast.success('模板已生成并应用', { description: r.path })
         setShowTemplateGen(false)
         setTemplateMode('llm')
+        void refetch() // 刷新 LLM 模板内容
       },
       onError: (e) => toast.error(e instanceof Error ? e.message : '模板生成失败'),
     })
@@ -77,13 +104,13 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>导出 Markdown</DialogTitle>
           <DialogDescription>按项目导出模板渲染，支持 default / LLM 生成模板。</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           <div className="flex flex-wrap gap-2">
             <Badge
               variant={templateMode === 'default' ? 'default' : 'outline'}
@@ -120,7 +147,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           </div>
 
           {target === 'overwrite' && (
-            <div>
+            <div className="shrink-0">
               <Label htmlFor="export-path">目标路径</Label>
               <Input
                 id="export-path"
@@ -132,9 +159,26 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
             </div>
           )}
 
+          {/* TF-038：当前模板内容展示 */}
+          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-divider bg-muted/60 p-3">
+            <div className="mb-2 flex shrink-0 items-center justify-between">
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                <FileCode2 className="size-4 text-primary-600" />
+                模板内容
+                <span className="text-caption font-normal text-muted-foreground">
+                  {templateMode === 'default' ? '（内置默认模板）' : '（LLM 生成模板）'}
+                </span>
+              </span>
+              {tmplLoading && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+            </div>
+            <pre className="min-h-0 flex-1 overflow-auto rounded-lg bg-card p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+              {tmplLoading ? '加载中…' : tmpl ? tmpl : '—'}
+            </pre>
+          </div>
+
           {result && (
             <>
-              <Separator />
+              <Separator className="shrink-0" />
               <div className="rounded-xl border border-divider bg-muted/60 p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-semibold">预览</span>
@@ -142,7 +186,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
                     {result.path}
                   </span>
                 </div>
-                <pre className="max-h-56 overflow-auto rounded-lg bg-card p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+                <pre className="max-h-40 overflow-auto rounded-lg bg-card p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
                   {result.content}
                 </pre>
               </div>
@@ -150,7 +194,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           )}
 
           {showTemplateGen ? (
-            <div className="space-y-2 rounded-xl border border-primary-100 bg-primary-50/60 p-4">
+            <div className="shrink-0 space-y-2 rounded-xl border border-primary-100 bg-primary-50/60 p-4">
               <Label htmlFor="template-example">示例文档（LLM 将生成贴近此风格的模板）</Label>
               <textarea
                 id="template-example"
@@ -178,7 +222,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="text-primary-600"
+              className="w-fit shrink-0 text-primary-600"
               onClick={() => setShowTemplateGen(true)}
             >
               <Sparkles className="size-3.5" /> 用 LLM 生成模板
@@ -186,7 +230,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
             关闭
           </Button>
