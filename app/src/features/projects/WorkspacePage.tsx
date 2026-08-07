@@ -11,13 +11,12 @@ import type { Project } from '@/types/models'
 
 /**
  * 项目概览（TF-029：公共一级「项目概览」）：
- * 欢迎引导 + 当前激活项目信息 + 导入入口 + 最近项目（点击激活进入看板）。
+ * 欢迎引导 + 导入入口 + 最近项目（点击激活进入看板）。
  * 项目列表主体在左侧全局导航（AppLayout）。
  */
 export function WorkspacePage() {
   const { data: projects } = useProjects()
   const importProject = useImportProject()
-  const project = useProjectStore((s) => s.project)
   const setProject = useProjectStore((s) => s.setProject)
   const navigate = useNavigate()
 
@@ -65,28 +64,14 @@ export function WorkspacePage() {
         </div>
       </div>
 
-      {/* 当前项目 */}
-      {project && (
-        <div className="mt-6 rounded-2xl border border-divider bg-card p-5">
-          <div className="text-label uppercase tracking-wider text-muted-foreground">当前项目</div>
-          <div className="mt-1 truncate font-mono text-sm">{project}</div>
-          <Button
-            className="mt-3"
-            onClick={() => navigate(`/project/${encodeURIComponent(project)}/kanban`)}
-          >
-            打开看板
-          </Button>
-        </div>
-      )}
-
       {/* 导入 */}
       <div className="mt-6">
         <Separator className="mb-5" />
         <h2 className="text-h3 text-foreground">导入工作目录</h2>
         <p className="mt-1 text-body text-muted-foreground">
-          导入一个包含 Markdown 任务文档的目录，TangoForge 会自动初始化
+          选择项目工作目录，进入项目初始化流程
           <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-xs">.taskboard/</code>
-          并解析任务。
+          自动创建并识别项目。
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={() => void pickDirectory()} disabled={busy}>
