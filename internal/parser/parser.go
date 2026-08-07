@@ -54,6 +54,8 @@ type ConfirmResult struct {
 	SourceFile string `json:"source_file"`
 	Created    int    `json:"created"`
 	Archived   int    `json:"archived"`
+	// DroppedDeps 无法解析的依赖引用数（标题被修改/引用失效等），已忽略继续导入。
+	DroppedDeps int `json:"dropped_deps"`
 }
 
 // Options Service 构造选项。
@@ -328,7 +330,7 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 	if err != nil {
 		return ConfirmResult{}, fmt.Errorf("%w: %v", ErrImportFailed, err)
 	}
-	depIDs, err := resolveDependsOn(flattened)
+	depIDs, dropped, err := resolveDependsOn(flattened)
 	if err != nil {
 		return ConfirmResult{}, fmt.Errorf("%w: %v", ErrImportFailed, err)
 	}
@@ -368,9 +370,18 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 		now, draftID); err != nil {
 		return ConfirmResult{}, fmt.Errorf("parser: confirm draft: %w", err)
 	}
-	s.logger.Info("import draft confirmed", "id", draftID, "created", res.Created, "archived", res.Archived)
+	if dropped > 0 {
+		s.logger.Warn("import draft confirmed with dropped deps",
+			"id", draftID, "dropped", dropped)
+	}
 	s.emit(ctx, workdir, "import.draft_confirmed", draftID)
-	return ConfirmResult{DraftID: draftID, SourceFile: sourceFile, Created: res.Created, Archived: res.Archived}, nil
+	return ConfirmResult{
+		DraftID:     draftID,
+		SourceFile:  sourceFile,
+		Created:     res.Created,
+		Archived:    res.Archived,
+		DroppedDeps: dropped,
+	}, nil
 }
 
 // Discard 丢弃草稿（仅 pending → discarded）。
@@ -468,9 +479,10 @@ func (s *Service) UpdateTasks(ctx context.Context, workdir, draftID string, task
 
 // validateParsedTasks 草稿任务树校验（title/status 状态机/priority 范围，递归）。
 func validateParsedTasks(sm config.StateMachine, tasks []ParsedTask) error {
-	// 第一遍：字段校验 + 收集 ID/标题索引（依赖引用存在性检查）。
-	idIndex := make(map[string]bool)
-	titleIndex := make(map[string]string) // 标题 → ID
+	// 字段校验 + 临时 ID 唯一性（结构性约束）。
+	// 依赖引用存在性**不校验**（宽容）：标题引用在用户修改标题后可能失效，属草稿中间态，
+	// 由确认导入时 resolveDependsOn 宽容跳过 + dropped 提示处理。
+	idSeen := make(map[string]bool)
 	var collect func(list []ParsedTask) error
 	collect = func(list []ParsedTask) error {
 		for i, t := range list {
@@ -490,42 +502,18 @@ func validateParsedTasks(sm config.StateMachine, tasks []ParsedTask) error {
 				return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, t.Priority)
 			}
 			if t.ID != "" {
-				if idIndex[t.ID] {
+				if idSeen[t.ID] {
 					return fmt.Errorf("草稿任务 ID 不唯一: %q", t.ID)
 				}
-				idIndex[t.ID] = true
+				idSeen[t.ID] = true
 			}
-			titleIndex[t.Title] = t.ID
 			if err := collect(t.Children); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	if err := collect(tasks); err != nil {
-		return err
-	}
-	// 第二遍：depends_on 引用存在性（临时 ID 优先，标题兜底兼容旧草稿）。
-	var checkRefs func(list []ParsedTask) error
-	checkRefs = func(list []ParsedTask) error {
-		for _, t := range list {
-			for _, dep := range t.DependsOn {
-				ref := strings.TrimSpace(dep)
-				if idIndex[ref] {
-					continue
-				}
-				if _, ok := titleIndex[ref]; ok {
-					continue
-				}
-				return fmt.Errorf("依赖任务不存在: %q（任务 %q）", dep, t.Title)
-			}
-			if err := checkRefs(t.Children); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return checkRefs(tasks)
+	return collect(tasks)
 }
 
 // loadStateMachine 读取项目状态机（缺失回退默认四态）。

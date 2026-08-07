@@ -362,7 +362,7 @@ func TestResolveDependsOn_DuplicateTitle(t *testing.T) {
 		{ID: "a", Title: "重复"},
 		{ID: "b", Title: "重复"},
 	}
-	if _, err := resolveDependsOn(flat); err == nil {
+	if _, _, err := resolveDependsOn(flat); err == nil {
 		t.Fatal("重复标题应报错")
 	}
 }
@@ -417,7 +417,7 @@ func TestNormalize_AssignsIDs(t *testing.T) {
 	}
 }
 
-// TestResolveDependsOn_ByID：临时 ID 引用优先、标题兜底（旧草稿兼容）、未知引用报错。
+// TestResolveDependsOn_ByID：临时 ID 引用优先、标题兜底（旧草稿兼容）、未知引用宽容跳过并计数。
 func TestResolveDependsOn_ByID(t *testing.T) {
 	flat := []flattenResult{
 		{RefID: "T1", ID: "u1", Title: "配置加载与热重载"},
@@ -426,9 +426,12 @@ func TestResolveDependsOn_ByID(t *testing.T) {
 	}
 	flat[0].DependsOn = []string{"T2"}      // 新格式：临时 ID 引用
 	flat[2].DependsOn = []string{"数据库迁移脚本"} // 旧格式：标题引用兜底
-	out, err := resolveDependsOn(flat)
+	out, dropped, err := resolveDependsOn(flat)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
+	}
+	if dropped != 0 {
+		t.Fatalf("dropped: %d", dropped)
 	}
 	if len(out["u1"]) != 1 || out["u1"][0] != "u2" {
 		t.Fatalf("ID 引用: %v", out["u1"])
@@ -436,9 +439,61 @@ func TestResolveDependsOn_ByID(t *testing.T) {
 	if len(out["u3"]) != 1 || out["u3"][0] != "u2" {
 		t.Fatalf("标题兜底: %v", out["u3"])
 	}
-	flat[0].DependsOn = []string{"T9"}
-	if _, err := resolveDependsOn(flat); err == nil {
-		t.Fatal("未知引用应报错")
+	// 未知引用（标题已修改/失效）：跳过并计数，不中断。
+	flat[0].DependsOn = []string{"T9", "T2", "已改名的标题"}
+	out, dropped, err = resolveDependsOn(flat)
+	if err != nil {
+		t.Fatalf("宽容模式不应报错: %v", err)
+	}
+	if dropped != 2 {
+		t.Fatalf("dropped = %d, want 2", dropped)
+	}
+	if len(out["u1"]) != 1 || out["u1"][0] != "u2" {
+		t.Fatalf("保留可解析引用: %v", out["u1"])
+	}
+}
+
+// TestConfirm_DropsBadDep：旧草稿标题引用在标题修改后失效 → 确认导入成功且 dropped 计数。
+func TestConfirm_DropsBadDep(t *testing.T) {
+	doc := `{"tasks":[
+	  {"id":"T1","title":"配置加载与热重载","status":"doing","depends_on":["数据库迁移脚本"]},
+	  {"id":"T2","title":"数据库迁移脚本001","status":"todo"}
+	]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "# 文档\n", SourceFile: "docs/bad-dep.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// 模拟用户修改标题后草稿（依赖仍是旧标题引用）。
+	updated := []ParsedTask{
+		{ID: "T1", Title: "配置加载与热重载", Status: "doing", DependsOn: []string{"数据库迁移脚本"}},
+		{ID: "T2", Title: "数据库迁移脚本001", Status: "todo"},
+	}
+	if err := svc.UpdateTasks(ctx, workdir, draft.ID, updated); err != nil {
+		t.Fatalf("UpdateTasks: %v", err)
+	}
+	res, err := svc.Confirm(ctx, workdir, draft.ID)
+	if err != nil {
+		t.Fatalf("Confirm 应宽容成功: %v", err)
+	}
+	if res.Created != 2 || res.DroppedDeps != 1 {
+		t.Fatalf("ConfirmResult: %+v", res)
+	}
+	ts := task.NewService(task.Options{})
+	t.Cleanup(func() { _ = ts.Close() })
+	list, err := ts.List(ctx, workdir, task.ListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hot := findTask(list.Tree, "配置加载与热重载")
+	if hot == nil {
+		t.Fatal("任务缺失")
+	}
+	if len(hot.DependsOn) != 0 {
+		t.Fatalf("坏引用应被忽略: %v", hot.DependsOn)
 	}
 }
 

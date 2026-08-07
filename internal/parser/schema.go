@@ -166,25 +166,28 @@ type flattenResult struct {
 }
 
 // resolveDependsOn 将 depends_on 引用解析为任务 ID：
-// 优先按草稿内临时 ID 匹配（LLM 解析新格式）；未命中再按标题匹配（兼容旧草稿标题引用）；
-// 找不到或重复 → 错误。
-func resolveDependsOn(flattened []flattenResult) (map[string][]string, error) {
+// 优先按草稿内临时 ID 匹配（LLM 解析新格式）；未命中再按标题匹配（兼容旧草稿标题引用）。
+// 无法解析的引用（如被依赖任务标题已被修改、旧草稿标题引用失效）**跳过并计数**——
+// 确认导入不因坏引用整次失败（宽容降级），由返回的 dropped 数量提示用户（草稿中间态可交互修复）。
+// ID/标题不唯一仍视为结构性错误。
+func resolveDependsOn(flattened []flattenResult) (map[string][]string, int, error) {
 	idIndex := make(map[string]string)    // 临时 ID → UUID
 	titleIndex := make(map[string]string) // 标题(trim) → UUID
 	for _, f := range flattened {
 		if f.RefID != "" {
 			if prev, ok := idIndex[f.RefID]; ok && prev != f.ID {
-				return nil, fmt.Errorf("草稿任务 ID 不唯一: %q", f.RefID)
+				return nil, 0, fmt.Errorf("草稿任务 ID 不唯一: %q", f.RefID)
 			}
 			idIndex[f.RefID] = f.ID
 		}
 		t := strings.TrimSpace(f.Title)
 		if prev, ok := titleIndex[t]; ok && prev != f.ID {
-			return nil, fmt.Errorf("依赖标题不唯一: %q", t)
+			return nil, 0, fmt.Errorf("依赖标题不唯一: %q", t)
 		}
 		titleIndex[t] = f.ID
 	}
 	out := make(map[string][]string, len(flattened))
+	dropped := 0
 	for _, f := range flattened {
 		var ids []string
 		for _, dep := range f.DependsOn {
@@ -194,11 +197,13 @@ func resolveDependsOn(flattened []flattenResult) (map[string][]string, error) {
 				id, ok = titleIndex[ref]
 			}
 			if !ok {
-				return nil, fmt.Errorf("依赖任务不存在: %q（任务 %q）", dep, f.Title)
+				// 无法解析（标题被修改/引用失效）：跳过并计数，导入仍继续。
+				dropped++
+				continue
 			}
 			ids = append(ids, id)
 		}
 		out[f.ID] = ids
 	}
-	return out, nil
+	return out, dropped, nil
 }

@@ -72,6 +72,8 @@ export interface ImportConfirmResult {
   created: number
   /** 文件级全量覆盖：旧 source_file 任务被归档数 */
   archived: number
+  /** 无法解析的依赖引用数（标题已修改/引用失效），已忽略继续导入 */
+  dropped_deps: number
 }
 
 /** 草稿解析任务（虚拟任务体系：状态机 key / 优先级 0-5 / 依赖经临时 id 引用） */

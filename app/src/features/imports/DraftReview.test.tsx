@@ -176,6 +176,75 @@ describe('DraftReview（草稿审阅）', () => {
     toastSpy.mockRestore()
   })
 
+  it('确认导入（dropped_deps>0）→ toast 提示失效引用数', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    const onExit = vi.fn()
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/import/drafts/d1/confirm`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            draft_id: 'd1',
+            source_file: 'backlog.md',
+            created: 3,
+            archived: 0,
+            dropped_deps: 1,
+          },
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<DraftReview draftId="d1" onExit={onExit} />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '确认导入' })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: '确认导入' }))
+    await waitFor(() => expect(onExit).toBeCalled())
+    const message = toastSpy.mock.calls[0]?.[0]
+    expect(String(message)).toContain('忽略 1 个失效依赖引用')
+    toastSpy.mockRestore()
+  })
+
+  it('编辑保存：旧草稿标题引用规范化为临时 id（一次编辑升级为 id 格式）', async () => {
+    // 旧格式草稿：depends_on 为标题引用（模拟标题已改前的数据）
+    const legacy = {
+      ...DETAIL,
+      tasks: DETAIL.tasks.map((t) => (t.id === 'T2' ? { ...t, depends_on: ['顶层任务 A'] } : t)),
+    }
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/import/drafts/d1`, () =>
+        HttpResponse.json({ code: 0, data: legacy }),
+      ),
+    )
+    let putBody: unknown = null
+    server.use(
+      http.put(`${DAEMON_BASE_URL}/api/import/drafts/d1/tasks`, async ({ request }) => {
+        putBody = await request.json()
+        return HttpResponse.json({ code: 0, data: { ok: true } })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<DraftReview draftId="d1" onExit={() => {}} />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '任务 顶层任务 B' })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: '任务 顶层任务 B' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '编辑标题' })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: '编辑标题' }))
+    await user.clear(screen.getByRole('textbox', { name: '任务标题编辑' }))
+    await user.type(screen.getByRole('textbox', { name: '任务标题编辑' }), '顶层任务B-改')
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('button', { name: '保存草稿任务' }))
+    await waitFor(() => expect(putBody).not.toBeNull())
+    const tasks = (putBody as { tasks: Array<{ title: string; depends_on: string[] }> }).tasks
+    const b = tasks.find((t) => t.title === '顶层任务B-改')
+    expect(b).toBeDefined()
+    // 标题引用已升级为临时 id（顶层任务 A → T1）
+    expect(b?.depends_on).toEqual(['T1'])
+  })
+
   it('丢弃草稿 → onExit', async () => {
     const onExit = vi.fn()
     const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true)

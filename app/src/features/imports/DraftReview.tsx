@@ -87,6 +87,27 @@ function replaceAtPath(tasks: ParsedTask[], path: string, next: ParsedTask): Par
   )
 }
 
+// 全树依赖引用规范化：标题引用 → 临时 id（id 优先、标题兜底；无法解析保留原样）。
+// 旧草稿（标题引用）经一次编辑保存即整体升级为 id 格式——此后修改任务标题不再影响依赖关系。
+function normalizeDraftDeps(list: ParsedTask[]): ParsedTask[] {
+  const flat: ParsedTask[] = []
+  const walk = (l: ParsedTask[]) =>
+    l.forEach((t) => {
+      flat.push(t)
+      walk(t.children ?? [])
+    })
+  walk(list)
+  const idSet = new Set(flat.map((t) => t.id))
+  const byTitle = new Map<string, string>()
+  for (const t of flat) byTitle.set(t.title, t.id)
+  const norm = (t: ParsedTask): ParsedTask => ({
+    ...t,
+    depends_on: t.depends_on.map((ref) => (idSet.has(ref) ? ref : (byTitle.get(ref) ?? ref))),
+    children: (t.children ?? []).map(norm),
+  })
+  return list.map(norm)
+}
+
 export interface DraftReviewProps {
   draftId: string
   onExit: () => void
@@ -166,10 +187,12 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
       children: original?.children,
     }
     const updated = replaceAtPath(tasks ?? detail?.tasks ?? [], path, next)
-    setTasks(updated)
+    // 全树依赖规范化（标题引用 → 临时 id）：旧草稿编辑一次即升级为 id 格式
+    const normalized = normalizeDraftDeps(updated)
+    setTasks(normalized)
     setBusy(true)
     updateTasks.mutate(
-      { draftId, tasks: updated },
+      { draftId, tasks: normalized },
       {
         onSuccess: () => toast.success('草稿任务已保存'),
         onError: (e) => toast.error(e instanceof Error ? e.message : '保存失败'),
@@ -182,9 +205,14 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
     setBusy(true)
     confirmDraft.mutate(draftId, {
       onSuccess: (r) => {
-        toast.success('导入完成', {
-          description: `${r.source_file}：创建 ${r.created} 个，覆盖归档 ${r.archived} 个`,
-        })
+        toast.success(
+          r.dropped_deps > 0 ? `导入完成（忽略 ${r.dropped_deps} 个失效依赖引用）` : '导入完成',
+          {
+            description: `${r.source_file}：创建 ${r.created} 个，覆盖归档 ${r.archived} 个${
+              r.dropped_deps > 0 ? '。失效引用（被依赖任务标题已修改等）已被忽略' : ''
+            }`,
+          },
+        )
         onExit()
       },
       onError: (e) => toast.error(e instanceof Error ? e.message : '确认失败'),
