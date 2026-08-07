@@ -64,34 +64,55 @@ describe('KanbanView', () => {
 
   beforeEach(() => {
     useProjectStore.setState({ project: '/data/projects/tf' })
-    // @tanstack/react-virtual 需要 ResizeObserver 即时回调尺寸（jsdom 无布局）
+    // @tanstack/react-virtual 需要 ResizeObserver 即时回调尺寸（jsdom 无布局）。
+    // 注意：回调 entries 必须带 target（被观察元素）——measureElement 模式下
+    // virtual-core 通过 entry.target 反查 data-index，缺 target 会崩。
     vi.stubGlobal(
       'ResizeObserver',
       class {
         constructor(
           private cb: (
-            entries: { borderBoxSize?: { inlineSize: number; blockSize: number }[] }[],
+            entries: {
+              target: Element
+              borderBoxSize?: { inlineSize: number; blockSize: number }[]
+            }[],
           ) => void,
         ) {}
-        observe(): void {
-          // 模拟真实浏览器：首次 observe 立即回调一次尺寸
-          this.cb([{ borderBoxSize: [{ inlineSize: 300, blockSize: 800 }] }])
+        observe(target: Element): void {
+          // 模拟真实浏览器：首次 observe 立即回调一次尺寸（带被观察元素）
+          this.cb([{ target, borderBoxSize: [{ inlineSize: 300, blockSize: 800 }] }])
         }
         unobserve(): void {}
         disconnect(): void {}
       },
     )
-    Element.prototype.getBoundingClientRect = vi.fn(() => ({
-      x: 0,
-      y: 0,
-      width: 300,
-      height: 800,
-      top: 0,
-      left: 0,
-      right: 300,
-      bottom: 800,
-      toJSON: () => ({}),
-    }))
+    // 动态测量模式：虚拟项容器（data-index）返回卡片高度，其他元素返回视口尺寸
+    Element.prototype.getBoundingClientRect = vi.fn(function (this: Element) {
+      if (this.hasAttribute && this.hasAttribute('data-index')) {
+        return {
+          x: 0,
+          y: 0,
+          width: 260,
+          height: 108,
+          top: 0,
+          left: 0,
+          right: 260,
+          bottom: 108,
+          toJSON: () => ({}),
+        }
+      }
+      return {
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 800,
+        top: 0,
+        left: 0,
+        right: 300,
+        bottom: 800,
+        toJSON: () => ({}),
+      }
+    })
     server.use(
       http.get(`${DAEMON_BASE_URL}/api/tasks`, () =>
         HttpResponse.json({ code: 0, data: { tree: TREE, total: 2, page: 0, size: 0 } }),

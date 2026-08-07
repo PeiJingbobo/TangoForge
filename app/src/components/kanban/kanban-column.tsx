@@ -19,9 +19,17 @@ const COLUMN_DOT: Record<string, string> = {
   done: 'bg-success',
 }
 
+/** 卡片间距（TaskCard mb-2 = 8px）：动态测量须计入，保证任意高度卡片间距恒等 */
+const CARD_GAP = 8
+
+/** 估算卡片高度（首帧/无布局环境的初始值） */
+const ESTIMATED_CARD_HEIGHT = 108
+
 /**
  * 看板列：背景色差分组（UI-VISION §2.2 区域级色差），任务条目为卡片。
  * 每列独立虚拟滚动（≥1000 任务不卡，docs/TECHNICAL.md §4.3）。
+ * 动态测量：标题 1/2 行、带标签/负责人等卡片高度不同，固定估算会导致长卡片
+ * 挤压相邻卡片、间距被压扁——measureElement 按实际高度 + 固定间距布局。
  */
 export function KanbanColumn({ col, tasks, onOpenTask }: KanbanColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -30,10 +38,16 @@ export function KanbanColumn({ col, tasks, onOpenTask }: KanbanColumnProps) {
   const virtualizer = useVirtualizer({
     count: tasks.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 108,
+    estimateSize: () => ESTIMATED_CARD_HEIGHT,
+    getItemKey: (i) => tasks[i].id,
     overscan: 6,
     // 首帧初始视口（测试环境无 ResizeObserver 布局时保证渲染；浏览器由 RO 实时更新）
     initialRect: { width: 300, height: 800 },
+    // 动态测量：jsdom 无布局（height=0）时回退估算值，保证测试可预测
+    measureElement: (el) => {
+      const h = el.getBoundingClientRect().height
+      return (h > 0 ? h : ESTIMATED_CARD_HEIGHT) + CARD_GAP
+    },
   })
 
   return (
@@ -68,12 +82,13 @@ export function KanbanColumn({ col, tasks, onOpenTask }: KanbanColumnProps) {
               return (
                 <div
                   key={task.id}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
                   style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     width: '100%',
-                    height: vi.size,
                     transform: `translateY(${vi.start}px)`,
                   }}
                 >
