@@ -116,7 +116,8 @@ export function KanbanBoard({
         onDragEnd(e)
       }}
     >
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] items-start gap-3.5">
+      {/* h-full + items-stretch：列撑满看板区高度（列内滚动，页面不滚动） */}
+      <div className="grid h-full grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3.5">
         {states.map((col) => (
           <KanbanColumn
             key={col.Key}

@@ -118,7 +118,8 @@ export function KanbanView() {
   }
 
   return (
-    <div>
+    // h-full flex-col：工具栏固定，看板区 flex-1 撑满剩余高度（列内滚动，页面不滚动）
+    <div className="flex h-full min-h-0 flex-col">
       {/* 工具栏：标题 + 搜索 + 标签过滤 + 新建 */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -169,13 +170,16 @@ export function KanbanView() {
           该项目状态机为空或全部为 archived 状态。
         </div>
       ) : (
-        <KanbanBoard
-          states={columns}
-          tasks={displayTasks}
-          getEffectiveStatus={getEffectiveStatus}
-          onOpenTask={(id) => openTaskDrawer({ taskId: id })}
-          onDragEnd={handleDragEnd}
-        />
+        // 看板区：flex-1 撑满剩余高度（列内滚动，页面不滚动）
+        <div className="min-h-0 flex-1">
+          <KanbanBoard
+            states={columns}
+            tasks={displayTasks}
+            getEffectiveStatus={getEffectiveStatus}
+            onOpenTask={(id) => openTaskDrawer({ taskId: id })}
+            onDragEnd={handleDragEnd}
+          />
+        </div>
       )}
 
       {/* 快速新建（完整表单在 TF-026 TaskForm） */}

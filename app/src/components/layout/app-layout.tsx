@@ -26,7 +26,8 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex min-h-screen">
+    // h-screen + overflow-hidden：页面级不出现滚动条；滚动收敛到内容区/看板列内部
+    <div className="flex h-screen overflow-hidden">
       {/* 左侧全局导航栏 */}
       <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-divider bg-card">
         {/* 品牌 + 顶部一级菜单 */}
@@ -127,9 +128,9 @@ export function AppLayout() {
         </div>
       </aside>
 
-      {/* 右侧内容区 */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="mx-auto w-full max-w-[1160px] flex-1 px-6 py-6">
+      {/* 右侧内容区：固定视口内，内容超高时由 main 内部滚动（页面级不滚动） */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="mx-auto w-full max-w-[1160px] min-h-0 flex-1 overflow-y-auto px-6 py-6">
           <Outlet />
         </main>
       </div>

@@ -40,7 +40,8 @@ export function ProjectPanel() {
   const encoded = encodeURIComponent(projectId ?? '')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // h-full：撑满 main 滚动容器可视高（看板页内部分层时列内滚动；其他页面超高由 main 滚）
+    <div className="flex h-full flex-col">
       {/* 二级功能 tab（仅项目路由渲染） */}
       <div className="sticky top-0 z-30 flex items-center gap-1 overflow-x-auto border-b border-divider bg-background/85 px-6 py-2 backdrop-blur-md">
         <span
@@ -68,7 +69,8 @@ export function ProjectPanel() {
         ))}
       </div>
 
-      <div className="mx-auto w-full max-w-[1160px] flex-1 px-6 py-6">
+      {/* 内容区：flex-1 撑满剩余高度（看板页 h-full 内部分层；其他页面超高溢出到 main 滚） */}
+      <div className="mx-auto w-full max-w-[1160px] min-h-0 flex-1 px-6 py-6">
         <Outlet />
       </div>
     </div>

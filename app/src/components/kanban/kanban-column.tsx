@@ -76,7 +76,7 @@ export function KanbanColumn({ col, tasks, placeholderIndex, onOpenTask }: Kanba
     <div
       ref={setNodeRef}
       className={cn(
-        'flex flex-col rounded-[14px] bg-muted p-2.5',
+        'flex h-full min-h-0 flex-col rounded-[14px] bg-muted p-2.5',
         isOver && 'ring-2 ring-primary-300',
       )}
     >
@@ -93,10 +93,7 @@ export function KanbanColumn({ col, tasks, placeholderIndex, onOpenTask }: Kanba
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="max-h-[calc(100vh-260px)] min-h-[180px] flex-1 overflow-auto pr-0.5"
-      >
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-0.5">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((vi) => {
