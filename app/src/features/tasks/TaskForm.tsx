@@ -131,11 +131,13 @@ export function TaskForm({
         <button
           type="button"
           onClick={() => setEditingTitle(true)}
-          className="group block w-full text-left"
+          className="group flex w-full items-start gap-2 text-left"
           aria-label="编辑标题"
         >
-          <h1 className="text-h1 text-foreground group-hover:text-primary-600">{title}</h1>
-          <span className="mt-1 hidden items-center gap-1 text-caption text-muted-foreground group-hover:flex">
+          <h1 className="min-w-0 flex-1 text-h1 text-foreground break-words group-hover:text-primary-600">
+            {title}
+          </h1>
+          <span className="mt-2 hidden shrink-0 items-center gap-1 text-caption text-muted-foreground group-hover:flex">
             <Pencil className="size-3" /> 点击编辑标题
           </span>
         </button>
@@ -332,19 +334,21 @@ export function TaskForm({
         </div>
       )}
 
-      {/* sticky 底部操作（UI-VISION §2.5 QA-3）；只读模式仅保留归档/还原入口 */}
-      <div className="sticky bottom-0 -mx-6 mt-8 flex items-center justify-end gap-2 border-t border-divider bg-muted/80 px-6 py-3 backdrop-blur">
-        {archiveAction}
-        {!readOnly && onCancel && (
-          <Button variant="ghost" onClick={onCancel} disabled={saving}>
-            取消
-          </Button>
-        )}
-        {!readOnly && (
-          <Button onClick={handleSubmit} disabled={!dirty || saving}>
-            {saving ? '保存中…' : dirty ? '保存修改' : '已保存'}
-          </Button>
-        )}
+      {/* 底部操作（sticky 固定抽屉底部；归档左对齐，关闭/保存右对齐） */}
+      <div className="sticky bottom-0 -mx-6 mt-8 flex items-center justify-between gap-2 border-t border-divider bg-muted/80 px-6 py-3 backdrop-blur">
+        <div className="flex items-center gap-2">{archiveAction}</div>
+        <div className="flex items-center gap-2">
+          {!readOnly && onCancel && (
+            <Button variant="ghost" onClick={onCancel} disabled={saving}>
+              关闭
+            </Button>
+          )}
+          {!readOnly && (
+            <Button onClick={handleSubmit} disabled={!dirty || saving}>
+              {saving ? '保存中…' : dirty ? '保存修改' : '已保存'}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )

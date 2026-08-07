@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { Archive, RotateCcw } from 'lucide-react'
+import { Archive, ArrowLeft, RotateCcw } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { Button } from '@/components/ui/button'
@@ -175,7 +175,18 @@ export function TaskDetailDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
         <SheetHeader className="border-b border-divider px-6 py-4">
-          <SheetTitle className="text-base">任务详情</SheetTitle>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="返回关闭详情"
+              title="返回"
+              className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+            <SheetTitle className="text-base">任务详情</SheetTitle>
+          </div>
           <SheetDescription>
             {task ? `${task.status}${task.priority > 0 ? ` · P${task.priority}` : ''}` : '加载中…'}
             {mode === 'read' ? ' · 只读' : ' · 编辑'}
@@ -198,6 +209,7 @@ export function TaskDetailDrawer({
                 saving={busy}
                 readOnly={mode === 'read'}
                 onSubmit={handleSubmit}
+                onCancel={() => onOpenChange(false)}
                 archiveAction={archiveAction}
               />
 
@@ -205,7 +217,7 @@ export function TaskDetailDrawer({
               <div className="rounded-xl border border-divider p-4 text-sm">
                 <div className="flex justify-between gap-3">
                   <span className="shrink-0 text-muted-foreground">依赖</span>
-                  <span className="text-right font-medium">
+                  <span className="min-w-0 text-right font-medium break-words">
                     {dependNames.length > 0 ? dependNames.join('、') : '无'}
                   </span>
                 </div>
