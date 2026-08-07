@@ -181,6 +181,20 @@ async function selectDirectory(): Promise<string | null> {
   return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
+/** 系统文件选择器（Markdown 导入，多选）：取消返回 null */
+async function selectFiles(): Promise<string[] | null> {
+  const win = BrowserWindow.getFocusedWindow() ?? undefined
+  const result = await dialog.showOpenDialog(win as BrowserWindow, {
+    title: '选择 Markdown 文件',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Markdown', extensions: ['md', 'markdown'] },
+      { name: '全部文件', extensions: ['*'] },
+    ],
+  })
+  return result.canceled ? null : result.filePaths
+}
+
 export function registerDaemonIpc(): void {
   ipcMain.handle('daemon:ensureRunning', () => ensureDaemonRunning())
   ipcMain.handle('daemon:status', () => isDaemonAlive())
@@ -190,6 +204,7 @@ export function registerDaemonIpc(): void {
     return true
   })
   ipcMain.handle('dialog:selectDirectory', () => selectDirectory())
+  ipcMain.handle('dialog:selectFiles', () => selectFiles())
 }
 
 export function registerConfigIpc(): void {

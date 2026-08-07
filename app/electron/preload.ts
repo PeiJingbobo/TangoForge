@@ -36,6 +36,8 @@ const api = {
   dialog: {
     /** 系统目录选择器；取消返回 null */
     selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory'),
+    /** 系统文件选择器（Markdown 多选）；取消返回 null */
+    selectFiles: (): Promise<string[] | null> => ipcRenderer.invoke('dialog:selectFiles'),
   },
 }
 
