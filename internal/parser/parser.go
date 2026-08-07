@@ -33,6 +33,9 @@ var ErrImportFailed = errors.New("parser: import failed")
 // ErrDraftNotFound 草稿不存在。
 var ErrDraftNotFound = errors.New("parser: draft not found")
 
+// ErrDraftInvalid 草稿内容校验失败（审阅编辑保存 → 422）。
+var ErrDraftInvalid = errors.New("parser: draft invalid")
+
 // ErrProjectNotFound 项目未导入（无 meta.db）。
 var ErrProjectNotFound = errors.New("parser: project not found")
 
@@ -386,6 +389,101 @@ func (s *Service) Discard(ctx context.Context, workdir, draftID string) error {
 	}
 	s.logger.Info("import draft discarded", "id", draftID)
 	s.emit(ctx, workdir, "import.draft_discarded", draftID)
+	return nil
+}
+
+// DraftDetail 草稿明细（审阅界面数据源）：含完整解析任务树。
+type DraftDetail struct {
+	Draft
+	Tasks []ParsedTask `json:"tasks"`
+}
+
+// Get 读取单个 pending 草稿明细（含任务树；供审阅/编辑）。
+func (s *Service) Get(ctx context.Context, workdir, draftID string) (DraftDetail, error) {
+	conn, err := s.projectDB(workdir)
+	if err != nil {
+		return DraftDetail{}, err
+	}
+	var d DraftDetail
+	var parsed string
+	err = conn.QueryRowContext(ctx,
+		`SELECT id, source_file, status, parsed_json, created_at FROM import_drafts WHERE id = ?`,
+		draftID).Scan(&d.ID, &d.SourceFile, &d.Status, &parsed, &d.CreatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DraftDetail{}, fmt.Errorf("%w: %s", ErrDraftNotFound, draftID)
+		}
+		return DraftDetail{}, fmt.Errorf("parser: get draft: %w", err)
+	}
+	if d.Status != "pending" {
+		return DraftDetail{}, fmt.Errorf("%w: %s（status=%s）", ErrDraftNotFound, draftID, d.Status)
+	}
+	if err := json.Unmarshal([]byte(parsed), &d.Tasks); err != nil {
+		// 兼容旧存储（ParseResult 包裹）
+		var pr ParseResult
+		if err2 := json.Unmarshal([]byte(parsed), &pr); err2 == nil {
+			d.Tasks = pr.Tasks
+		} else {
+			return DraftDetail{}, fmt.Errorf("parser: parse draft json: %w", err)
+		}
+	}
+	d.TaskCount = countTasks(d.Tasks)
+	return d, nil
+}
+
+// UpdateTasks 整体更新草稿任务树（审阅编辑保存）：校验后重写 parsed_json。
+func (s *Service) UpdateTasks(ctx context.Context, workdir, draftID string, tasks []ParsedTask) error {
+	sm, err := s.loadStateMachine(workdir)
+	if err != nil {
+		return err
+	}
+	if err := validateParsedTasks(sm, tasks); err != nil {
+		return fmt.Errorf("%w: %v", ErrDraftInvalid, err)
+	}
+	data, err := json.Marshal(ParseResult{Tasks: tasks})
+	if err != nil {
+		return fmt.Errorf("parser: marshal draft tasks: %w", err)
+	}
+	conn, err := s.projectDB(workdir)
+	if err != nil {
+		return err
+	}
+	res, err := conn.ExecContext(ctx,
+		`UPDATE import_drafts SET parsed_json = ? WHERE id = ? AND status = 'pending'`,
+		string(data), draftID)
+	if err != nil {
+		return fmt.Errorf("parser: update draft tasks: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("%w: %s", ErrDraftNotFound, draftID)
+	}
+	s.logger.Info("import draft tasks updated", "id", draftID, "count", countTasks(tasks))
+	return nil
+}
+
+// validateParsedTasks 草稿任务树校验（title/status 状态机/priority 范围，递归）。
+func validateParsedTasks(sm config.StateMachine, tasks []ParsedTask) error {
+	for i, t := range tasks {
+		if strings.TrimSpace(t.Title) == "" {
+			return fmt.Errorf("第 %d 项缺少 title", i+1)
+		}
+		status, ok := mapStatus(sm, t.Status)
+		if !ok || status == "archived" {
+			return fmt.Errorf("第 %d 项 status 非法或不在状态机中: %v", i+1, t.Status)
+		}
+		prio, err := task.NormalizePriority(t.Priority)
+		if err != nil {
+			return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, err)
+		}
+		if prio != t.Priority {
+			// 归一化不一致视为非法（已归一化数据不允许回退）
+			return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, t.Priority)
+		}
+		if err := validateParsedTasks(sm, t.Children); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

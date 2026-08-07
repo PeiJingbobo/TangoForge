@@ -51,6 +51,8 @@ func mapError(err error) (status int, code, message string) {
 		return http.StatusBadRequest, "TASK_INVALID", err.Error()
 	case errors.Is(err, parser.ErrDraftNotFound):
 		return http.StatusNotFound, parser.CodeDraftNotFound, err.Error()
+	case errors.Is(err, parser.ErrDraftInvalid):
+		return http.StatusUnprocessableEntity, "TASK_INVALID", err.Error()
 	case errors.Is(err, parser.ErrImportFailed):
 		return http.StatusUnprocessableEntity, parser.CodeImportFailed, err.Error()
 	case errors.Is(err, exporter.ErrExportFailed):

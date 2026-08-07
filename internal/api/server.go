@@ -286,6 +286,8 @@ func (s *Server) Handler() http.Handler {
 			// TF-018 已落地：Markdown 导入草稿流（parser）。
 			r.Post("/import", s.perm("import.run", s.handleImport))
 			r.Get("/import/drafts", s.perm("import.run", s.handleImportDrafts))
+			r.Get("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftGet))
+			r.Put("/import/drafts/{id}/tasks", s.perm("import.run", s.handleImportDraftUpdateTasks))
 			r.Post("/import/drafts/{id}/confirm", s.perm("import.confirm", s.handleImportDraftConfirm))
 			r.Delete("/import/drafts/{id}", s.perm("import.run", s.handleImportDraftDiscard))
 			// TF-019 已落地：Markdown 导出与模板（exporter）。
