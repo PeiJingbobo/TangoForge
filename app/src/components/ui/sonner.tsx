@@ -37,15 +37,16 @@ function Toaster({ className, ...props }: ToasterProps) {
       toastOptions={{
         classNames: {
           toast:
-            'group toast group-[.toaster]:max-w-[min(92vw,440px)] group-[.toaster]:rounded-xl group-[.toaster]:border-border group-[.toaster]:shadow-[var(--shadow-pop)] group-[.toaster]:whitespace-normal group-[.toaster]:break-words',
+            'group toast group-[.toaster]:max-w-[min(92vw,440px)] group-[.toaster]:rounded-xl group-[.toaster]:border-border group-[.toaster]:shadow-[var(--shadow-pop)] group-[.toaster]:whitespace-normal group-[.toaster]:break-words group-[.toaster]:pr-8',
           title:
             'group-[.toast]:text-sm group-[.toast]:font-semibold group-[.toast]:whitespace-normal group-[.toast]:break-words',
           description:
             'group-[.toast]:text-muted-foreground group-[.toast]:whitespace-normal group-[.toast]:break-words',
           actionButton: 'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
           cancelButton: 'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+          // 关闭按钮：卡片内部右侧对齐、上下居中（TF-037 优化）
           closeButton:
-            'group-[.toast]:absolute group-[.toast]:top-1 group-[.toast]:right-1 group-[.toast]:size-6 group-[.toast]:grid group-[.toast]:place-items-center group-[.toast]:rounded-full group-[.toast]:text-muted-foreground group-[.toast]:transition-colors group-[.toast]:hover:bg-accent group-[.toast]:hover:text-accent-foreground',
+            'group-[.toast]:absolute group-[.toast]:top-1/2 group-[.toast]:right-1 group-[.toast]:-translate-y-1/2 group-[.toast]:size-6 group-[.toast]:grid group-[.toast]:place-items-center group-[.toast]:rounded-full group-[.toast]:text-muted-foreground group-[.toast]:transition-colors group-[.toast]:hover:bg-accent group-[.toast]:hover:text-accent-foreground',
           success: 'group-[.toast]:[&>svg]:text-success',
           error: 'group-[.toast]:[&>svg]:text-destructive',
         },
