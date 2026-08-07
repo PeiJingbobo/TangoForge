@@ -240,14 +240,14 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
       {/* 标签 */}
       <div className="mt-6 flex flex-wrap items-center gap-1.5">
         {tags.map((t) => (
-          <Badge key={t} className={cn('gap-1', !readOnly && 'pr-1.5')}>
-            {t}
+          <Badge key={t} className={cn('max-w-full gap-1', !readOnly && 'pr-1.5')}>
+            <span className="min-w-0 break-words">{t}</span>
             {!readOnly && (
               <button
                 type="button"
                 aria-label={`移除标签 ${t}`}
                 onClick={() => setTags(tags.filter((x) => x !== t))}
-                className="rounded-full hover:text-destructive-ink"
+                className="shrink-0 rounded-full hover:text-destructive-ink"
               >
                 <X className="size-3" />
               </button>
@@ -285,14 +285,18 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
         <Label className="mb-2 text-muted-foreground">依赖（depends_on）</Label>
         <div className="flex flex-wrap items-center gap-1.5">
           {dependTasks.map((t) => (
-            <Badge key={t.id} variant="outline" className={cn('gap-1', !readOnly && 'pr-1.5')}>
-              {t.title}
+            <Badge
+              key={t.id}
+              variant="outline"
+              className={cn('max-w-full gap-1', !readOnly && 'pr-1.5')}
+            >
+              <span className="min-w-0 break-words">{t.title}</span>
               {!readOnly && (
                 <button
                   type="button"
                   aria-label={`移除依赖 ${t.title}`}
                   onClick={() => setDependsOn(dependsOn.filter((id) => id !== t.id))}
-                  className="rounded-full hover:text-destructive-ink"
+                  className="shrink-0 rounded-full hover:text-destructive-ink"
                 >
                   <X className="size-3" />
                 </button>
