@@ -86,29 +86,29 @@ describe('KanbanColumn（占位符）', () => {
     vi.unstubAllGlobals()
   })
 
-  it('无占位符：渲染全部任务卡片，无占位提示', () => {
+  it('无占位符：渲染全部任务卡片，无拖拽指示线', () => {
     renderColumn()
     expect(screen.getByRole('button', { name: '任务 任务一' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '任务 任务三' })).toBeInTheDocument()
-    expect(screen.queryByText('松开放置于此')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[data-testid="drop-indicator"]').length).toBe(0)
   })
 
-  it('占位符 index=1：插入第 1 张卡后，前 2 张卡保留', () => {
+  it('占位符 index=1：指示线渲染（目标第 2 张卡顶部），前 2 张卡保留', () => {
     renderColumn(1)
-    expect(screen.getByText('松开放置于此')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-testid="drop-indicator"]').length).toBe(1)
     expect(screen.getByRole('button', { name: '任务 任务一' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '任务 任务二' })).toBeInTheDocument()
   })
 
-  it('占位符 index=0：插到最前，任务仍在', () => {
+  it('占位符 index=0：指示线在最前，任务仍在', () => {
     renderColumn(0)
-    expect(screen.getByText('松开放置于此')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-testid="drop-indicator"]').length).toBe(1)
     expect(screen.getByRole('button', { name: '任务 任务一' })).toBeInTheDocument()
   })
 
-  it('占位符 index=3（末尾）：任务全部渲染', () => {
+  it('占位符 index=3（末尾）：指示线在最后卡片下方，任务全部渲染', () => {
     renderColumn(3)
-    expect(screen.getByText('松开放置于此')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-testid="drop-indicator"]').length).toBe(1)
     expect(screen.getByRole('button', { name: '任务 任务三' })).toBeInTheDocument()
   })
 })
