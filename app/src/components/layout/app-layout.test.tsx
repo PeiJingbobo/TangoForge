@@ -151,6 +151,36 @@ describe('AppLayout（全局导航布局）', () => {
     toastSpy.mockRestore()
   })
 
+  it('TF-035 删除当前选中项目 → 取消选中 + 重定向到项目概览页', async () => {
+    server.use(
+      http.delete(`${DAEMON_BASE_URL}/api/projects/1`, () =>
+        HttpResponse.json({ code: 0, data: { removed: true } }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderLayout()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
+    )
+    // 先进入项目（当前选中 + 路由在看板）。
+    await user.click(screen.getByRole('button', { name: 'TangoForge' }))
+    await screen.findByText('看板内容')
+    expect(useProjectStore.getState().project).toBe('/data/projects/tangoforge')
+
+    // 右键删除当前项目 → 确认。
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByRole('button', { name: 'TangoForge' }),
+    })
+    await user.click(await screen.findByRole('menuitem', { name: /删除项目/ }))
+    await screen.findByText(/删除项目「TangoForge」/)
+    await user.click(screen.getByRole('button', { name: '确认删除' }))
+
+    // 断言：取消选中 + 重定向到概览页（/ 渲染「概览内容」）。
+    await waitFor(() => expect(useProjectStore.getState().project).toBeNull())
+    expect(await screen.findByText('概览内容')).toBeInTheDocument()
+  })
+
   it('TF-035 右键菜单：在文件夹中打开（Electron shell；Web 环境提示不可用）', async () => {
     const toastSpy = vi.spyOn(toast, 'error').mockImplementation(() => '')
     // Web 环境：window.tangoforge 未注入（beforeEach 已置 undefined）→ 提示不可用。

@@ -98,7 +98,7 @@ export function AppLayout() {
               <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 pb-2">
             {!isLoading && (!projects || projects.length === 0) && (
               <p className="px-3 py-2 text-xs text-muted-foreground">
                 暂无项目，到「项目概览」导入工作目录。
@@ -318,15 +318,19 @@ function RenameProjectDialog({ target, onClose }: { target: Project | null; onCl
 function RemoveProjectDialog({ target, onClose }: { target: Project | null; onClose: () => void }) {
   const remove = useRemoveProject()
   const setProject = useProjectStore((s) => s.setProject)
+  const navigate = useNavigate()
 
   const submit = () => {
     if (!target) return
     remove.mutate(target.id, {
       onSuccess: () => {
         toast.success(`已移除项目「${target.name}」（磁盘数据保留）`)
-        // 若删除的是当前项目，清空全局项目态（回到概览）。
+        // 若删除的是当前选中项目：取消选中并重定向到项目概览页。
         const current = useProjectStore.getState().project
-        if (current === target.workdir) setProject(null)
+        if (current === target.workdir) {
+          setProject(null)
+          navigate('/')
+        }
         onClose()
       },
       onError: (e) => toast.error(e instanceof Error ? e.message : '删除失败'),
