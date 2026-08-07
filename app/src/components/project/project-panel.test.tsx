@@ -57,6 +57,13 @@ describe('ProjectPanel（项目二级 Tab）', () => {
     })
   })
 
+  it('记录当前二级页到 lastSection（会话恢复用）', async () => {
+    renderPanel() // 初始 /kanban
+    await waitFor(() => {
+      expect(useProjectStore.getState().lastSection).toBe('kanban')
+    })
+  })
+
   it('当前 tab 高亮 + 子路由内容渲染', async () => {
     renderPanel()
     expect(screen.getByText('看板页内容')).toBeInTheDocument()

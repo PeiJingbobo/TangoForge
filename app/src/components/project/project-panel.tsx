@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { NavLink, Outlet, useParams } from 'react-router'
+import { NavLink, Outlet, useLocation, useParams } from 'react-router'
 import { LayoutGrid, GitBranch, Map, Upload, ShieldCheck, BookOpen, ScrollText } from 'lucide-react'
-import { useProjectStore } from '@/stores/project'
+import { isProjectSection, useProjectStore } from '@/stores/project'
 import { cn } from '@/lib/utils'
 
 /**
@@ -22,12 +22,20 @@ const PROJECT_TABS = [
 
 export function ProjectPanel() {
   const { projectId } = useParams()
+  const location = useLocation()
   const setProject = useProjectStore((s) => s.setProject)
+  const setLastSection = useProjectStore((s) => s.setLastSection)
 
   // URL 即项目标识：进入项目路由时同步全局 store（侧边栏高亮/API 上下文一致）
   useEffect(() => {
     if (projectId) setProject(projectId)
   }, [projectId, setProject])
+
+  // 会话恢复：记录当前二级页（任务详情等非 tab 页不覆盖，保持上次 tab）
+  useEffect(() => {
+    const seg = location.pathname.split('/').filter(Boolean).pop() ?? ''
+    if (isProjectSection(seg)) setLastSection(seg)
+  }, [location.pathname, setLastSection])
 
   const encoded = encodeURIComponent(projectId ?? '')
 

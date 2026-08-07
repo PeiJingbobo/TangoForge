@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AppLayout } from '@/components/layout/app-layout'
 import { ProjectPanel } from '@/components/project/project-panel'
 import { Toaster } from '@/components/ui/sonner'
+import { useSessionRestore } from '@/hooks/useSessionRestore'
 import { WorkspacePage } from '@/features/projects/WorkspacePage'
 import { KanbanPage } from '@/features/tasks/KanbanPage'
 import { TaskDetailPage } from '@/features/tasks/TaskDetail'
@@ -44,7 +45,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route element={<AppLayout />}>
+          <Route element={<AppShell />}>
             <Route index element={<WorkspacePage />} />
             {/* 项目内功能全部封装在 ProjectPanel（二级 tab 由项目路由驱动） */}
             <Route path="project/:projectId" element={<ProjectPanel />}>
@@ -66,4 +67,12 @@ export default function App() {
       <Toaster />
     </QueryClientProvider>
   )
+}
+
+/**
+ * 应用外壳：布局 + 启动会话恢复（有上次项目时从概览页直接进入项目）。
+ */
+function AppShell() {
+  useSessionRestore()
+  return <AppLayout />
 }
