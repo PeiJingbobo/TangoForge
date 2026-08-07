@@ -500,5 +500,7 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - 表单与 YAML 区是同一 draft 的两种视图：表单编辑同步刷新 YAML（未手动编辑时）；**手动编辑 YAML 后保存以 YAML 为准**（`yamlDirty`），可「从表单生成」覆盖。
 - 显式保存（sticky 底部操作栏）：「保存修改」提交，「放弃修改」恢复服务端值；后端校验失败 toast 提示并**保留修改**供重试。
 - YAML 区展示**磁盘格式**（snake_case：`state_machine` / `export` / `template_path`）；解析兼容 PascalCase 键。
+- **流转规则为派生数据（2026-08-07 优化）**：无独立流转规则编辑区——每个状态行下方直接点亮「流转到」目标标签（多选）；`Transitions` 由 `states + targets` 隐式生成（**每状态恰好一条 from 规则**）；YAML 中手写的 transitions **保存时重新生成并覆盖**（规范化：to 去重、对齐 states、丢弃重复 from 规则）。
+- **状态列表支持拖拽排序（dnd-kit sortable）**：`states / targets / rowIds` 三者同步重排（targets 按状态索引存储，排序后仍对齐）；行拖拽 id 用稳定 `rowId`（uuid），与可编辑的 key 解耦。
 
 *（文档完）*
