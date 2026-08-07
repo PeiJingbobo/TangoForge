@@ -87,7 +87,7 @@ func serveMCP(ctx context.Context, logger *slog.Logger, configPath string) error
 		},
 	})
 	defer func() { _ = taskSvc.Close() }()
-	skillSvc := skill.NewService(logger)
+	skillSvc := skill.NewService(logger, home)
 	defer func() { _ = skillSvc.Close() }()
 
 	// parser / exporter（stdio 独立进程：事件仅接审计，WS 由 daemon 侧广播）。

@@ -28,7 +28,7 @@ func newConfigServer(t *testing.T, cfg *config.GlobalConfig, configPath string) 
 	t.Helper()
 	registry := openMemRegistry(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := NewServer(cfg, registry, logger, configPath)
+	srv := NewServer(cfg, registry, logger, configPath, t.TempDir())
 	t.Cleanup(func() { _ = srv.Close() })
 	return srv
 }

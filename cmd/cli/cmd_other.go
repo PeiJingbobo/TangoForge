@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // runGraph graph 子命令（全景图数据）。
@@ -78,29 +79,45 @@ func runStateMachine(args []string, g cliGlobal) error {
 	return fmt.Errorf("未知 state-machine 子命令: %s", args[0])
 }
 
-// runSkills skills 子命令：list（默认）/ info。
+// runSkills skills 子命令（TF-033 重设计）：list（默认）/ info <name> / install / status / uninstall。
+//
+//	install  host=<host> packages=<p1,p2,...> --project P  批量安装技能包到宿主位置
+//	status   --project P                                   检查宿主安装状态矩阵
+//	uninstall host=<host> packages=<p1,p2,...> --project P  卸载技能包
 func runSkills(args []string, g cliGlobal) error {
 	c := newCLIClient(g)
-	project := ""
-	name := ""
-	if len(args) > 0 && args[0] == "info" {
-		if len(args) < 2 {
-			return fmt.Errorf("用法: tangoforge skills info <name> [--project P]")
-		}
-		name = args[1]
-		project = parseFlags(args[2:])["project"]
-	} else {
-		project = parseFlags(args)["project"]
+	sub := ""
+	if len(args) > 0 && !isFlag(args[0]) {
+		sub = args[0]
+		args = args[1:]
 	}
-	var err error
-	if project, err = requireProject(project); err != nil {
+	opts := parseFlags(args)
+	project, err := requireProject(opts["project"])
+	if err != nil {
 		return err
 	}
 	var resp *apiResp
-	if name != "" {
-		resp, err = c.call("GET", "/api/skills/"+name, project, nil)
-	} else {
-		resp, err = c.call("GET", "/api/skills", project, nil)
+	switch sub {
+	case "", "list":
+		resp, err = c.call("GET", "/api/skills/packages", project, nil)
+	case "info":
+		name := opts["name"]
+		if name == "" {
+			return fmt.Errorf("用法: tangoforge skills info <name> --project P")
+		}
+		resp, err = c.call("GET", "/api/skills/packages/"+name, project, nil)
+	case "status":
+		resp, err = c.call("GET", "/api/skills/status", project, nil)
+	case "install", "uninstall":
+		host := opts["host"]
+		packages := splitCSV(opts["packages"])
+		if host == "" || len(packages) == 0 {
+			return fmt.Errorf("用法: tangoforge skills %s host=<host> packages=<p1,p2,...> --project P", sub)
+		}
+		resp, err = c.call("POST", "/api/skills/"+sub, project,
+			map[string]any{"host": host, "packages": packages})
+	default:
+		return fmt.Errorf("未知 skills 子命令: %s", sub)
 	}
 	if err != nil {
 		return err
@@ -108,6 +125,40 @@ func runSkills(args []string, g cliGlobal) error {
 	printOutput(g, resp, func(data json.RawMessage) string { return prettyJSON(data) })
 	return nil
 }
+
+// runGuide guide 子命令（TF-033）：输出 AI 使用说明书（GET /api/guide，免鉴权）。
+// 不经 runCLI（避免 --project 强制）；仍走 ensureDaemon 探活拉起。
+func runGuideCommand(args []string) {
+	g, _ := extractGlobal(args)
+	c := newCLIClient(g)
+	if err := c.ensureDaemon(); err != nil {
+		fmt.Fprintln(os.Stderr, "错误:", err)
+		os.Exit(1)
+	}
+	resp, err := c.call("GET", "/api/guide", "", nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "错误:", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(resp.Data))
+}
+
+// splitCSV 拆分逗号分隔列表（packages=p1,p2）。
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// isFlag 判断参数是否为 -- 开头的标志。
+func isFlag(s string) bool { return strings.HasPrefix(s, "--") }
 
 // runPermission permission 子命令（查询自身权限范围）。
 func runPermission(args []string, g cliGlobal) error {
@@ -129,7 +180,7 @@ func runPermission(args []string, g cliGlobal) error {
 		for _, a := range []string{
 			"project.read", "task.read", "task.create", "task.update", "task.update_status",
 			"task.delete", "task.restore", "import.run", "import.confirm", "export.run",
-			"graph.read", "skill.read", "state_machine.read", "state_machine.write",
+			"graph.read", "skill.read", "skill.install", "state_machine.read", "state_machine.write",
 			"audit.read", "permission.read",
 		} {
 			mark := "✗"

@@ -35,6 +35,9 @@ func main() {
 	case "mcp":
 		// stdio MCP 服务（QA P4-1：同二进制子命令，直连业务层；不经 HTTP）。
 		runMCPCommand(rest)
+	case "guide":
+		// AI 说明书（TF-033：免鉴权端点，不经过 ensureDaemon 的 actor 判断；仍探活拉起）。
+		runGuideCommand(rest)
 	case "projects":
 		// 项目组子命令无 --project 参数（与 HTTP /api/projects 组一致）。
 		runCLI("projects", rest)
@@ -119,9 +122,10 @@ func usage() {
   tangoforge export [run|template] ...
   tangoforge graph
   tangoforge state-machine get|update <file.json>
-  tangoforge skills [info <name>]
+  tangoforge skills [list|info <name>|install|status|uninstall]
   tangoforge permission
   tangoforge audit [export]
+  tangoforge guide
 
 全局参数: --server <addr>（默认 127.0.0.1:19810） --actor <name>（默认 human） --json
 任务类子命令必须携带 --project <工作目录>；详细用法见 docs/TECHNICAL.md §3.4 与 docs/TASK-SEMANTICS.md。`)

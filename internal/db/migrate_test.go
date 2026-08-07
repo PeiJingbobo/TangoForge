@@ -106,8 +106,8 @@ func TestMigrate_ProjectCreatesAllTablesAndIndexes(t *testing.T) {
 	if err := Migrate(context.Background(), conn, ProjectMigrations); err != nil {
 		t.Fatalf("migrate project: %v", err)
 	}
-	// 6 张表（含 schema_migrations）均存在。
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "skills", "audit_log", "schema_migrations"} {
+	// 5 张业务表（含 schema_migrations）均存在；skills 表在 v3 已移除（TF-033）。
+	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log", "schema_migrations"} {
 		assertTableExists(t, conn, table)
 	}
 	// 关键列校验（与 REQUIREMENTS.md §四.4 DDL 一致）。
@@ -117,8 +117,9 @@ func TestMigrate_ProjectCreatesAllTablesAndIndexes(t *testing.T) {
 		"source_file", "source_section", "created_at", "updated_at")
 	assertColumns(t, conn, "permissions", "id", "project_id", "action", "allowed")
 	assertColumns(t, conn, "import_drafts", "id", "project_id", "source_file", "parsed_json", "status", "created_at", "confirmed_at")
-	assertColumns(t, conn, "skills", "name", "content", "updated_at", "version", "description", "instructions")
 	assertColumns(t, conn, "audit_log", "id", "ts", "actor", "actor_class", "action", "target", "result", "detail")
+	// skills 表已被 v3 删除（TF-033：技能包改为内置 embed + 全局库）。
+	assertTableAbsent(t, conn, "skills")
 	// 索引齐全。
 	assertIndexExists(t, conn, "idx_tasks_project")
 	assertIndexExists(t, conn, "idx_tasks_status")
@@ -143,8 +144,8 @@ func TestMigrate_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current version: %v", err)
 	}
-	if v1 != v2 || v2 != 2 {
-		t.Errorf("version should stay 2 after idempotent migrate, got %d -> %d", v1, v2)
+	if v1 != v2 || v2 != 3 {
+		t.Errorf("version should stay 3 after idempotent migrate, got %d -> %d", v1, v2)
 	}
 }
 
@@ -264,7 +265,7 @@ func TestEnsureGlobal_FileDB(t *testing.T) {
 	assertTableExists(t, conn, "projects")
 }
 
-// TestEnsureProject_FileDB 验证临时目录建项目库：meta.db 文件 + 5 表 + 索引齐全。
+// TestEnsureProject_FileDB 验证临时目录建项目库：meta.db 文件 + 4 表（TF-033 v3 移除 skills）+ 索引齐全。
 func TestEnsureProject_FileDB(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "meta.db")
@@ -273,9 +274,11 @@ func TestEnsureProject_FileDB(t *testing.T) {
 		t.Fatalf("ensure project: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "skills", "audit_log"} {
+	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log"} {
 		assertTableExists(t, conn, table)
 	}
+	// skills 表已由 v3 迁移移除（TF-033：技能包改为内置 embed + 全局库，无项目库依赖）。
+	assertTableAbsent(t, conn, "skills")
 	assertIndexExists(t, conn, "idx_tasks_project")
 	assertIndexExists(t, conn, "idx_tasks_status")
 	assertIndexExists(t, conn, "idx_audit_project")

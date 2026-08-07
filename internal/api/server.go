@@ -70,9 +70,10 @@ type Server struct {
 // cfg 为初始配置指针；热重载（setConfig / ReloadPort）会原子替换内部状态。
 // registry 为全局注册表库连接（已迁移），用于 X-Project 注册校验。
 // configPath 为全局配置文件路径（PUT /api/config 写盘用；传 "" 则仅热更新不落盘）。
+// homeDir 为 os.UserHomeDir() 结果（skill 全局技能库 / guide 使用）。
 // 审计 / 权限 / 任务服务的接线（QA P3-1）：task 写钩子 → audit（result=ok）；
 // 权限中间件 OnDenied → audit（result=denied）；actor 经 ctx（auth.ActorFrom）读取。
-func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, configPath string) *Server {
+func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, configPath, homeDir string) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -111,7 +112,7 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, 
 		perms:      permStore,
 		audit:      auditStore,
 		hub:        hub,
-		skills:     skill.NewService(logger),
+		skills:     skill.NewService(logger, homeDir),
 	}
 	s.parserSvc = parser.NewService(parser.Options{
 		Logger: logger,
@@ -225,6 +226,9 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/ping", s.handlePing)
 	// WS 事件订阅（独立于 /api 中间件链，handleWS 内自行完成来源过滤/项目校验/权限）。
 	r.Get("/ws/events", s.handleWS)
+	// AI 说明书端点（QA-S3 完全免鉴权）：GET /api/guide 任何来源可读，
+	// 不经过 remoteAccessMiddleware / projectMiddleware / 来源识别（内容为只读能力描述）。
+	r.Get("/api/guide", s.handleGuide)
 
 	// 远程 MCP（QA P4-1 扩展）：Streamable HTTP 传输，挂载 /mcp。
 	// 鉴权链：remote_access 过滤 → MCP 通道鉴权（远程必须 Bearer → 401；回环放行）。
@@ -298,8 +302,17 @@ func (s *Server) Handler() http.Handler {
 			// TF-019 已落地：Markdown 导出与模板（exporter）。
 			r.Post("/export", s.perm("export.run", s.handleExport))
 			r.Post("/export/template/generate", s.perm("export.run", s.handleExportTemplateGenerate))
+
+			// TF-033 已重构：Skill 技能包生命周期（获取/编辑/宿主安装/状态）。
+			// 兼容旧端点 /api/skills、/api/skills/{name}（skill.read）语义迁移到包列表/详情。
 			r.Get("/skills", s.perm("skill.read", s.handleSkills))
 			r.Get("/skills/{name}", s.perm("skill.read", s.handleSkillInfo))
+			r.Get("/skills/packages", s.perm("skill.read", s.handleSkillPackages))
+			r.Get("/skills/packages/{name}", s.perm("skill.read", s.handleSkillPackageInfo))
+			r.Put("/skills/packages/{name}", s.handleSkillPackageWrite) // 仅 UI（handler 二次校验）
+			r.Get("/skills/status", s.perm("skill.read", s.handleSkillStatus))
+			r.Post("/skills/install", s.perm("skill.install", s.handleSkillInstall))
+			r.Post("/skills/uninstall", s.perm("skill.install", s.handleSkillUninstall))
 		})
 
 		r.Get("/", func(w http.ResponseWriter, _ *http.Request) {

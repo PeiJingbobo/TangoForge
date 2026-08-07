@@ -41,6 +41,7 @@ var AllActions = []string{
 	"export.run",
 	"graph.read",
 	"skill.read",
+	"skill.install",
 	"state_machine.read",
 	"state_machine.write",
 	"audit.read",
@@ -84,7 +85,7 @@ func NewService(registry *sql.DB, logger *slog.Logger) *Service {
 //   - 目录不存在 / 非目录 / 非绝对路径 → ErrInvalidWorkdir；
 //   - 已注册（重复导入）→ 幂等返回已有记录；
 //   - 未注册：目录已有 .taskboard/ 则直接注册；否则自动初始化
-//     （meta.db 5 表 + config.yaml 默认状态机/export + skills/ + 默认 Agent 只读权限）。
+//     （meta.db 4 表 + config.yaml 默认状态机/export + 默认 Agent 只读权限）。
 func (s *Service) Import(ctx context.Context, workdir string) (Project, error) {
 	clean := filepath.Clean(workdir)
 	if !filepath.IsAbs(clean) {
@@ -264,17 +265,14 @@ func (s *Service) findByWorkdir(ctx context.Context, workdir string) (Project, b
 }
 
 // initProjectDir 初始化 {workdir}/.taskboard/（QA Q11）：
-// meta.db（5 表）+ config.yaml（默认状态机 + export）+ skills/ + 默认 Agent 只读权限。
+// meta.db（4 表，TF-033 v3 移除 skills 表）+ config.yaml（默认状态机 + export）+ 默认 Agent 只读权限。
 func (s *Service) initProjectDir(ctx context.Context, workdir string) error {
 	metaDir := filepath.Join(workdir, ".taskboard")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		return fmt.Errorf("project: mkdir %s: %w", metaDir, err)
 	}
-	if err := os.MkdirAll(filepath.Join(metaDir, "skills"), 0o755); err != nil {
-		return fmt.Errorf("project: mkdir skills: %w", err)
-	}
 
-	// 1) 项目库（5 表）。
+	// 1) 项目库（4 表；skills 表已在 v3 迁移删除，TF-033）。
 	projDB, err := db.EnsureProject(ctx, db.MetaDBPath(workdir))
 	if err != nil {
 		return fmt.Errorf("project: init meta.db: %w", err)

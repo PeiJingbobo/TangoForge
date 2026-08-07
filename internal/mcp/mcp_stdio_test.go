@@ -72,7 +72,7 @@ func newTestDeps(t *testing.T) (Deps, string) {
 		},
 	})
 	t.Cleanup(func() { _ = taskSvc.Close() })
-	skillSvc := skill.NewService(logger)
+	skillSvc := skill.NewService(logger, t.TempDir())
 	t.Cleanup(func() { _ = skillSvc.Close() })
 
 	projSvc := project.NewService(registry, logger)

@@ -2,8 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -34,7 +32,8 @@ func TestTools_ListComplete(t *testing.T) {
 		"export_markdown",
 		"graph_get",
 		"state_machine_get", "state_machine_update",
-		"skill_info",
+		"skill_info", "skill_install", "skill_status", "skill_uninstall",
+		"guide",
 		"permission_list",
 	}
 	for _, name := range want {
@@ -221,28 +220,69 @@ func TestTools_ProjectImportUninitialized(t *testing.T) {
 	}
 }
 
-// TestTools_SkillInfo：skill_info 工具。
+// TestTools_SkillInfo：skill_info 工具（TF-033 语义：内置+全局技能库，非项目目录扫描）。
 func TestTools_SkillInfo(t *testing.T) {
 	deps, dir := newTestDeps(t)
-	// 写一个 skill 文件。
-	skillsDir := filepath.Join(dir, ".taskboard", "skills")
-	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillsDir, "basic.yaml"), []byte("name: taskboard-basic\ninstructions: 使用 task_read\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	srv := NewServer(deps)
 	c := newStdioClient(t, srv)
 	initialize(t, c)
 
+	// 内置包 taskboard-basic 可查。
 	res := callTool(t, c, "skill_info", map[string]any{"project": dir, "name": "taskboard-basic"})
 	if isErr, _ := res["isError"].(bool); isErr {
 		t.Fatalf("skill_info: %s", resultText(t, res))
 	}
 	if !strings.Contains(resultText(t, res), "taskboard-basic") {
 		t.Fatalf("skill_info 内容: %s", resultText(t, res))
+	}
+
+	// 不存在 → 错误。
+	res = callTool(t, c, "skill_info", map[string]any{"project": dir, "name": "no-such"})
+	if isErr, _ := res["isError"].(bool); !isErr {
+		t.Fatalf("不存在包应报错: %s", resultText(t, res))
+	}
+}
+
+// TestTools_Guide：guide 工具（免鉴权说明书，无 project 参数）。
+func TestTools_Guide(t *testing.T) {
+	deps, _ := newTestDeps(t)
+	srv := NewServer(deps)
+	c := newStdioClient(t, srv)
+	initialize(t, c)
+
+	res := callTool(t, c, "guide", nil)
+	if isErr, _ := res["isError"].(bool); isErr {
+		t.Fatalf("guide: %s", resultText(t, res))
+	}
+	if !strings.Contains(resultText(t, res), "TangoForge 使用指南") {
+		t.Fatalf("guide 内容: %s", resultText(t, res))
+	}
+}
+
+// TestTools_SkillInstallStatusUninstall：skill 生命周期工具。
+func TestTools_SkillInstallStatusUninstall(t *testing.T) {
+	deps, dir := newTestDeps(t)
+	srv := NewServer(deps)
+	c := newStdioClient(t, srv)
+	initialize(t, c)
+
+	// status（skill.read 默认 true）→ 宿主矩阵。
+	res := callTool(t, c, "skill_status", map[string]any{"project": dir})
+	if isErr, _ := res["isError"].(bool); isErr {
+		t.Fatalf("skill_status: %s", resultText(t, res))
+	}
+	if !strings.Contains(resultText(t, res), "AGENTS.md") {
+		t.Fatalf("skill_status 缺宿主: %s", resultText(t, res))
+	}
+
+	// install（skill.install 默认 false）→ 拒绝。
+	res = callTool(t, c, "skill_install",
+		map[string]any{"project": dir, "host": "AGENTS.md", "packages": []any{"taskboard-basic"}})
+	if isErr, _ := res["isError"].(bool); !isErr {
+		t.Fatalf("未授权 install 应拒绝: %s", resultText(t, res))
+	}
+	if !strings.Contains(resultText(t, res), "PERMISSION_DENIED") {
+		t.Fatalf("应返回 PERMISSION_DENIED: %s", resultText(t, res))
 	}
 }
 

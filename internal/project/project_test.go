@@ -55,27 +55,28 @@ func TestImport_NewProjectInitializesMeta(t *testing.T) {
 		t.Errorf("workdir = %q", p.Workdir)
 	}
 
-	// .taskboard/ 内容：meta.db + config.yaml + skills/。
+	// .taskboard/ 内容：meta.db + config.yaml（TF-033 v3 起不再创建 skills/ 目录）。
 	metaDir := filepath.Join(workdir, ".taskboard")
 	for _, f := range []string{"meta.db", "config.yaml"} {
 		if _, err := os.Stat(filepath.Join(metaDir, f)); err != nil {
 			t.Errorf("missing %s: %v", f, err)
 		}
 	}
-	if info, err := os.Stat(filepath.Join(metaDir, "skills")); err != nil || !info.IsDir() {
-		t.Errorf("skills dir missing: %v", err)
-	}
 
-	// meta.db 5 表齐全。
+	// meta.db 4 表齐全（skills 表已由 v3 迁移移除，TF-033）。
 	projDB, err := db.Open(db.MetaDBPath(workdir))
 	if err != nil {
 		t.Fatalf("open meta.db: %v", err)
 	}
 	defer func() { _ = projDB.Close() }()
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "skills", "audit_log"} {
+	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log"} {
 		if n := countRows(t, projDB, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='`+table+`'`); n != 1 {
 			t.Errorf("meta.db missing table %s", table)
 		}
+	}
+	// skills 表不应存在（v3 drop）。
+	if n := countRows(t, projDB, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='skills'`); n != 0 {
+		t.Error("skills table should be dropped by v3 migration (TF-033)")
 	}
 
 	// config.yaml：默认状态机（3 态）。

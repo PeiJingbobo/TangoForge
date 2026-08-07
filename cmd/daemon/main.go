@@ -88,7 +88,7 @@ func run(ctx context.Context, logger *slog.Logger, configPath string) error {
 	defer func() { _ = registry.Close() }()
 
 	// 5. HTTP 服务。
-	srv := api.NewServer(&cfg, registry, logger, configPath)
+	srv := api.NewServer(&cfg, registry, logger, configPath, home)
 
 	// 6. 全局配置热重载：remote_access 立即生效 + 端口动态重绑（失败保留旧端口）。
 	stopWatch, err := config.WatchGlobal(configPath, func(next config.GlobalConfig) {

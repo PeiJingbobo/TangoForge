@@ -184,6 +184,27 @@ var ProjectMigrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// v3（TF-033）：移除 skills 表——Skill 功能重设计（docs/task/SKILLS-REDESIGN.md，
+		// 用户确认 Q2）：彻底废弃 .taskboard/skills/ 文件扫描与 skills 缓存表，
+		// 技能包改为内置 embed + 全局技能库（~/.taskboard-app/skills/），
+		// 安装状态实时扫描宿主位置（无状态设计，不依赖项目库）。
+		Version: 3,
+		Name:    "drop_skills_table",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			_, err := tx.Exec(`DROP TABLE IF EXISTS skills`)
+			return err
+		},
+		Down: func(_ context.Context, tx *sql.Tx) error {
+			// 回退：重建 v1 结构 skills 表（原缓存表；TF-033 起不再读写，重建仅保迁移可逆）。
+			_, err := tx.Exec(`CREATE TABLE skills (
+				name       TEXT PRIMARY KEY,
+				content    TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`)
+			return err
+		},
+	},
 }
 
 // Migrate 将数据库向上迁移至迁移集合中的最新版本。

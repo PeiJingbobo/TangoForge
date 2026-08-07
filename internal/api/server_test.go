@@ -19,7 +19,7 @@ import (
 	"tangoforge/internal/db"
 )
 
-// newTestServer 构造测试 Server（注册表用内存库，日志丢弃）。
+// newTestServer 构造测试 Server（注册表用内存库，日志丢弃；skill 用临时 homeDir）。
 func newTestServer(t *testing.T, cfg *config.GlobalConfig, registry *sql.DB) *Server {
 	t.Helper()
 	if cfg == nil {
@@ -30,7 +30,7 @@ func newTestServer(t *testing.T, cfg *config.GlobalConfig, registry *sql.DB) *Se
 		registry = openMemRegistry(t)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewServer(cfg, registry, logger, "")
+	return NewServer(cfg, registry, logger, "", t.TempDir())
 }
 
 // openMemRegistry 打开并迁移内存全局注册表库。

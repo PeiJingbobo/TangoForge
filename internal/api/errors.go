@@ -10,8 +10,12 @@ import (
 	"tangoforge/internal/llm"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
+	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
 )
+
+// isErr 判断错误是否与目标哨兵相等（errors.Is 简写）。
+func isErr(err error, target error) bool { return err != nil && errors.Is(err, target) }
 
 // mapError 将业务错误映射为统一错误响应（QA P3-7 映射表，登记 TASK-SEMANTICS §10）。
 //
@@ -61,6 +65,10 @@ func mapError(err error) (status int, code, message string) {
 		return http.StatusUnprocessableEntity, exporter.CodeTemplateInvalid, err.Error()
 	case errors.Is(err, exporter.ErrProjectNotFound):
 		return http.StatusNotFound, task.CodeProjectNotFound, "该目录尚未导入为项目（无 .taskboard/meta.db）"
+	case errors.Is(err, skill.ErrSkillNotFound):
+		return http.StatusNotFound, "SKILL_NOT_FOUND", err.Error()
+	case errors.Is(err, skill.ErrInvalidPackage), errors.Is(err, skill.ErrUnknownHost):
+		return http.StatusUnprocessableEntity, "SKILL_INVALID", err.Error()
 	}
 	// LLM 错误（TF-015，§14.3）→ 422 对应码。
 	if code := llm.ErrorCode(err); code != "" {

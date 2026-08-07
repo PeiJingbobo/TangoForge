@@ -87,7 +87,12 @@ func (s *Server) registerTools() {
 	s.mcpSrv.AddTool(toolStateMachineGet, s.handleStateMachineGet)
 	s.mcpSrv.AddTool(toolStateMachineUpdate, s.handleStateMachineUpdate)
 	s.mcpSrv.AddTool(toolSkillInfo, s.handleSkillInfo)
+	s.mcpSrv.AddTool(toolSkillInstall, s.handleSkillInstall)
+	s.mcpSrv.AddTool(toolSkillStatus, s.handleSkillStatus)
+	s.mcpSrv.AddTool(toolSkillUninstall, s.handleSkillUninstall)
 	s.mcpSrv.AddTool(toolPermissionList, s.handlePermissionList)
+	// TF-033 guide 说明书工具（免鉴权，无 project 参数）。
+	s.mcpSrv.AddTool(toolGuide, s.handleGuide)
 }
 
 // StdioServer 返回 stdio 传输服务（cmd 层调用 Listen(ctx, stdin, stdout)）。
