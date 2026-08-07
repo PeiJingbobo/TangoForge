@@ -84,12 +84,22 @@ describe('DOM 应用（jsdom）', () => {
     expect(root.style.getPropertyValue('--primary-500')).toBe('')
   })
 
-  it('自定义主色：写入十级变量 + dataset=custom', () => {
+  it('自定义主色：写入十级变量 + --primary + dataset=custom', () => {
     applyAccent(SKY, 'light')
     const root = document.documentElement
     expect(root.dataset.accent).toBe('custom')
     expect(root.style.getPropertyValue('--primary-500')).toBe(SKY)
+    expect(root.style.getPropertyValue('--primary')).toBe(SKY)
     expect(root.style.getPropertyValue('--primary-50')).toBe('#EDF6FC')
+  })
+
+  it('预设主色：清除自定义 inline（含 --primary），回退 CSS 预设', () => {
+    applyAccent(SKY, 'light')
+    const root = document.documentElement
+    applyAccent('sky-blue', 'light')
+    expect(root.dataset.accent).toBe('sky-blue')
+    expect(root.style.getPropertyValue('--primary')).toBe('')
+    expect(root.style.getPropertyValue('--primary-500')).toBe('')
   })
 
   it('明暗切换：dark class 生效；自定义主色按主题重算', () => {

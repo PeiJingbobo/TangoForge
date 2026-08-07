@@ -133,6 +133,8 @@ async function apiProxy(req: ApiRequestPayload): Promise<ApiProxyResult> {
   }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (req.project) headers['X-Project'] = req.project
+  // 按需兜底：token 未初始化（如 ensureRunning 未完成）时读取一次，避免全局端点 403
+  if (!uiToken) refreshUiToken()
   if (uiToken) headers['X-UI-Token'] = uiToken
   try {
     const res = await fetch(`${DAEMON_BASE_URL}${req.path}`, {

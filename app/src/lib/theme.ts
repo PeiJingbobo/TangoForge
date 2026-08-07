@@ -147,6 +147,8 @@ export function applyAccentVariables(hex: string, mode: ResolvedTheme): void {
   const fg = mode === 'dark' ? DARK_FOREGROUND : accentForeground(base)
   const root = document.documentElement
   PRIMARY_STEPS.forEach((s) => root.style.setProperty(`--primary-${s}`, scale[s]))
+  // --primary 为按钮/链接等组件的「主色」变量（UI-VISION：bg-primary 类引用），必须同步覆盖
+  root.style.setProperty('--primary', scale['500'])
   root.style.setProperty('--primary-foreground', fg)
   root.dataset.accent = 'custom'
 }
@@ -155,6 +157,7 @@ export function applyAccentVariables(hex: string, mode: ResolvedTheme): void {
 export function clearAccentVariables(): void {
   const root = document.documentElement
   PRIMARY_STEPS.forEach((s) => root.style.removeProperty(`--primary-${s}`))
+  root.style.removeProperty('--primary')
   root.style.removeProperty('--primary-foreground')
 }
 

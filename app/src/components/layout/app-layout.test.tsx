@@ -38,47 +38,47 @@ describe('AppLayout（全局导航布局）', () => {
     Object.defineProperty(window, 'tangoforge', { value: undefined, configurable: true })
   })
 
-  it('左侧导航：项目概览/项目列表/亮暗切换/设置/守护进程状态', async () => {
+  it('左侧导航：项目概览/项目列表/底部一行（图标切换+设置+指示点）', async () => {
     renderLayout()
     await waitFor(() => expect(screen.getByText('项目概览')).toBeInTheDocument())
-    expect(screen.getByText('项目')).toBeInTheDocument()
     // 项目列表按钮（MSW demo 数据）
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
     )
+    // 底部：亮暗切换（仅图标，aria-label）、设置（仅图标）、指示点（无文字，role=status）
     expect(screen.getByRole('button', { name: '切换亮暗色' })).toBeInTheDocument()
-    expect(screen.getByText('设置')).toBeInTheDocument()
-    // 守护进程状态点（web 环境 false → 未连接）
-    expect(screen.getByText('守护进程未连接')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '设置' })).toBeInTheDocument()
+    const dot = screen.getByRole('status')
+    expect(dot).toBeInTheDocument()
+    // 指示点不应包含提示文字（纯圆点）
+    expect(dot.textContent).toBe('')
   })
 
-  it('未激活项目时不显示二级 tabs；点击项目后激活并显示', async () => {
+  it('一级页面（/）不展示二级 tab（看板等链接不存在）', async () => {
     renderLayout()
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
     )
-    // 未激活：无 tabs
     expect(screen.queryByRole('link', { name: /看板/ })).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'TangoForge' }))
-    // 激活：setProject + tabs 出现
-    await waitFor(() => {
-      expect(useProjectStore.getState().project).toBe('/data/projects/tangoforge')
-      expect(screen.getByRole('link', { name: /看板/ })).toBeInTheDocument()
-    })
-    expect(screen.getByRole('link', { name: /全景图/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /导入导出/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /权限/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Skills/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /审计/ })).toBeInTheDocument()
-    expect(useProjectStore.getState().project).toBe('/data/projects/tangoforge')
+    expect(screen.queryByRole('link', { name: /全景图/ })).not.toBeInTheDocument()
   })
 
-  it('亮暗切换按钮可点击（useThemeMode 持久化）', async () => {
+  it('点击侧边栏项目 → setProject + 导航到该项目看板', async () => {
+    renderLayout()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'TangoForge' }))
+    await waitFor(() => {
+      expect(useProjectStore.getState().project).toBe('/data/projects/tangoforge')
+    })
+    expect(await screen.findByText('看板内容')).toBeInTheDocument()
+  })
+
+  it('亮暗切换按钮可点击（仅图标，useThemeMode 持久化）', async () => {
     renderLayout()
     const btn = screen.getByRole('button', { name: '切换亮暗色' })
     await userEvent.click(btn)
-    // 点击后仍存在（切换 light/dark）；localStorage 有值
     expect(localStorage.getItem('tf-theme-mode')).not.toBeNull()
   })
 })

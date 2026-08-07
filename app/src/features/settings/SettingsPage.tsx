@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Monitor, Moon, Sun } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +17,27 @@ import { cn } from '@/lib/utils'
  * LLM / 守护进程为全局配置（GET/PUT /api/config，仅 UI）；外观偏好本地持久化（localStorage）。
  */
 export function SettingsPage() {
+  const { isError, error, refetch, isFetching } = useConfig()
+
+  if (isError) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">全局设置</p>
+        <h1 className="text-h2 text-foreground">首选项</h1>
+        <div className="mt-6 rounded-2xl border border-destructive-200 bg-destructive-soft p-5">
+          <div className="text-sm font-semibold text-destructive-ink">全局配置加载失败</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {error instanceof Error ? error.message : '无法连接守护进程，请确认服务已启动。'}
+          </p>
+          <Button className="mt-3" onClick={() => void refetch()} disabled={isFetching}>
+            {isFetching && <Loader2 className="size-4 animate-spin" />}
+            重试
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-2xl">
       <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">全局设置</p>

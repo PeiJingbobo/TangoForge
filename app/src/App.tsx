@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AppLayout } from '@/components/layout/app-layout'
+import { ProjectPanel } from '@/components/project/project-panel'
 import { Toaster } from '@/components/ui/sonner'
 import { WorkspacePage } from '@/features/projects/WorkspacePage'
 import { KanbanPage } from '@/features/tasks/KanbanPage'
@@ -45,15 +46,18 @@ export default function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route index element={<WorkspacePage />} />
-            <Route path="project/:projectId" element={<Navigate to="kanban" replace />} />
-            <Route path="project/:projectId/kanban" element={<KanbanPage />} />
-            <Route path="project/:projectId/nav" element={<NavPage />} />
-            <Route path="project/:projectId/graph" element={<GraphPage />} />
-            <Route path="project/:projectId/io" element={<ImportExportPage />} />
-            <Route path="project/:projectId/permissions" element={<PermissionsPage />} />
-            <Route path="project/:projectId/skills" element={<SkillsPage />} />
-            <Route path="project/:projectId/audit" element={<AuditPage />} />
-            <Route path="project/:projectId/tasks/:taskId" element={<TaskDetailPage />} />
+            {/* 项目内功能全部封装在 ProjectPanel（二级 tab 由项目路由驱动） */}
+            <Route path="project/:projectId" element={<ProjectPanel />}>
+              <Route index element={<Navigate to="kanban" replace />} />
+              <Route path="kanban" element={<KanbanPage />} />
+              <Route path="nav" element={<NavPage />} />
+              <Route path="graph" element={<GraphPage />} />
+              <Route path="io" element={<ImportExportPage />} />
+              <Route path="permissions" element={<PermissionsPage />} />
+              <Route path="skills" element={<SkillsPage />} />
+              <Route path="audit" element={<AuditPage />} />
+              <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+            </Route>
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
