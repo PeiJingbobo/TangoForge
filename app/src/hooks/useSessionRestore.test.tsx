@@ -1,26 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router'
 import { useSessionRestore } from './useSessionRestore'
 import { useProjectStore } from '@/stores/project'
 
-function Harness() {
+/** 常驻根组件（模拟 App.tsx：useSessionRestore 挂在根组件，不随路由卸载） */
+function Shell() {
   useSessionRestore()
-  return <div>harness-root</div>
+  return (
+    <Routes>
+      <Route path="/" element={<div>harness-root</div>} />
+      <Route path="/settings" element={<div>harness-root</div>} />
+      <Route path="/project/:projectId/:section" element={<ProjectPageWithNav />} />
+    </Routes>
+  )
 }
 
-function Dummy() {
-  return <div>project-restored</div>
-}
-
-function renderAtRoot() {
-  return render(
-    <MemoryRouter initialEntries={['/']}>
-      <Routes>
-        <Route path="/" element={<Harness />} />
-        <Route path="/project/:projectId/:section" element={<Dummy />} />
-      </Routes>
-    </MemoryRouter>,
+/** 项目页 + 返回概览按钮（模拟侧边栏「项目概览」点击） */
+function ProjectPageWithNav() {
+  const navigate = useNavigate()
+  return (
+    <div>
+      <div>project-restored</div>
+      <button onClick={() => navigate('/')}>go-overview</button>
+    </div>
   )
 }
 
@@ -34,14 +38,22 @@ describe('useSessionRestore（启动会话恢复）', () => {
 
   it('有上次项目 → 从概览页恢复进入项目（上次二级页）', async () => {
     useProjectStore.setState({ project: '/data/projects/demo', lastSection: 'graph' })
-    renderAtRoot()
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Shell />
+      </MemoryRouter>,
+    )
     await waitFor(() => expect(screen.getByText('project-restored')).toBeInTheDocument())
     expect(screen.queryByText('harness-root')).not.toBeInTheDocument()
   })
 
   it('无上次项目 → 停留在项目概览', () => {
     useProjectStore.setState({ project: null, lastSection: 'kanban' })
-    renderAtRoot()
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Shell />
+      </MemoryRouter>,
+    )
     expect(screen.getByText('harness-root')).toBeInTheDocument()
     expect(screen.queryByText('project-restored')).not.toBeInTheDocument()
   })
@@ -50,11 +62,25 @@ describe('useSessionRestore（启动会话恢复）', () => {
     useProjectStore.setState({ project: '/data/projects/demo', lastSection: 'kanban' })
     render(
       <MemoryRouter initialEntries={['/settings']}>
-        <Routes>
-          <Route path="/settings" element={<Harness />} />
-        </Routes>
+        <Shell />
       </MemoryRouter>,
     )
     expect(screen.getByText('harness-root')).toBeInTheDocument()
+  })
+
+  it('初始化后手动进入项目概览不再被恢复逻辑干预（可正常停留）', async () => {
+    useProjectStore.setState({ project: '/data/projects/demo', lastSection: 'kanban' })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/project/p/kanban']}>
+        <Shell />
+      </MemoryRouter>,
+    )
+    // 启动落在项目页：首次 effect 已消费（pathname 非 /，不干预）
+    await waitFor(() => expect(screen.getByText('project-restored')).toBeInTheDocument())
+    // 点击「项目概览」→ / ：不应再跳回项目页，可正常停留
+    await user.click(screen.getByRole('button', { name: 'go-overview' }))
+    await waitFor(() => expect(screen.getByText('harness-root')).toBeInTheDocument())
+    expect(screen.queryByText('project-restored')).not.toBeInTheDocument()
   })
 })
