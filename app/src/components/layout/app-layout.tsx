@@ -1,16 +1,48 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router'
-import { Boxes, FolderKanban, Moon, Settings, Sun } from 'lucide-react'
+import {
+  Boxes,
+  FolderKanban,
+  FolderOpen,
+  Loader2,
+  Moon,
+  Pencil,
+  Settings,
+  Sun,
+  Trash2,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { useThemeMode } from '@/hooks/useThemeMode'
-import { useProjects } from '@/hooks/useProjects'
+import { useProjects, useRemoveProject, useRenameProject } from '@/hooks/useProjects'
 import { useDaemonStatus } from '@/hooks/useDaemonStatus'
 import { useProjectStore } from '@/stores/project'
 import { GlobalTaskDrawer } from '@/features/tasks/TaskDetail'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
+import type { Project } from '@/types/models'
 
 /**
  * 应用布局（TF-029 布局重构）：
  * 左侧全局导航（顶部项目概览 / 中部项目列表 flex-1 可滚动 / 底部一行：亮暗切换图标
  * + 设置图标 + 守护进程指示点）；右侧为内容区（项目内页面由 ProjectPanel 提供二级 tab）。
+ * TF-035：项目列表项右键菜单（重命名 / 在文件夹中打开 / 删除项目）。
  */
 export function AppLayout() {
   const project = useProjectStore((s) => s.project)
@@ -19,6 +51,9 @@ export function AppLayout() {
   const { data: projects, isLoading } = useProjects()
   const daemonUp = useDaemonStatus()
   const { mode, setMode } = useThemeMode()
+
+  const [renameTarget, setRenameTarget] = useState<Project | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<Project | null>(null)
 
   const activateProject = (workdir: string) => {
     setProject(workdir)
@@ -70,20 +105,25 @@ export function AppLayout() {
               </p>
             )}
             {projects?.map((p) => (
-              <button
+              <ProjectItem
                 key={p.id}
-                type="button"
-                onClick={() => activateProject(p.workdir)}
-                className={cn(
-                  'group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
-                  project === p.workdir
-                    ? 'bg-primary-50 font-semibold text-primary-700'
-                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                )}
-              >
-                <FolderKanban className="size-4 shrink-0" />
-                <span className="truncate">{p.name}</span>
-              </button>
+                project={p}
+                active={project === p.workdir}
+                onActivate={() => activateProject(p.workdir)}
+                onRename={() => setRenameTarget(p)}
+                onReveal={() => {
+                  const shell = window.tangoforge?.shell
+                  if (!shell) {
+                    toast.error('「在文件夹中打开」仅桌面版可用（Web 预览不支持）')
+                    return
+                  }
+                  void shell.revealPath(p.workdir).then((ok) => {
+                    if (ok) toast.success(`已在文件夹中打开：${p.workdir}`)
+                    else toast.error('打开文件夹失败')
+                  })
+                }}
+                onRemove={() => setRemoveTarget(p)}
+              />
             ))}
           </div>
         </div>
@@ -135,8 +175,190 @@ export function AppLayout() {
         </main>
       </div>
 
+      {/* 重命名对话框 */}
+      <RenameProjectDialog target={renameTarget} onClose={() => setRenameTarget(null)} />
+
+      {/* 删除项目确认对话框 */}
+      <RemoveProjectDialog target={removeTarget} onClose={() => setRemoveTarget(null)} />
+
       {/* 全局任务详情抽屉（当前页保留，抽屉浮层覆盖） */}
       <GlobalTaskDrawer />
     </div>
+  )
+}
+
+/* ---------- 项目列表项（TF-035 右键菜单） ---------- */
+
+interface ProjectItemProps {
+  project: Project
+  active: boolean
+  onActivate: () => void
+  onRename: () => void
+  onReveal: () => void
+  onRemove: () => void
+}
+
+function ProjectItem({
+  project,
+  active,
+  onActivate,
+  onRename,
+  onReveal,
+  onRemove,
+}: ProjectItemProps) {
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={onActivate}
+          className={cn(
+            'group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+            active
+              ? 'bg-primary-50 font-semibold text-primary-700'
+              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+          )}
+        >
+          <FolderKanban className="size-4 shrink-0" />
+          <span className="truncate">{project.name}</span>
+        </button>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={onRename}>
+          <Pencil className="size-4" />
+          重命名
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onReveal}>
+          <FolderOpen className="size-4" />
+          在文件夹中打开
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={onRemove}
+          className="text-destructive-ink focus:bg-destructive-soft"
+        >
+          <Trash2 className="size-4" />
+          删除项目
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
+/* ---------- 重命名对话框 ---------- */
+
+function RenameProjectDialog({ target, onClose }: { target: Project | null; onClose: () => void }) {
+  const rename = useRenameProject()
+  const [name, setName] = useState('')
+
+  // target 变化时同步输入框初值。
+  const [prevTarget, setPrevTarget] = useState<number | null>(null)
+  if (target && target.id !== prevTarget) {
+    setPrevTarget(target.id)
+    setName(target.name)
+  }
+
+  const submit = () => {
+    if (!target || !name.trim()) return
+    rename.mutate(
+      { id: target.id, name: name.trim() },
+      {
+        onSuccess: () => {
+          toast.success(`项目已重命名为「${name.trim()}」`)
+          onClose()
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : '重命名失败'),
+      },
+    )
+  }
+
+  return (
+    <Dialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open && !rename.isPending) onClose()
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>重命名项目</DialogTitle>
+          <DialogDescription>
+            仅修改显示名称（注册表记录），不影响磁盘目录与任务数据。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="rename-input">项目名称</Label>
+          <Input
+            id="rename-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit()
+            }}
+            placeholder={target?.name ?? ''}
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={rename.isPending}>
+            取消
+          </Button>
+          <Button onClick={submit} disabled={!name.trim() || rename.isPending}>
+            {rename.isPending && <Loader2 className="size-4 animate-spin" />}
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ---------- 删除项目确认对话框 ---------- */
+
+function RemoveProjectDialog({ target, onClose }: { target: Project | null; onClose: () => void }) {
+  const remove = useRemoveProject()
+  const setProject = useProjectStore((s) => s.setProject)
+
+  const submit = () => {
+    if (!target) return
+    remove.mutate(target.id, {
+      onSuccess: () => {
+        toast.success(`已移除项目「${target.name}」（磁盘数据保留）`)
+        // 若删除的是当前项目，清空全局项目态（回到概览）。
+        const current = useProjectStore.getState().project
+        if (current === target.workdir) setProject(null)
+        onClose()
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : '删除失败'),
+    })
+  }
+
+  return (
+    <Dialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open && !remove.isPending) onClose()
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>删除项目「{target?.name}」？</DialogTitle>
+          <DialogDescription>
+            仅移除项目注册记录，
+            <span className="font-semibold text-foreground">不会删除磁盘上的任何数据</span>
+            （目录、.taskboard/ 元数据与任务均保留）。可稍后重新导入。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={remove.isPending}>
+            取消
+          </Button>
+          <Button variant="destructive" onClick={submit} disabled={remove.isPending}>
+            {remove.isPending && <Loader2 className="size-4 animate-spin" />}
+            确认删除
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"tangoforge/internal/config"
@@ -232,6 +233,36 @@ func (s *Service) Remove(ctx context.Context, id int64) error {
 	}
 	s.logger.Info("project record removed", "id", id)
 	return nil
+}
+
+// Rename 更新项目显示名称（仅改 projects.name 行，不触碰磁盘与 workdir）。
+// 名称去首尾空白；空名视为非法（ErrInvalidWorkdir 语义复用为参数错误）。
+func (s *Service) Rename(ctx context.Context, id int64, name string) (Project, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Project{}, fmt.Errorf("%w: 项目名称不能为空", ErrInvalidWorkdir)
+	}
+	res, err := s.registry.ExecContext(ctx, `UPDATE projects SET name = ? WHERE id = ?`, name, id)
+	if err != nil {
+		return Project{}, fmt.Errorf("project: rename %d: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return Project{}, fmt.Errorf("%w: id %d", ErrNotFound, id)
+	}
+	// 返回更新后的记录（供响应回显）。
+	row := s.registry.QueryRowContext(ctx,
+		`SELECT id, name, workdir, created_at, last_opened_at FROM projects WHERE id = ?`, id)
+	var p Project
+	var last sql.NullString
+	if err := row.Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last); err != nil {
+		return Project{}, fmt.Errorf("project: rename refetch %d: %w", id, err)
+	}
+	if last.Valid {
+		p.LastOpenedAt = &last.String
+	}
+	s.logger.Info("project renamed", "id", id, "name", name)
+	return p, nil
 }
 
 // Touch 更新项目最近打开时间（X-Project 校验命中时调用，QA Q12）。

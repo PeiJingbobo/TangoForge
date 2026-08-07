@@ -256,6 +256,76 @@ func TestAPI_ProjectRemoveUIOnly(t *testing.T) {
 	mustCode(t, rec, http.StatusOK, "ui remove")
 }
 
+func TestAPI_ProjectRenameUIOnly(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+	_ = importProjectViaAPI(t, srv)
+
+	// 列表拿 id 与原名。
+	rec := uiReq(t, srv, http.MethodGet, "/api/projects", "", "")
+	body := mustCode(t, rec, http.StatusOK, "project list")
+	var list struct {
+		Data []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &list); err != nil {
+		t.Fatalf("unmarshal list: %v", err)
+	}
+	if len(list.Data) == 0 {
+		t.Fatalf("no project found: %s", body)
+	}
+	pidStr := strconv.FormatInt(list.Data[0].ID, 10)
+	oldName := list.Data[0].Name
+
+	// agent 重命名 → 403。
+	rec = agentReq(t, srv, http.MethodPatch, "/api/projects/"+pidStr, "", `{"name":"hijacked"}`)
+	mustCode(t, rec, http.StatusForbidden, "agent rename denied")
+
+	// UI 重命名 → 200 + 新名称回显。
+	rec = uiReq(t, srv, http.MethodPatch, "/api/projects/"+pidStr, "", `{"name":"新名称"}`)
+	body = mustCode(t, rec, http.StatusOK, "ui rename")
+	var renamed struct {
+		Data struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &renamed); err != nil {
+		t.Fatalf("unmarshal renamed: %v", err)
+	}
+	if renamed.Data.Name != "新名称" {
+		t.Fatalf("重命名回显 %q", renamed.Data.Name)
+	}
+
+	// 列表确认变更。
+	rec = uiReq(t, srv, http.MethodGet, "/api/projects", "", "")
+	body = mustCode(t, rec, http.StatusOK, "project list after")
+	_ = json.Unmarshal([]byte(body), &list)
+	found := false
+	for _, p := range list.Data {
+		if p.Name == "新名称" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("列表未反映重命名: %s", body)
+	}
+
+	// 空名 → 422。
+	rec = uiReq(t, srv, http.MethodPatch, "/api/projects/"+pidStr, "", `{"name":"  "}`)
+	body = mustCode(t, rec, http.StatusUnprocessableEntity, "empty name")
+	if apiCode(t, body) != "TASK_INVALID" {
+		t.Fatalf("code %s", apiCode(t, body))
+	}
+
+	// 不存在 id → 404。
+	rec = uiReq(t, srv, http.MethodPatch, "/api/projects/999999", "", `{"name":"x"}`)
+	mustCode(t, rec, http.StatusNotFound, "rename not found")
+
+	_ = oldName
+}
+
 func TestAPI_PermissionPutUIOnly(t *testing.T) {
 	srv := newAPIServer(t, nil)
 	defer func() { _ = srv.Close() }()

@@ -1,11 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 import { AppLayout } from './app-layout'
 import { useProjectStore } from '@/stores/project'
+import { server } from '@/test/server'
+import { DAEMON_BASE_URL } from '@/api/client'
+import { toast } from 'sonner'
 
 function Dummy({ text }: { text: string }) {
   return <div>{text}</div>
@@ -80,5 +84,88 @@ describe('AppLayout（全局导航布局）', () => {
     const btn = screen.getByRole('button', { name: '切换亮暗色' })
     await userEvent.click(btn)
     expect(localStorage.getItem('tf-theme-mode')).not.toBeNull()
+  })
+
+  it('TF-035 右键菜单：重命名项目（PATCH）', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let patchBody: unknown = null
+    server.use(
+      http.patch(`${DAEMON_BASE_URL}/api/projects/1`, async ({ request }) => {
+        patchBody = await request.json()
+        return HttpResponse.json({
+          code: 0,
+          data: {
+            id: 1,
+            name: '重命名后',
+            workdir: '/data/projects/tangoforge',
+            created_at: '2026-08-06T10:00:00+08:00',
+            last_opened_at: null,
+          },
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderLayout()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
+    )
+    // 右键项目项 → 菜单 → 重命名。
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByRole('button', { name: 'TangoForge' }),
+    })
+    await user.click(await screen.findByRole('menuitem', { name: /重命名/ }))
+    const input = await screen.findByLabelText('项目名称')
+    await user.clear(input)
+    await user.type(input, '重命名后')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(patchBody).toEqual({ name: '重命名后' }))
+    await waitFor(() => expect(toastSpy).toBeCalled())
+    toastSpy.mockRestore()
+  })
+
+  it('TF-035 右键菜单：删除项目（二次确认 + DELETE）', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let deleted = false
+    server.use(
+      http.delete(`${DAEMON_BASE_URL}/api/projects/1`, () => {
+        deleted = true
+        return HttpResponse.json({ code: 0, data: { removed: true } })
+      }),
+    )
+    const user = userEvent.setup()
+    renderLayout()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
+    )
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByRole('button', { name: 'TangoForge' }),
+    })
+    await user.click(await screen.findByRole('menuitem', { name: /删除项目/ }))
+    // 确认对话框。
+    await screen.findByText(/删除项目「TangoForge」/)
+    await user.click(screen.getByRole('button', { name: '确认删除' }))
+    await waitFor(() => expect(deleted).toBe(true))
+    await waitFor(() => expect(toastSpy).toBeCalled())
+    toastSpy.mockRestore()
+  })
+
+  it('TF-035 右键菜单：在文件夹中打开（Electron shell；Web 环境提示不可用）', async () => {
+    const toastSpy = vi.spyOn(toast, 'error').mockImplementation(() => '')
+    // Web 环境：window.tangoforge 未注入（beforeEach 已置 undefined）→ 提示不可用。
+    const user = userEvent.setup()
+    renderLayout()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'TangoForge' })).toBeInTheDocument(),
+    )
+    await user.pointer({
+      keys: '[MouseRight]',
+      target: screen.getByRole('button', { name: 'TangoForge' }),
+    })
+    await user.click(await screen.findByRole('menuitem', { name: /在文件夹中打开/ }))
+    await waitFor(() => expect(toastSpy).toBeCalled())
+    expect(String(toastSpy.mock.calls[0]?.[0])).toContain('仅桌面版可用')
+    toastSpy.mockRestore()
   })
 })

@@ -248,6 +248,7 @@ func (s *Server) Handler() http.Handler {
 			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
 			r.Get("/", s.handleProjectList)
 			r.Post("/import", s.handleProjectImport)
+			r.Patch("/{id}", s.handleProjectRename) // TF-035 重命名（仅 UI）
 			r.Delete("/{id}", s.handleProjectRemove)
 		})
 

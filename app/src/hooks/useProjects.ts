@@ -34,3 +34,18 @@ export function useRemoveProject() {
     },
   })
 }
+
+/** 重命名项目（仅 UI；只改显示名称，不动磁盘/workdir） */
+export function useRenameProject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { id: number; name: string }) =>
+      apiRequest<Project>(`/api/projects/${body.id}`, {
+        method: 'PATCH',
+        body: { name: body.name },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.projects })
+    },
+  })
+}

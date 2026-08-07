@@ -82,6 +82,49 @@ func (s *Server) handleProjectRemove(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"removed": true}})
 }
 
+// projectRenameReq 重命名请求体。
+type projectRenameReq struct {
+	Name string `json:"name"`
+}
+
+// handleProjectRename 重命名项目显示名称（PATCH /api/projects/:id）。
+//
+// 仅 UI（同删除：注册表级操作，Agent 无权限）；仅改 projects.name 行，
+// 不触碰磁盘与 workdir（project.Service.Rename 语义）；审计 project.renamed（按 workdir）。
+func (s *Server) handleProjectRename(w http.ResponseWriter, r *http.Request) {
+	actor := auth.ActorFrom(r.Context())
+	if actor.Class != auth.ClassUI {
+		writeError(w, http.StatusForbidden, "PERMISSION_DENIED",
+			"重命名项目仅允许 UI 操作（回环 + X-UI-Token）", actor.Class)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "项目 id 非法", err.Error())
+		return
+	}
+	var req projectRenameReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "请求体必须是 JSON {name: <新名称>}", "")
+		return
+	}
+	p, err := s.projects.Rename(r.Context(), id, req.Name)
+	if err != nil {
+		if errors.Is(err, project.ErrNotFound) {
+			writeBizError(w, err)
+			return
+		}
+		if errors.Is(err, project.ErrInvalidWorkdir) {
+			writeError(w, http.StatusUnprocessableEntity, "TASK_INVALID", err.Error(), "")
+			return
+		}
+		writeBizError(w, err)
+		return
+	}
+	s.writeProjectAudit(r, "project.renamed", p.Workdir, audit.ResultOK, "")
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": p})
+}
+
 // writeProjectAudit 写项目级审计（projects 组无项目库上下文时的兜底路径）。
 func (s *Server) writeProjectAudit(r *http.Request, action, workdir, result, detail string) {
 	if s.audit == nil || workdir == "" {

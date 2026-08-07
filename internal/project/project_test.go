@@ -262,6 +262,63 @@ func TestRemove_NotFound(t *testing.T) {
 	}
 }
 
+func TestRename_UpdatesNameKeepsWorkdir(t *testing.T) {
+	svc := newService(t)
+	workdir := t.TempDir()
+	p, err := svc.Import(context.Background(), workdir)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	renamed, err := svc.Rename(context.Background(), p.ID, "  新项目名  ")
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	// 名称去空白更新；workdir / id 不变。
+	if renamed.Name != "新项目名" {
+		t.Errorf("name = %q, want 新项目名", renamed.Name)
+	}
+	if renamed.Workdir != filepath.Clean(workdir) {
+		t.Errorf("workdir changed: %q", renamed.Workdir)
+	}
+	if renamed.ID != p.ID {
+		t.Errorf("id changed: %d -> %d", p.ID, renamed.ID)
+	}
+	// 列表反映新名称。
+	list, err := svc.List(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	found := false
+	for _, item := range list {
+		if item.ID == p.ID && item.Name == "新项目名" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("list 未反映重命名: %+v", list)
+	}
+}
+
+func TestRename_EmptyNameRejected(t *testing.T) {
+	svc := newService(t)
+	workdir := t.TempDir()
+	p, err := svc.Import(context.Background(), workdir)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if _, err := svc.Rename(context.Background(), p.ID, "   "); err == nil {
+		t.Error("空名应被拒绝")
+	}
+}
+
+func TestRename_NotFound(t *testing.T) {
+	svc := newService(t)
+	if _, err := svc.Rename(context.Background(), 9999, "x"); err == nil {
+		t.Error("expected ErrNotFound for missing id")
+	}
+}
+
 func TestImport_VisibleToProjectExists(t *testing.T) {
 	// 联调验证：project.Import 写入的注册记录可被 TF-003 中间件使用的 db.ProjectExists 命中。
 	svc := newService(t)

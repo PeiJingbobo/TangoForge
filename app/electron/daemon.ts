@@ -199,6 +199,24 @@ async function selectFiles(): Promise<string[] | null> {
   return result.canceled ? null : result.filePaths
 }
 
+/**
+ * 在系统文件管理器中显示项目目录（TF-035 右键菜单「在文件夹中打开」）。
+ * 目录存在 → revealItemInFolder（选中该目录）；不存在 → openPath（打开上级，兜底）。
+ */
+async function revealPath(path: string): Promise<boolean> {
+  const { shell } = await import('electron')
+  try {
+    if (existsSync(path)) {
+      shell.showItemInFolder(path)
+    } else {
+      await shell.openPath(join(path, '..'))
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function registerDaemonIpc(): void {
   ipcMain.handle('daemon:ensureRunning', () => ensureDaemonRunning())
   ipcMain.handle('daemon:status', () => isDaemonAlive())
@@ -209,6 +227,7 @@ export function registerDaemonIpc(): void {
   })
   ipcMain.handle('dialog:selectDirectory', () => selectDirectory())
   ipcMain.handle('dialog:selectFiles', () => selectFiles())
+  ipcMain.handle('shell:revealPath', (_e, path: string) => revealPath(path))
 }
 
 export function registerConfigIpc(): void {

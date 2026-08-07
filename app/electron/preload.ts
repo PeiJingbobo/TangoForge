@@ -39,6 +39,11 @@ const api = {
     /** 系统文件选择器（Markdown 多选）；取消返回 null */
     selectFiles: (): Promise<string[] | null> => ipcRenderer.invoke('dialog:selectFiles'),
   },
+  /** 系统文件操作（TF-035 右键菜单「在文件夹中打开」） */
+  shell: {
+    /** 在系统文件管理器中显示目录（不存在则打开上级）；成功返回 true */
+    revealPath: (path: string): Promise<boolean> => ipcRenderer.invoke('shell:revealPath', path),
+  },
 }
 
 contextBridge.exposeInMainWorld('tangoforge', api)
