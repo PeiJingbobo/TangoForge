@@ -17,7 +17,8 @@ function createWindow(): void {
     height: 800,
     show: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      // preload 为 CJS（sandbox 兼容；见 electron.vite.config.ts output.format=cjs）
+      preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

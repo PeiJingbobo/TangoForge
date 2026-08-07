@@ -22,6 +22,9 @@ export default defineConfig({
       outDir: 'out/preload',
       rollupOptions: {
         input: { index: fileURLToPath(new URL('./electron/preload.ts', import.meta.url)) },
+        // sandbox: true 时 Electron 仅支持 CJS preload；package.json 为 type: module，
+        // 必须强制 CJS + .cjs 扩展名（否则输出 ESM .mjs 导致 preload 加载失败、window.tangoforge 缺失）。
+        output: { format: 'cjs', entryFileNames: '[name].cjs' },
       },
     },
   },
