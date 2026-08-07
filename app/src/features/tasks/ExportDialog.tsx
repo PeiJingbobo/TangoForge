@@ -27,9 +27,11 @@ import type { RenderResult } from '@/types/models'
 export interface ExportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** 导出成功回调（TF-039：ExportPanel 据此展示完成提示 + 追加记录） */
+  onExported?: (result: RenderResult) => void
 }
 
-export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, onExported }: ExportDialogProps) {
   const exportMarkdown = useExportMarkdown()
   const generateTemplate = useGenerateTemplate()
   const [templateMode, setTemplateMode] = useState<'default' | 'llm'>('default')
@@ -79,6 +81,8 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
       {
         onSuccess: (r) => {
           setResult(r)
+          onExported?.(r)
+          onOpenChange(false) // TF-039：导出成功关闭对话框，窗口内完成提示由 ExportPanel 展示
           toast.success('导出完成', { description: r.path })
         },
         onError: (e) => toast.error(e instanceof Error ? e.message : '导出失败'),

@@ -43,6 +43,8 @@ const api = {
   shell: {
     /** 在系统文件管理器中显示目录（不存在则打开上级）；成功返回 true */
     revealPath: (path: string): Promise<boolean> => ipcRenderer.invoke('shell:revealPath', path),
+    /** 用系统默认应用打开文件/目录（TF-039 导出记录「打开文件」）；成功返回 true */
+    openPath: (path: string): Promise<boolean> => ipcRenderer.invoke('shell:openPath', path),
   },
   /** 窗口控制（TF-038 自绘标题栏）：平台 + 最小化/最大化切换/关闭 + 最大化状态 */
   window: {

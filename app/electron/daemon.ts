@@ -217,6 +217,17 @@ async function revealPath(path: string): Promise<boolean> {
   }
 }
 
+/** 用系统默认应用打开文件/目录（TF-039 导出记录「打开文件」）；失败返回 false。 */
+async function openPath(path: string): Promise<boolean> {
+  const { shell } = await import('electron')
+  try {
+    const err = await shell.openPath(path)
+    return err === ''
+  } catch {
+    return false
+  }
+}
+
 export function registerDaemonIpc(): void {
   ipcMain.handle('daemon:ensureRunning', () => ensureDaemonRunning())
   ipcMain.handle('daemon:status', () => isDaemonAlive())
@@ -228,6 +239,7 @@ export function registerDaemonIpc(): void {
   ipcMain.handle('dialog:selectDirectory', () => selectDirectory())
   ipcMain.handle('dialog:selectFiles', () => selectFiles())
   ipcMain.handle('shell:revealPath', (_e, path: string) => revealPath(path))
+  ipcMain.handle('shell:openPath', (_e, path: string) => openPath(path))
 }
 
 export function registerConfigIpc(): void {
