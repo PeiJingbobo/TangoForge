@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
-import { TaskForm } from './TaskForm'
+import { useRef, useState, type ReactNode } from 'react'
+import { TaskForm, type TaskFormHandle } from './TaskForm'
 import type { StateMachineState } from '@/types/models'
 import type { Task } from '@/types/task'
 
@@ -28,8 +28,8 @@ function mk(id: string, over: Partial<Task> = {}): Task {
     archived_from: '',
     source_file: '',
     source_section: '',
-    created_at: '2026-08-06T10:00:00+08:00',
-    updated_at: '2026-08-06T10:00:00+08:00',
+    created_at: '2026-08-07T10:00:00+08:00',
+    updated_at: '2026-08-07T10:00:00+08:00',
     ...over,
   }
 }
@@ -42,52 +42,79 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
-describe('TaskForm（行内编辑）', () => {
+/** 宿主模拟（抽屉 footer 语义）：ref 提交 + dirty 状态 */
+function Harness({
+  task = TASK_A,
+  readOnly = false,
+  onSubmit,
+}: {
+  task?: Task
+  readOnly?: boolean
+  onSubmit?: (body: unknown) => void
+}) {
+  const ref = useRef<TaskFormHandle>(null)
+  const [dirty, setDirty] = useState(false)
+  return (
+    <>
+      <TaskForm
+        ref={ref}
+        task={task}
+        states={STATES}
+        allTasks={ALL}
+        readOnly={readOnly}
+        onSubmit={onSubmit ?? (() => {})}
+        onDirtyChange={setDirty}
+      />
+      <button type="button" aria-label="测试提交" onClick={() => ref.current?.submit()}>
+        提交
+      </button>
+      <span data-testid="dirty">{String(dirty)}</span>
+    </>
+  )
+}
+
+describe('TaskForm（内容表单：footer 由宿主渲染）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('渲染阅读流：标题/描述/标签/依赖', () => {
-    render(<TaskForm task={TASK_A} states={STATES} allTasks={ALL} onSubmit={() => {}} />, {
-      wrapper,
-    })
+    render(<Harness />, { wrapper })
     expect(screen.getByRole('button', { name: '编辑标题' })).toHaveTextContent('任务 a')
     expect(screen.getByRole('button', { name: '编辑描述' })).toHaveTextContent('描述内容')
     expect(screen.getByText('前端')).toBeInTheDocument()
     expect(screen.getByText('任务 b')).toBeInTheDocument() // 依赖 chip
+    // footer 不在内容区（由宿主渲染）
+    expect(screen.queryByRole('button', { name: /保存/ })).not.toBeInTheDocument()
   })
 
-  it('标题行内编辑：修改后保存按钮提交 title', async () => {
+  it('标题行内编辑：修改后 dirty=true，ref.submit 提交差异', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    render(<TaskForm task={TASK_A} states={STATES} allTasks={ALL} onSubmit={onSubmit} />, {
-      wrapper,
-    })
+    render(<Harness onSubmit={onSubmit} />, { wrapper })
     await user.click(screen.getByRole('button', { name: '编辑标题' }))
     const input = screen.getByRole('textbox', { name: '任务标题编辑' })
     await user.clear(input)
     await user.type(input, '新标题')
     await user.keyboard('{Enter}')
-    await user.click(screen.getByRole('button', { name: '保存修改' }))
+    expect(screen.getByTestId('dirty')).toHaveTextContent('true')
+    await user.click(screen.getByRole('button', { name: '测试提交' }))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ title: '新标题' }))
   })
 
-  it('无改动时保存按钮禁用', () => {
-    render(<TaskForm task={TASK_A} states={STATES} allTasks={ALL} onSubmit={() => {}} />, {
-      wrapper,
-    })
-    expect(screen.getByRole('button', { name: '已保存' })).toBeDisabled()
+  it('无改动时 dirty=false', () => {
+    render(<Harness />, { wrapper })
+    expect(screen.getByTestId('dirty')).toHaveTextContent('false')
   })
 
-  it('标签添加/移除', async () => {
+  it('标签添加：dirty=true 且提交包含 tags', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    render(<TaskForm task={TASK_A} states={STATES} allTasks={ALL} onSubmit={onSubmit} />, {
-      wrapper,
-    })
+    render(<Harness onSubmit={onSubmit} />, { wrapper })
     await user.click(screen.getByRole('button', { name: '添加标签' }))
     await user.type(screen.getByRole('textbox', { name: '新标签' }), '交互{Enter}')
-    await user.click(screen.getByRole('button', { name: '保存修改' }))
+    expect(screen.getByTestId('dirty')).toHaveTextContent('true')
+    await user.click(screen.getByRole('button', { name: '测试提交' }))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['前端', '交互'] }))
   })
 
@@ -95,13 +122,37 @@ describe('TaskForm（行内编辑）', () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     const taskC = mk('c')
-    render(
-      <TaskForm task={taskC} states={STATES} allTasks={[taskC, TASK_A]} onSubmit={onSubmit} />,
-      { wrapper },
-    )
+    const ALL3 = [taskC, TASK_A, mk('b')]
+    const Harness3 = () => {
+      const ref = useRef<TaskFormHandle>(null)
+      const [dirty, setDirty] = useState(false)
+      return (
+        <>
+          <TaskForm
+            ref={ref}
+            task={taskC}
+            states={STATES}
+            allTasks={ALL3}
+            onSubmit={onSubmit}
+            onDirtyChange={setDirty}
+          />
+          <button type="button" aria-label="测试提交" onClick={() => ref.current?.submit()}>
+            提交
+          </button>
+          <span data-testid="dirty">{String(dirty)}</span>
+        </>
+      )
+    }
+    render(<Harness3 />, { wrapper })
     await user.click(screen.getByRole('combobox', { name: /添加依赖/ }))
     await user.click(await screen.findByText('任务 a'))
-    await user.click(screen.getByRole('button', { name: '保存修改' }))
+    await user.click(screen.getByRole('button', { name: '测试提交' }))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ depends_on: ['a'] }))
+  })
+
+  it('只读模式：无编辑入口', () => {
+    render(<Harness readOnly />, { wrapper })
+    expect(screen.queryByRole('button', { name: '编辑标题' })).not.toBeInTheDocument()
+    expect(screen.getByText('任务 a')).toBeInTheDocument()
   })
 })

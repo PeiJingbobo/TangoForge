@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
 import { Check, Pencil, Plus, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -16,30 +15,33 @@ import type { StateMachineState } from '@/types/models'
 import type { Task, UpdateTaskInput } from '@/types/task'
 import { PRIORITY_OPTIONS } from '@/features/tasks/constants'
 
-/** 任务编辑表单（TF-026 行内编辑：点击字段进入编辑，sticky 底部保存）。 */
+/**
+ * 任务编辑表单（TF-026 行内编辑：点击字段进入编辑）。
+ * 纯内容组件：不含底部操作区（footer 由宿主（抽屉）在滚动区外渲染，
+ * 通过 ref.submit() 触发提交、onDirtyChange 通知脏状态）。
+ */
 export interface TaskFormProps {
   task: Task
   states: StateMachineState[]
   /** 全量任务（依赖选择/子任务标题引用） */
   allTasks: Task[]
-  saving?: boolean
-  /** 只读模式：禁用全部编辑入口与保存（详情抽屉只读态） */
+  /** 只读模式：禁用全部编辑入口（详情抽屉只读态） */
   readOnly?: boolean
   onSubmit: (body: UpdateTaskInput & { status?: string }) => void
-  onCancel?: () => void
-  archiveAction?: React.ReactNode
+  /** 脏状态变化通知（footer 保存按钮可用性） */
+  onDirtyChange?: (dirty: boolean) => void
 }
 
-export function TaskForm({
-  task,
-  states,
-  allTasks,
-  saving,
-  readOnly = false,
-  onSubmit,
-  onCancel,
-  archiveAction,
-}: TaskFormProps) {
+/** 宿主可通过 ref 触发提交 / 读取脏状态 */
+export interface TaskFormHandle {
+  submit: () => void
+  dirty: boolean
+}
+
+export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskForm(
+  { task, states, allTasks, readOnly = false, onSubmit, onDirtyChange },
+  ref,
+) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [status, setStatus] = useState(task.status)
@@ -103,6 +105,12 @@ export function TaskForm({
     assignee !== task.assignee ||
     JSON.stringify(tags) !== JSON.stringify(task.tags) ||
     JSON.stringify(dependsOn) !== JSON.stringify(task.depends_on)
+
+  // 暴露提交能力与脏状态给宿主（抽屉 footer）
+  useImperativeHandle(ref, () => ({ submit: handleSubmit, dirty }))
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
 
   return (
     <div>
@@ -333,23 +341,6 @@ export function TaskForm({
           </ul>
         </div>
       )}
-
-      {/* 底部操作（sticky 固定抽屉底部；归档左对齐，关闭/保存右对齐） */}
-      <div className="sticky bottom-0 -mx-6 mt-8 flex items-center justify-between gap-2 border-t border-divider bg-muted/80 px-6 py-3 backdrop-blur">
-        <div className="flex items-center gap-2">{archiveAction}</div>
-        <div className="flex items-center gap-2">
-          {!readOnly && onCancel && (
-            <Button variant="ghost" onClick={onCancel} disabled={saving}>
-              关闭
-            </Button>
-          )}
-          {!readOnly && (
-            <Button onClick={handleSubmit} disabled={!dirty || saving}>
-              {saving ? '保存中…' : dirty ? '保存修改' : '已保存'}
-            </Button>
-          )}
-        </div>
-      </div>
     </div>
   )
-}
+})

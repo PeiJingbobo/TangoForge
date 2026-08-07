@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { Archive, ArrowLeft, RotateCcw } from 'lucide-react'
@@ -10,10 +10,11 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { TaskForm } from '@/features/tasks/TaskForm'
+import { TaskForm, type TaskFormHandle } from '@/features/tasks/TaskForm'
 import { useTask, useTasks, useUpdateTask, useArchiveTask, useRestoreTask } from '@/hooks/useTasks'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
@@ -57,6 +58,8 @@ export function TaskDetailDrawer({
   const archiveTask = useArchiveTask(pid)
   const restoreTask = useRestoreTask(pid)
   const [busy, setBusy] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const formRef = useRef<TaskFormHandle>(null)
 
   useEventInvalidator(pid)
 
@@ -203,14 +206,13 @@ export function TaskDetailDrawer({
           ) : (
             <div className="space-y-6">
               <TaskForm
+                ref={formRef}
                 task={task}
                 states={states}
                 allTasks={allTasks}
-                saving={busy}
                 readOnly={mode === 'read'}
                 onSubmit={handleSubmit}
-                onCancel={() => onOpenChange(false)}
-                archiveAction={archiveAction}
+                onDirtyChange={setDirty}
               />
 
               {/* 元信息（只读，抽屉内纵向排列） */}
@@ -239,6 +241,21 @@ export function TaskDetailDrawer({
             </div>
           )}
         </div>
+
+        {/* footer 固定抽屉底部（滚动区外）：归档左对齐，关闭/保存右对齐 */}
+        <SheetFooter className="border-t border-divider bg-muted/60 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">{mode === 'edit' && archiveAction}</div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              关闭
+            </Button>
+            {mode === 'edit' && (
+              <Button onClick={() => formRef.current?.submit()} disabled={!dirty || busy}>
+                {busy ? '保存中…' : dirty ? '保存修改' : '已保存'}
+              </Button>
+            )}
+          </div>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   )
