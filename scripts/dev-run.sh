@@ -100,4 +100,10 @@ else
 fi
 
 echo "==> 3/3 启动 Electron（electron-vite dev）"
-cd "$ROOT/app" && corepack pnpm dev
+# 调试模式：./dev-run.sh debug（或 TF_DEBUG=1）→ 打开渲染进程 DevTools
+if [ "${1:-}" = "debug" ] || [ "${TF_DEBUG:-}" = "1" ]; then
+  echo "    调试模式：渲染进程 DevTools 将打开（查看 UI 层报错/白屏原因）"
+  cd "$ROOT/app" && ELECTRON_DEBUG=1 corepack pnpm dev
+else
+  cd "$ROOT/app" && corepack pnpm dev
+fi

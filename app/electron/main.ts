@@ -27,6 +27,12 @@ function createWindow(): void {
 
   win.on('ready-to-show', () => win.show())
 
+  // 调试模式（scripts/dev-run.sh debug / TF_DEBUG=1）：打开渲染进程 DevTools，
+  // 便于查看 UI 层（React/拖拽等）运行时错误与白屏原因。
+  if (process.env.ELECTRON_DEBUG === '1') {
+    win.webContents.openDevTools({ mode: 'detach' })
+  }
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url)
     return { action: 'deny' }
