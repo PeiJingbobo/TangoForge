@@ -91,6 +91,8 @@ export function KanbanBoard({
     // over 为 active 自身（拖起未移动/回到原位）：不更新占位，避免原位置下方出现占位符
     if (overId === dragState.activeId) return
     const overTask = tasks.find((t) => t.id === overId)
+    // 目标容器归属：over 命中卡片 → 卡片所在列；命中列空白/列头 → 列 id。
+    // 二者统一为 overContainer（列 key），列高亮与占位符均以此为准（TF-036）。
     const container = overTask ? effective(overTask) : overId
     setDragState({
       activeId: dragState.activeId,
@@ -130,6 +132,8 @@ export function KanbanBoard({
                 ? dragState.overIndex
                 : undefined
             }
+            // 拖拽目标归属列 → 列高亮（卡片间/空白区一致；TF-036）
+            isDropTarget={dragState?.overContainer === col.Key}
             onOpenTask={onOpenTask}
           />
         ))}

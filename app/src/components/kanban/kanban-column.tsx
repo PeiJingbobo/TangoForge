@@ -12,6 +12,13 @@ interface KanbanColumnProps {
   tasks: Task[]
   /** 拖拽目标插入位置（该列为目标容器时）：在目标 index 卡片顶部渲染插入指示线 */
   placeholderIndex?: number
+  /**
+   * 拖拽目标容器归属（TF-036 拖拽高亮优化）：
+   * 由 board 的 dragState.overContainer 传入（over 命中列 id 或列内卡片均归因到列），
+   * 保证「悬停在卡片之间」与「列空白区」同样触发列高亮边框；
+   * 与 useDroppable.isOver（仅指针直接命中列 droppable 区域）取并集。
+   */
+  isDropTarget?: boolean
   onOpenTask: (id: string) => void
 }
 
@@ -38,7 +45,13 @@ const ESTIMATED_CARD_HEIGHT = 108
  *   rect 变化 → layout effect 同步 setState → 循环白屏。指示线布局恒定，测量稳定。
  * - 动态测量：标题 1/2 行、带标签等卡片高度不同，measureElement 按实际高度 + 固定间距布局。
  */
-export function KanbanColumn({ col, tasks, placeholderIndex, onOpenTask }: KanbanColumnProps) {
+export function KanbanColumn({
+  col,
+  tasks,
+  placeholderIndex,
+  isDropTarget = false,
+  onOpenTask,
+}: KanbanColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { setNodeRef, isOver } = useDroppable({ id: col.Key })
 
@@ -77,7 +90,8 @@ export function KanbanColumn({ col, tasks, placeholderIndex, onOpenTask }: Kanba
       ref={setNodeRef}
       className={cn(
         'flex h-full min-h-0 min-w-[280px] flex-1 flex-col rounded-[14px] bg-muted p-2.5',
-        isOver && 'ring-2 ring-primary-300',
+        // 拖拽目标高亮：over 归属列（卡片间/空白区）或 isOver（指针直接命中列）→ 高亮边框
+        (isOver || isDropTarget) && 'ring-2 ring-primary-300',
       )}
     >
       <div className="flex items-center justify-between px-2 py-2.5">

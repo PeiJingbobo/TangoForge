@@ -26,13 +26,14 @@ function mk(id: string, title: string): Task {
 
 const TASKS = [mk('t1', '任务一'), mk('t2', '任务二'), mk('t3', '任务三')]
 
-function renderColumn(placeholderIndex?: number) {
+function renderColumn(placeholderIndex?: number, isDropTarget?: boolean) {
   return render(
     <DndContext>
       <KanbanColumn
         col={{ Key: 'todo', Label: '待办', Color: '#9aa0a6' }}
         tasks={TASKS}
         placeholderIndex={placeholderIndex}
+        isDropTarget={isDropTarget}
         onOpenTask={() => {}}
       />
     </DndContext>,
@@ -110,5 +111,24 @@ describe('KanbanColumn（占位符）', () => {
     renderColumn(3)
     expect(document.querySelectorAll('[data-testid="drop-indicator"]').length).toBe(1)
     expect(screen.getByRole('button', { name: '任务 任务三' })).toBeInTheDocument()
+  })
+
+  it('TF-036 拖拽目标归属列 → 列高亮边框（卡片间/空白区一致）', () => {
+    renderColumn(1, true)
+    // 通过容器结构定位列根 div（bg-muted + rounded-[14px]），应带 ring 高亮类。
+    const root = [...document.querySelectorAll('div')].find(
+      (el) => el.className.includes('bg-muted') && el.className.includes('rounded-[14px]'),
+    )
+    expect(root).toBeTruthy()
+    expect(root!.className).toContain('ring-2')
+    expect(root!.className).toContain('ring-primary-300')
+  })
+
+  it('TF-036 非拖拽目标 → 无高亮边框', () => {
+    renderColumn(undefined, false)
+    const root = [...document.querySelectorAll('div')].find(
+      (el) => el.className.includes('bg-muted') && el.className.includes('rounded-[14px]'),
+    )
+    expect(root!.className).not.toContain('ring-primary-300')
   })
 })
