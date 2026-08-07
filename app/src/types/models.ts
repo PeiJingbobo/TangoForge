@@ -145,6 +145,40 @@ export const ACTION_KEYS = [
 export type ActionKey = (typeof ACTION_KEYS)[number]
 export type PermissionMap = Record<ActionKey, boolean>
 
+/** 权限动作中文 label（TF-036 权限界面中文化，与 ACTION_KEYS 一一对应） */
+export const ACTION_LABELS: Record<ActionKey, string> = {
+  'project.read': '查看项目',
+  'task.read': '查看任务',
+  'task.create': '创建任务',
+  'task.update': '更新任务',
+  'task.update_status': '流转任务状态',
+  'task.delete': '归档任务',
+  'task.restore': '还原任务',
+  'import.run': '发起导入',
+  'import.confirm': '确认导入',
+  'export.run': '导出任务',
+  'graph.read': '查看全景图',
+  'skill.read': '查看技能包',
+  'skill.install': '安装技能包',
+  'state_machine.read': '查看状态机',
+  'state_machine.write': '编辑状态机',
+  'audit.read': '查看审计日志',
+  'permission.read': '查看权限',
+}
+
+/** 权限域中文标题（分组展示用） */
+export const ACTION_DOMAIN_LABELS: Record<string, string> = {
+  project: '项目',
+  task: '任务',
+  import: '导入',
+  export: '导出',
+  graph: '全景图',
+  skill: '技能',
+  state_machine: '状态机',
+  audit: '审计',
+  permission: '权限',
+}
+
 /* ---------- skills（TF-033 重设计：技能包模型 + 宿主安装） ---------- */
 
 /** 技能包（SKILL.md，内置 embed + 全局技能库 ~/.taskboard-app/skills/） */
