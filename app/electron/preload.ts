@@ -44,6 +44,21 @@ const api = {
     /** 在系统文件管理器中显示目录（不存在则打开上级）；成功返回 true */
     revealPath: (path: string): Promise<boolean> => ipcRenderer.invoke('shell:revealPath', path),
   },
+  /** 窗口控制（TF-038 自绘标题栏）：平台 + 最小化/最大化切换/关闭 + 最大化状态 */
+  window: {
+    /** 主进程平台（darwin / win32 / linux / web）——渲染层据此决定标题栏形态 */
+    platform: process.platform as string,
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<void> => ipcRenderer.invoke('window:toggleMaximize'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:isMaximized'),
+    /** 订阅最大化状态变化（Windows 自绘按钮图标切换）；返回取消订阅函数 */
+    onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, maximized: boolean): void => cb(maximized)
+      ipcRenderer.on('window:maximized-change', handler)
+      return () => ipcRenderer.removeListener('window:maximized-change', handler)
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('tangoforge', api)

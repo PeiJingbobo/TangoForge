@@ -17,6 +17,7 @@ import { useProjects, useRemoveProject, useRenameProject } from '@/hooks/useProj
 import { useDaemonStatus } from '@/hooks/useDaemonStatus'
 import { useProjectStore } from '@/stores/project'
 import { GlobalTaskDrawer } from '@/features/tasks/TaskDetail'
+import { WindowTitleBar } from '@/components/layout/window-titlebar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -62,117 +63,125 @@ export function AppLayout() {
 
   return (
     // h-screen + overflow-hidden：页面级不出现滚动条；滚动收敛到内容区/看板列内部
-    <div className="flex h-screen overflow-hidden">
-      {/* 左侧全局导航栏 */}
-      <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-divider bg-card">
-        {/* 品牌 + 顶部一级菜单 */}
-        <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-          <span className="grid size-7 place-items-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground">
-            T
-          </span>
-          <span className="text-base font-bold tracking-tight">TangoForge</span>
-        </div>
-        <nav className="px-2.5 pb-2">
-          <NavLink
-            to="/"
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                isActive
-                  ? 'bg-primary-50 font-semibold text-primary-700'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-              )
-            }
-          >
-            <Boxes className="size-4" />
-            项目概览
-          </NavLink>
-        </nav>
-        <div className="border-t border-divider" />
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* 自绘标题栏（TF-038）：mac 交通灯留白 / win 右侧控制按钮；Web 预览不渲染 */}
+      <WindowTitleBar />
 
-        {/* 中部：项目列表（flex-1 占满剩余高度，内部滚动） */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between px-4 pb-1.5 pt-3">
-            <span className="text-label uppercase tracking-wider text-muted-foreground">项目</span>
-            {isLoading && (
-              <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
-            )}
+      {/* 主体：左侧导航 + 右侧内容（标题栏之下撑满剩余高度） */}
+      <div className="flex min-h-0 flex-1">
+        {/* 左侧全局导航栏 */}
+        <aside className="sticky top-0 flex h-full w-60 shrink-0 flex-col border-r border-divider bg-card">
+          {/* 品牌 + 顶部一级菜单 */}
+          <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
+            <span className="grid size-7 place-items-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground">
+              T
+            </span>
+            <span className="text-base font-bold tracking-tight">TangoForge</span>
           </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 pb-2">
-            {!isLoading && (!projects || projects.length === 0) && (
-              <p className="px-3 py-2 text-xs text-muted-foreground">
-                暂无项目，到「项目概览」导入工作目录。
-              </p>
-            )}
-            {projects?.map((p) => (
-              <ProjectItem
-                key={p.id}
-                project={p}
-                active={project === p.workdir}
-                onActivate={() => activateProject(p.workdir)}
-                onRename={() => setRenameTarget(p)}
-                onReveal={() => {
-                  const shell = window.tangoforge?.shell
-                  if (!shell) {
-                    toast.error('「在文件夹中打开」仅桌面版可用（Web 预览不支持）')
-                    return
-                  }
-                  void shell.revealPath(p.workdir).then((ok) => {
-                    if (ok) toast.success(`已在文件夹中打开：${p.workdir}`)
-                    else toast.error('打开文件夹失败')
-                  })
-                }}
-                onRemove={() => setRemoveTarget(p)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* 底部一行：亮暗切换（图标）+ 设置（图标）+ 守护进程指示点 */}
-        <div className="border-t border-divider p-2.5">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
-              className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              aria-label="切换亮暗色"
-              title="切换亮暗色"
-            >
-              {mode === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
-            </button>
+          <nav className="px-2.5 pb-2">
             <NavLink
-              to="/settings"
+              to="/"
               className={({ isActive }) =>
                 cn(
-                  'grid size-9 place-items-center rounded-lg transition-colors',
+                  'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
                   isActive
-                    ? 'bg-primary-50 text-primary-700'
+                    ? 'bg-primary-50 font-semibold text-primary-700'
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                 )
               }
-              aria-label="设置"
-              title="设置"
             >
-              <Settings className="size-4" />
+              <Boxes className="size-4" />
+              项目概览
             </NavLink>
-            <span
-              className={cn(
-                'ml-auto mr-2 size-2.5 rounded-full',
-                daemonUp ? 'bg-success' : 'bg-muted-foreground/40',
-              )}
-              role="status"
-              aria-label={daemonUp ? '守护进程运行中' : '守护进程未连接'}
-              title={daemonUp ? '守护进程运行中' : '守护进程未连接'}
-            />
-          </div>
-        </div>
-      </aside>
+          </nav>
+          <div className="border-t border-divider" />
 
-      {/* 右侧内容区：固定视口内，内容超高时由 main 内部滚动（页面级不滚动） */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <main className="mx-auto w-full max-w-[1160px] min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <Outlet />
-        </main>
+          {/* 中部：项目列表（flex-1 占满剩余高度，内部滚动） */}
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center justify-between px-4 pb-1.5 pt-3">
+              <span className="text-label uppercase tracking-wider text-muted-foreground">
+                项目
+              </span>
+              {isLoading && (
+                <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+              )}
+            </div>
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 pb-2">
+              {!isLoading && (!projects || projects.length === 0) && (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  暂无项目，到「项目概览」导入工作目录。
+                </p>
+              )}
+              {projects?.map((p) => (
+                <ProjectItem
+                  key={p.id}
+                  project={p}
+                  active={project === p.workdir}
+                  onActivate={() => activateProject(p.workdir)}
+                  onRename={() => setRenameTarget(p)}
+                  onReveal={() => {
+                    const shell = window.tangoforge?.shell
+                    if (!shell) {
+                      toast.error('「在文件夹中打开」仅桌面版可用（Web 预览不支持）')
+                      return
+                    }
+                    void shell.revealPath(p.workdir).then((ok) => {
+                      if (ok) toast.success(`已在文件夹中打开：${p.workdir}`)
+                      else toast.error('打开文件夹失败')
+                    })
+                  }}
+                  onRemove={() => setRemoveTarget(p)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* 底部一行：亮暗切换（图标）+ 设置（图标）+ 守护进程指示点 */}
+          <div className="border-t border-divider p-2.5">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+                className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                aria-label="切换亮暗色"
+                title="切换亮暗色"
+              >
+                {mode === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              </button>
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  cn(
+                    'grid size-9 place-items-center rounded-lg transition-colors',
+                    isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  )
+                }
+                aria-label="设置"
+                title="设置"
+              >
+                <Settings className="size-4" />
+              </NavLink>
+              <span
+                className={cn(
+                  'ml-auto mr-2 size-2.5 rounded-full',
+                  daemonUp ? 'bg-success' : 'bg-muted-foreground/40',
+                )}
+                role="status"
+                aria-label={daemonUp ? '守护进程运行中' : '守护进程未连接'}
+                title={daemonUp ? '守护进程运行中' : '守护进程未连接'}
+              />
+            </div>
+          </div>
+        </aside>
+
+        {/* 右侧内容区：固定视口内，内容超高时由 main 内部滚动（页面级不滚动） */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <main className="mx-auto w-full max-w-[1160px] min-h-0 flex-1 overflow-y-auto px-6 py-6">
+            <Outlet />
+          </main>
+        </div>
       </div>
 
       {/* 重命名对话框 */}
