@@ -25,13 +25,16 @@ type ParseResult struct {
 
 // ParsedTask 单个解析任务（字段语义对齐 task.Task 的子集）。
 type ParsedTask struct {
+	// ID 草稿内临时唯一编号（LLM 生成，如 T1/T2；缺失/重复由 normalize 自动补齐修正）。
+	// 草稿依赖 depends_on 通过该 ID 引用，与任务标题解耦（后续修改任务标题不影响依赖关系）。
+	ID          string       `json:"id"`
 	Title       string       `json:"title"`
 	Description string       `json:"description"`
 	Status      string       `json:"status"`   // 已映射为项目状态机 key（§17.2）
 	Priority    int          `json:"priority"` // 已归一化 0-5
 	Tags        []string     `json:"tags"`     // 去重去空保序
 	Assignee    string       `json:"assignee"`
-	DependsOn   []string     `json:"depends_on"` // 标题引用（确认时映射为任务 ID，§17.3）
+	DependsOn   []string     `json:"depends_on"` // 临时 ID 引用（确认时映射为任务 ID，§17.3）
 	Children    []ParsedTask `json:"children,omitempty"`
 }
 
@@ -41,13 +44,14 @@ type rawParseOutput struct {
 }
 
 type rawTask struct {
+	ID          string    `json:"id"` // 临时唯一编号（LLM 生成，如 T1/T2；可选，缺失自动补）
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Status      any       `json:"status"` // 状态机 key 或 label
 	Priority    any       `json:"priority"`
 	Tags        []string  `json:"tags"`
 	Assignee    string    `json:"assignee"`
-	DependsOn   []string  `json:"depends_on"` // 被依赖任务的标题
+	DependsOn   []string  `json:"depends_on"` // 被依赖任务的临时 ID
 	Children    []rawTask `json:"children"`
 }
 
@@ -62,8 +66,9 @@ func buildSystemPrompt() string {
 3. 层级：Markdown 标题层级映射为嵌套 children（## 为顶层，其下 ### 为子任务）。
 4. status 只能输出给定的状态 key 或其 label（label 会由系统自动映射）；不得自定义状态。
 5. priority 输出 0-5 整数或字符串别名（lowest/low/normal/high/highest/critical/urgent）。
-6. depends_on 输出被依赖任务的【标题】（精确匹配文档中的任务标题），不要输出序号或 ID。
-7. 保持任务顺序与文档一致。`
+6. 每个任务必须输出一个唯一的 id（建议 T1、T2、T3… 形式，简短、全局唯一；子任务也在同一编号体系内递增）。
+7. depends_on 输出被依赖任务的【id】（必须引用本文档中已经定义过的任务 id），不要输出任务标题或文档序号。
+8. 保持任务顺序与文档一致。`
 }
 
 // buildJSONSchema 构造 JSON Schema 描述（追加进 user 提示，约束 LLM 输出）。
@@ -78,13 +83,14 @@ func buildJSONSchema() string {
         "type": "object",
         "required": ["title", "status"],
         "properties": {
+          "id": {"type": "string", "description": "临时唯一编号（如 T1/T2，仅草稿内依赖引用）"},
           "title": {"type": "string"},
           "description": {"type": "string"},
           "status": {"type": "string"},
           "priority": {"type": ["integer", "string"]},
           "tags": {"type": "array", "items": {"type": "string"}},
           "assignee": {"type": "string"},
-          "depends_on": {"type": "array", "items": {"type": "string"}},
+          "depends_on": {"type": "array", "items": {"type": "string"}, "description": "被依赖任务的临时 id"},
           "children": {"type": "array", "items": {"$ref": "#"}}
         }
       }
@@ -144,8 +150,9 @@ func mapStatus(sm config.StateMachine, raw any) (string, bool) {
 }
 
 // flatten 递归展平嵌套任务：生成 UUID、parent_id 与 section 路径。
-// 返回展平后的任务列表（含待解析的 depends_on 标题引用）。
+// 返回展平后的任务列表（含待解析的 depends_on 临时 ID 引用）。
 type flattenResult struct {
+	RefID       string   `json:"ref_id"` // 草稿内临时唯一 ID（LLM 编号，依赖解析主索引）
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
@@ -158,10 +165,19 @@ type flattenResult struct {
 	Section     string   `json:"section"`
 }
 
-// resolveDependsOn 将 depends_on 标题引用解析为任务 ID；找不到或重复 → 错误。
+// resolveDependsOn 将 depends_on 引用解析为任务 ID：
+// 优先按草稿内临时 ID 匹配（LLM 解析新格式）；未命中再按标题匹配（兼容旧草稿标题引用）；
+// 找不到或重复 → 错误。
 func resolveDependsOn(flattened []flattenResult) (map[string][]string, error) {
-	titleIndex := make(map[string]string) // 标题(trim) → ID
+	idIndex := make(map[string]string)    // 临时 ID → UUID
+	titleIndex := make(map[string]string) // 标题(trim) → UUID
 	for _, f := range flattened {
+		if f.RefID != "" {
+			if prev, ok := idIndex[f.RefID]; ok && prev != f.ID {
+				return nil, fmt.Errorf("草稿任务 ID 不唯一: %q", f.RefID)
+			}
+			idIndex[f.RefID] = f.ID
+		}
 		t := strings.TrimSpace(f.Title)
 		if prev, ok := titleIndex[t]; ok && prev != f.ID {
 			return nil, fmt.Errorf("依赖标题不唯一: %q", t)
@@ -172,9 +188,13 @@ func resolveDependsOn(flattened []flattenResult) (map[string][]string, error) {
 	for _, f := range flattened {
 		var ids []string
 		for _, dep := range f.DependsOn {
-			id, ok := titleIndex[strings.TrimSpace(dep)]
+			ref := strings.TrimSpace(dep)
+			id, ok := idIndex[ref]
 			if !ok {
-				return nil, fmt.Errorf("依赖任务标题不存在: %q（任务 %q）", dep, f.Title)
+				id, ok = titleIndex[ref]
+			}
+			if !ok {
+				return nil, fmt.Errorf("依赖任务不存在: %q（任务 %q）", dep, f.Title)
 			}
 			ids = append(ids, id)
 		}

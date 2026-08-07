@@ -385,3 +385,93 @@ func TestParseResult_JSONRoundTrip(t *testing.T) {
 		t.Fatalf("children 不应序列化为 null: %s", data)
 	}
 }
+
+// TestNormalize_AssignsIDs：LLM 缺 id → 自动补 T{n}；给定 id 保留；重复 id 修正。
+func TestNormalize_AssignsIDs(t *testing.T) {
+	svc, _ := newParser(t, "http://127.0.0.1:1")
+	sm := config.DefaultStateMachine()
+	raw := json.RawMessage(`{"tasks":[
+	  {"title":"A","status":"todo"},
+	  {"title":"B","status":"doing","id":"X9"},
+	  {"id":"T1","title":"C","status":"todo"},
+	  {"id":"T1","title":"D","status":"todo","children":[{"title":"D1","status":"done"}]}
+	]}`)
+	pr, err := svc.normalizeOutput(sm, raw)
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	ids := []string{pr.Tasks[0].ID, pr.Tasks[1].ID, pr.Tasks[2].ID, pr.Tasks[3].ID}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			t.Fatalf("ID 缺失或重复: %v", ids)
+		}
+		seen[id] = true
+	}
+	// A 无 id → T1；B 保留 X9；C 的 T1 已被占 → T2；D 的 T1 重复 → T3；D1 → T4。
+	if ids[0] != "T1" || ids[1] != "X9" || ids[2] != "T2" || ids[3] != "T3" {
+		t.Fatalf("分配结果: %v", ids)
+	}
+	if pr.Tasks[3].Children[0].ID != "T4" {
+		t.Fatalf("子任务 ID: %v", pr.Tasks[3].Children[0].ID)
+	}
+}
+
+// TestResolveDependsOn_ByID：临时 ID 引用优先、标题兜底（旧草稿兼容）、未知引用报错。
+func TestResolveDependsOn_ByID(t *testing.T) {
+	flat := []flattenResult{
+		{RefID: "T1", ID: "u1", Title: "配置加载与热重载"},
+		{RefID: "T2", ID: "u2", Title: "数据库迁移脚本"},
+		{RefID: "T3", ID: "u3", Title: "修复登录页"},
+	}
+	flat[0].DependsOn = []string{"T2"}      // 新格式：临时 ID 引用
+	flat[2].DependsOn = []string{"数据库迁移脚本"} // 旧格式：标题引用兜底
+	out, err := resolveDependsOn(flat)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(out["u1"]) != 1 || out["u1"][0] != "u2" {
+		t.Fatalf("ID 引用: %v", out["u1"])
+	}
+	if len(out["u3"]) != 1 || out["u3"][0] != "u2" {
+		t.Fatalf("标题兜底: %v", out["u3"])
+	}
+	flat[0].DependsOn = []string{"T9"}
+	if _, err := resolveDependsOn(flat); err == nil {
+		t.Fatal("未知引用应报错")
+	}
+}
+
+// TestConfirm_DepsByID：LLM 输出带 id、depends_on 用 id 引用（与标题解耦）→ 确认导入依赖映射正确。
+func TestConfirm_DepsByID(t *testing.T) {
+	doc := `{"tasks":[
+	  {"id":"T1","title":"配置加载与热重载","status":"doing",
+	   "children":[{"id":"T2","title":"数据库迁移脚本","status":"todo"}]},
+	  {"id":"T3","title":"修复登录页","status":"todo","priority":5,"depends_on":["T2"]}
+	]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "# 文档\n", SourceFile: "docs/id-deps.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if _, err := svc.Confirm(ctx, workdir, draft.ID); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	ts := task.NewService(task.Options{})
+	t.Cleanup(func() { _ = ts.Close() })
+	list, err := ts.List(ctx, workdir, task.ListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := findTask(list.Tree, "数据库迁移脚本")
+	fix := findTask(list.Tree, "修复登录页")
+	if child == nil || fix == nil {
+		t.Fatalf("任务缺失: child=%v fix=%v", child, fix)
+	}
+	if len(fix.DependsOn) != 1 || fix.DependsOn[0] != child.ID {
+		t.Fatalf("修复登录页 depends_on: %v, want %s", fix.DependsOn, child.ID)
+	}
+}

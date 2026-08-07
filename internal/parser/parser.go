@@ -322,7 +322,8 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 		return ConfirmResult{}, fmt.Errorf("%w: 草稿数据损坏: %v", ErrImportFailed, err)
 	}
 
-	// 展平 + 依赖标题解析（§17.3）。
+	// 展平 + 依赖解析（§17.3）：先补齐临时 ID（旧草稿兼容），再按 ID/标题双索引解析。
+	pr.Tasks = ensureTaskIDs(pr.Tasks)
 	flattened, err := flattenTasks(pr.Tasks, "")
 	if err != nil {
 		return ConfirmResult{}, fmt.Errorf("%w: %v", ErrImportFailed, err)
@@ -427,16 +428,19 @@ func (s *Service) Get(ctx context.Context, workdir, draftID string) (DraftDetail
 			return DraftDetail{}, fmt.Errorf("parser: parse draft json: %w", err)
 		}
 	}
+	// 补齐临时 ID（旧草稿兼容），保证前端依赖匹配与二次编辑回写以 ID 为键。
+	d.Tasks = ensureTaskIDs(d.Tasks)
 	d.TaskCount = countTasks(d.Tasks)
 	return d, nil
 }
 
-// UpdateTasks 整体更新草稿任务树（审阅编辑保存）：校验后重写 parsed_json。
+// UpdateTasks 整体更新草稿任务树（审阅编辑保存）：补齐临时 ID → 校验 → 重写 parsed_json。
 func (s *Service) UpdateTasks(ctx context.Context, workdir, draftID string, tasks []ParsedTask) error {
 	sm, err := s.loadStateMachine(workdir)
 	if err != nil {
 		return err
 	}
+	tasks = ensureTaskIDs(tasks)
 	if err := validateParsedTasks(sm, tasks); err != nil {
 		return fmt.Errorf("%w: %v", ErrDraftInvalid, err)
 	}
@@ -464,27 +468,64 @@ func (s *Service) UpdateTasks(ctx context.Context, workdir, draftID string, task
 
 // validateParsedTasks 草稿任务树校验（title/status 状态机/priority 范围，递归）。
 func validateParsedTasks(sm config.StateMachine, tasks []ParsedTask) error {
-	for i, t := range tasks {
-		if strings.TrimSpace(t.Title) == "" {
-			return fmt.Errorf("第 %d 项缺少 title", i+1)
+	// 第一遍：字段校验 + 收集 ID/标题索引（依赖引用存在性检查）。
+	idIndex := make(map[string]bool)
+	titleIndex := make(map[string]string) // 标题 → ID
+	var collect func(list []ParsedTask) error
+	collect = func(list []ParsedTask) error {
+		for i, t := range list {
+			if strings.TrimSpace(t.Title) == "" {
+				return fmt.Errorf("第 %d 项缺少 title", i+1)
+			}
+			status, ok := mapStatus(sm, t.Status)
+			if !ok || status == "archived" {
+				return fmt.Errorf("第 %d 项 status 非法或不在状态机中: %v", i+1, t.Status)
+			}
+			prio, err := task.NormalizePriority(t.Priority)
+			if err != nil {
+				return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, err)
+			}
+			if prio != t.Priority {
+				// 归一化不一致视为非法（已归一化数据不允许回退）
+				return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, t.Priority)
+			}
+			if t.ID != "" {
+				if idIndex[t.ID] {
+					return fmt.Errorf("草稿任务 ID 不唯一: %q", t.ID)
+				}
+				idIndex[t.ID] = true
+			}
+			titleIndex[t.Title] = t.ID
+			if err := collect(t.Children); err != nil {
+				return err
+			}
 		}
-		status, ok := mapStatus(sm, t.Status)
-		if !ok || status == "archived" {
-			return fmt.Errorf("第 %d 项 status 非法或不在状态机中: %v", i+1, t.Status)
-		}
-		prio, err := task.NormalizePriority(t.Priority)
-		if err != nil {
-			return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, err)
-		}
-		if prio != t.Priority {
-			// 归一化不一致视为非法（已归一化数据不允许回退）
-			return fmt.Errorf("第 %d 项 priority 非法: %v", i+1, t.Priority)
-		}
-		if err := validateParsedTasks(sm, t.Children); err != nil {
-			return err
-		}
+		return nil
 	}
-	return nil
+	if err := collect(tasks); err != nil {
+		return err
+	}
+	// 第二遍：depends_on 引用存在性（临时 ID 优先，标题兜底兼容旧草稿）。
+	var checkRefs func(list []ParsedTask) error
+	checkRefs = func(list []ParsedTask) error {
+		for _, t := range list {
+			for _, dep := range t.DependsOn {
+				ref := strings.TrimSpace(dep)
+				if idIndex[ref] {
+					continue
+				}
+				if _, ok := titleIndex[ref]; ok {
+					continue
+				}
+				return fmt.Errorf("依赖任务不存在: %q（任务 %q）", dep, t.Title)
+			}
+			if err := checkRefs(t.Children); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return checkRefs(tasks)
 }
 
 // loadStateMachine 读取项目状态机（缺失回退默认四态）。
@@ -502,12 +543,16 @@ func (s *Service) normalizeOutput(sm config.StateMachine, raw json.RawMessage) (
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return ParseResult{}, fmt.Errorf("JSON 结构不合规: %v", err)
 	}
-	normalized, err := s.normalizeTasks(sm, out.Tasks)
+	counter := 0
+	seen := make(map[string]bool)
+	normalized, err := s.normalizeTasks(sm, out.Tasks, &counter, seen)
 	return ParseResult{Tasks: normalized}, err
 }
 
 // normalizeTasks 递归校验规范化任务树。
-func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask) ([]ParsedTask, error) {
+// counter/seen 跨递归共享：为每个任务分配草稿内唯一临时 ID——
+// LLM 给出且不重复 → 保留；缺失/重复 → 按遍历顺序自动补 T{n}（依赖引用不受标题变更影响）。
+func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask, counter *int, seen map[string]bool) ([]ParsedTask, error) {
 	out := make([]ParsedTask, 0, len(raw))
 	for i, rt := range raw {
 		title := strings.TrimSpace(rt.Title)
@@ -522,11 +567,18 @@ func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask) ([]Parse
 		if err != nil {
 			return nil, fmt.Errorf("第 %d 项 priority 非法: %v", i+1, err)
 		}
-		children, err := s.normalizeTasks(sm, rt.Children)
+		id := strings.TrimSpace(rt.ID)
+		if id == "" || seen[id] {
+			*counter++
+			id = fmt.Sprintf("T%d", *counter)
+		}
+		seen[id] = true
+		children, err := s.normalizeTasks(sm, rt.Children, counter, seen)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, ParsedTask{
+			ID:          id,
 			Title:       title,
 			Description: rt.Description,
 			Status:      status,
@@ -538,6 +590,30 @@ func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask) ([]Parse
 		})
 	}
 	return out, nil
+}
+
+// ensureTaskIDs 递归补齐草稿任务临时 ID（旧草稿/外部编辑兼容）：
+// 保留已有 id，缺失或重复按遍历顺序补 T{n}。
+func ensureTaskIDs(tasks []ParsedTask) []ParsedTask {
+	counter := 0
+	seen := make(map[string]bool)
+	var walk func(list []ParsedTask) []ParsedTask
+	walk = func(list []ParsedTask) []ParsedTask {
+		out := make([]ParsedTask, 0, len(list))
+		for _, t := range list {
+			id := strings.TrimSpace(t.ID)
+			if id == "" || seen[id] {
+				counter++
+				id = fmt.Sprintf("T%d", counter)
+			}
+			seen[id] = true
+			t.ID = id
+			t.Children = walk(t.Children)
+			out = append(out, t)
+		}
+		return out
+	}
+	return walk(tasks)
 }
 
 // normalizePriority 归一化优先级（委托 task.NormalizePriority，语义一致 §3）。
@@ -565,6 +641,7 @@ func flattenTasks(tasks []ParsedTask, prefix string) ([]flattenResult, error) {
 			section = prefix + "." + section
 		}
 		out = append(out, flattenResult{
+			RefID:       t.ID,
 			ID:          uuid.NewString(),
 			Title:       t.Title,
 			Description: t.Description,
