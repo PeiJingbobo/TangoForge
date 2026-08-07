@@ -222,9 +222,9 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 ### 12.2 权限模型（TF-011，REQUIREMENTS.md §7.1）
 
-- 权限以项目为单位存项目库 `permissions` 表（`project_id` 固定 1，v1 全集 16 项）；**默认只读 5 项 true**（task.read / graph.read / skill.read / project.read / permission.read）。
+- 权限以项目为单位存项目库 `permissions` 表（`project_id` 固定 1，v1 全集 17 项，TF-033 增 `skill.install`）；**默认只读 5 项 true**（task.read / graph.read / skill.read / project.read / permission.read）。
 - 中间件：`actor_class=ui` 直接放行；其余查表，未授权 403 `PERMISSION_DENIED` + denied 审计；**行缺失/未知 action → denied**（安全默认）。
-- `GET /api/permissions` 返回**全量 16 项**（含 allowed=false，QA P3-6），action=permission.read。
+- `GET /api/permissions` 返回**全量 17 项**（含 allowed=false，QA P3-6），action=permission.read。
 - `PUT /api/permissions` **仅 UI**（回环 + X-UI-Token；actor==ui 校验）；请求体**全量覆盖** `{"actions": {...}}`，未提交项重置 false，未知 action 拒绝（QA P3-5）。
 - `/api/projects` 组豁免 X-Project（QA P3-2）：GET/POST 放行（project.read 默认授予，无项目上下文不逐项查表）；`DELETE /api/projects/:id` 仅 UI。
 - `PATCH /api/tasks/:id` 动态权限：body 含 status → 二次校验 `task.update_status`（ensureAction）；其余字段 → `task.update`（路由静态挂载）。
@@ -305,27 +305,67 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - parser / exporter 负责 prompt 构造（状态机 states 注入、JSON Schema 描述）与结果语义校验（title/status 必填等）；
 - 导出 default 模式不依赖 LLM（仅 `template_mode=llm` 需要），LLM 未配置时 default 导出正常可用。
 
-## 15. Skill 语义（TF-020，QA P4-1）
+## 15. Skill 语义（TF-033 重设计，替代 TF-020/QA P4-1）
 
-### 15.1 数据源与扫描
+> 方案依据：`docs/task/SKILLS-REDESIGN.md`（用户确认 QA-S1~S9）。核心转变：
+> **管理「技能包生命周期」而非「浏览目录文件」**——技能包来源为内置 embed + 全局技能库，
+> 「安装」= 复制到宿主约定位置建立可发现性；彻底废弃 `.taskboard/skills/` 与 skills 表。
 
-- **文件系统为唯一数据源**：`{workdir}/.taskboard/skills/` 目录（**仅一级，不递归**），仅 `.yaml / .yml / .md` 参与；子目录与其它扩展名忽略。
-- **扫描时机**：启动时 + 每次 `GET /api/skills` / `GET /api/skills/:name` 查询时**轻量重扫**（天然满足"删除文件后索引同步"）；**不引入 fsnotify 常驻 watcher**，`skill.changed` 事件暂不推送（登记说明）。
-- 解析失败（坏 YAML / 缺 name / MD 无标题）→ **仅日志告警并跳过**，不阻断扫描。
-- skills 表仅缓存：重扫时 upsert + 清理失效行；**绝不反写文件**。
+### 15.1 数据源与技能包模型
 
-### 15.2 文件格式
+- **技能包来源**（无项目库依赖、无状态）：
+  - **内置包**：`internal/skill/packages/<name>/SKILL.md`（embed 编译进二进制，零外部依赖）；v1 仅 `taskboard-basic`。
+  - **全局技能库**：`~/.taskboard-app/skills/<name>/SKILL.md`（用户自定义/下载落点，跨项目共享）；同名包**覆盖内置**（自定义编辑语义）。
+  - **全局默认模板**：`~/.taskboard-app/skills/_template/SKILL.md`（全局设置页可编辑；不存在回退内置包内容）。
+- **SKILL.md 格式**（Anthropic Agent Skills 规范靠拢）：YAML frontmatter
+  `name`（必填）/ `description` / `version`（安装状态比对依据）/ `hosts`（适用宿主）/ `when_to_use`（触发场景）
+  + 正文 `instructions`；`content` 为全文。解析失败 → 该包不参与（内置跳过 / 自定义拒绝写入）。
 
-- **YAML**：`name`（必填，唯一标识）/ `version` / `description` / `instructions`；`content` 为原始文件文本。
-- **Markdown**：首个 `# ` 标题为 `name`（strip），全文同时作为 `instructions` 与 `content`；无 `# ` 标题视为解析失败。
-- 缓存列（项目库迁移 v2 扩展）：`name, content, updated_at, version, description, instructions`。
+### 15.2 宿主矩阵与安装语义（QA-S1/S6）
 
-### 15.3 查询与错误
+- **v1 宿主 6 个**：`AGENTS.md`、`CLAUDE.md`（项目级 marker 标记段）；`.cursor/rules`（项目级每包一文件
+  `tangoforge-<name>.mdc`）；`copilot`（`.github/copilot-instructions.md`，marker）；`user-claude`
+  （`~/.claude/skills/<name>/SKILL.md`，目录复制）；`user-codebuddy`（`~/.workbuddy/skills/<name>/SKILL.md`）。
+- **marker 标记段**：`<!-- tangoforge:skill:<name>:begin -->…:end -->` 包裹，单文件宿主多包共存、
+  按包卸载可撤销；移除后文件为空则删除文件本身。
+- **安装（install）**：从技能库复制到宿主位置；已存在 → `update`（幂等覆盖）；包 frontmatter `hosts`
+  非空且不含目标宿主 → **拒绝**（`不适配宿主`）。
+- **卸载（uninstall）**：移除标记段 / 删除安装文件（幂等，未安装视为成功）；**前端必须二次确认**（QA Q5）。
+- **状态（status）**：实时扫描宿主位置比对 version → `missing`（未装）/ `current`（一致）/ `stale`（库有新版）；
+  不引入 watcher、无缓存（P4-1 精神延续）。
 
-- `GET /api/skills`（skill.read）：重扫 + 返回全量（按名称升序）。
-- `GET /api/skills/:name`（skill.read）：`skill_info` 详情；不存在 → `SKILL_NOT_FOUND`（404）。
-- 项目未导入（无 meta.db）→ `PROJECT_NOT_FOUND`（404）。
-- skill.read 属新项目默认只读 5 项之一（默认授予）。
+### 15.3 端点与权限
+
+| 端点 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/skills/packages`（兼容 `/api/skills`） | skill.read | 技能包列表（内置+全局，名称升序，同名全局覆盖） |
+| `GET /api/skills/packages/{name}`（兼容 `/api/skills/{name}`） | skill.read | 包详情（SKILL.md）；不存在 → `SKILL_NOT_FOUND`（404） |
+| `PUT /api/skills/packages/{name}` | 仅 UI | 写自定义包到全局技能库；frontmatter name 与路径不一致 → `SKILL_INVALID`（422） |
+| `GET /api/skills/status` | skill.read | 宿主安装状态矩阵 |
+| `POST /api/skills/install` | skill.install | `{host, packages[]}` 批量安装（逐包结果） |
+| `POST /api/skills/uninstall` | skill.install | 批量卸载 |
+| `GET/PUT /api/skill-template` | GET skill.read / PUT 仅 UI | 全局默认模板读写（**豁免 X-Project**，全局组） |
+| `GET /api/guide` | **完全免鉴权** | AI 使用说明书（见 §15.4） |
+
+- **新增权限动作**：`skill.install`（默认 false，UI 放行；Agent 需授权）；`skill.read` 仍属默认只读 5 项。
+- **审计**：`skill.installed / skill.updated / skill.uninstalled / skill.package_written / skill.template_written`
+  （actor=ui，target=包名，detail=宿主 key）。
+- 主业务组端点（除 skill-template）仍需 X-Project（项目上下文 + 权限判定）。
+
+### 15.4 AI 说明书端点（QA-S3，完全免鉴权）
+
+- **单一来源**：`internal/guide` 包（端点表/工具表/CLI 表/语义速查，与实现同步维护，guard 测试断言关键项）。
+- **三端形态**：HTTP `GET /api/guide`（text/markdown，注册在 /api 中间件链之外，任何来源可读）/
+  MCP `guide` 工具（无参数，不走 exec 权限链）/ CLI `tangoforge guide`。
+- **价值**：AI Agent 未安装任何 Skill 时，AGENTS.md 提示词告知其先读说明书即可掌握系统全部调用方式。
+- **MCP 工具变更**：新增 `guide`（免鉴权）/ `skill_install`（skill.install）/ `skill_status`（skill.read）/
+  `skill_uninstall`（skill.install）；`skill_info` 语义迁移为包详情（不再扫描项目目录）。
+
+### 15.5 旧机制移除
+
+- `.taskboard/skills/` 目录：不再创建、不再扫描（`project.Import` 初始化不再建目录）。
+- `skills` 表：项目库迁移 **v3 `drop_skills_table`** 删除；后端不再读写。
+- 旧端点 `/api/skills`、`/api/skills/{name}` 保留路径兼容（语义迁移到包列表/详情）。
 
 ## 16. MCP 传输层语义（TF-016，QA P4-1 双传输）
 

@@ -17,8 +17,9 @@
 | P4 Agent 能力 | 7 | 7 | 0 | 0 |
 | P5 前端应用 | 7 | 7 | 0 | 0 |
 | P5.5 项目设置页 | 1 | 1 | 0 | 0 |
+| P5.6 Skills 重设计 | 2 | 2 | 0 | 0 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **32** | **29** | **0** | **3** |
+| **合计** | **34** | **31** | **0** | **3** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -385,6 +386,38 @@
   - [x] 前端：ProjectSettingsPage 8 例（回显/表单提交/导出提交/YAML 提交/YAML 非法/占用失败保留/删除状态/放弃修改）；全量 140 用例 + typecheck + lint 全绿
 - **产出文件**：`internal/config/project.go`（UpdateProjectFile）、`internal/api/handlers_project_config.go`、`internal/api/handlers_project_config_test.go`、`internal/task/state_machine.go`（抽取校验 + 部分更新）、`app/src/hooks/useProjectConfig.ts`、`app/src/features/settings/ProjectSettingsPage.tsx`(+test)、`app/src/components/project/project-panel.tsx`（tab）、`app/src/App.tsx`（路由）、`app/src/stores/project.ts`（sections）
 - **总结文件**：`docs/record/TF-032-项目设置页-成功.md`
+
+---
+
+## P5.6 Skills 重设计（M5.6：技能包生命周期 + AI 说明书）
+
+### TF-033 Skills 后端重设计（P0，依赖 TF-020）✅ 已完成
+
+- **涉及模块**：`internal/skill`、`internal/guide`、`internal/api`、`internal/mcp`、`cmd/cli`、`internal/db`
+- **描述**：Skill 功能从「扫描 `.taskboard/skills/` 只读浏览」重设计为「技能包生命周期管理」（方案见 `docs/task/SKILLS-REDESIGN.md`，用户确认 QA-S1~S9）：
+  - 技能源：内置 embed（`internal/skill/packages/taskboard-basic`）+ 全局技能库 `~/.taskboard-app/skills/<name>/`（同名覆盖内置）+ 全局默认模板 `_template/SKILL.md`；SKILL.md v2 格式（frontmatter: name/description/version/hosts/when_to_use + 正文）
+  - 宿主矩阵 6 个：`AGENTS.md`/`CLAUDE.md`（marker 标记段，多包共存可撤销）/`.cursor/rules`（每包一 .mdc）/`copilot`（marker）/`user-claude`/`user-codebuddy`（目录复制）；安装/更新/卸载/状态（missing/current/stale 实时扫描，无 watcher）
+  - `internal/guide` 说明书单一来源：`GET /api/guide`（完全免鉴权，任何来源可读）+ MCP `guide` 工具 + CLI `tangoforge guide`
+  - 权限新增 `skill.install`（默认 false）；审计 `skill.installed/updated/uninstalled/package_written/template_written`
+  - 移除 skills 表（迁移 v3 drop）+ `.taskboard/skills/` 目录创建/扫描
+- **QA 决策**：多宿主 v1；彻底废弃 `.taskboard/skills/`；说明书完全免鉴权；内置包仅 taskboard-basic；移除 skills 表；卸载需二次确认（见 `docs/TASK-SEMANTICS.md` §15）
+- **验收标准**：
+  - [x] Go 全仓全绿（skill 14 + guide 3 + api 5 + mcp 3 新增用例）
+  - [x] daemon 实测：guide 免鉴权 200、packages/status/install/uninstall/模板端点全链路
+- **总结文件**：`docs/record/TF-033-Skills后端重设计-成功.md`
+
+### TF-034 Skills 前端重构 + 全局模板（P1，依赖 TF-033、TF-023）✅ 已完成
+
+- **涉及模块**：`app/src/features/skills`、`app/src/features/settings`、`app/src/hooks`、`app/src/types`
+- **描述**：Skills 页从只读浏览重构为完整管理界面：
+  - 安装向导（先选宿主 → 勾选包 → 批量安装）+ 安装状态矩阵（missing/current/stale + 更新/卸载，卸载二次确认 Dialog）+ 技能库（内置/自定义，编辑 SKILL.md 写入全局库）
+  - 「放入 AGENTS.md 的推荐提示词」卡片（中/英切换 + 一键复制，仅 UI 复制不写文件）
+  - 全局设置页新增「Skill 模板」tab（QA-S4：模板编辑器 + 保存到全局技能库 _template；后端配套 GET/PUT `/api/skill-template` 豁免 X-Project、PUT 仅 UI）
+  - hooks：useSkillPackages/Status/Install/Uninstall/PackageWrite/Template(+Write)；类型 SkillPackage/InstallResult/InstalledSkill/HostStatus；ACTION_KEYS + `skill.install`
+- **验收标准**：
+  - [x] 前端 147 用例全绿（SkillsPanel 4 例新增）+ typecheck + lint + electron build 全绿
+  - [x] Go 全绿（模板端点 2 例新增）
+- **总结文件**：`docs/record/TF-034-Skills前端重构-成功.md`
 
 ---
 

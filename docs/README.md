@@ -84,7 +84,7 @@ docs/task/OVERVIEW.md （同步统计与泳道；里程碑达成后对照质量�
 | 文件 / 目录 | 说明 | 更新频率 |
 |-------------|------|----------|
 | `task/MASTER-PLAN.md` | 主行动计划：阶段 P1~P6、里程碑 M1~M6、执行策略、记录规范 | 阶段/里程碑调整时 |
-| `task/TASKS.md` | 可执行任务清单：TF-001 ~ TF-032（状态唯一事实源） | 每任务完成时 |
+| `task/TASKS.md` | 可执行任务清单：TF-001 ~ TF-034（状态唯一事实源） | 每任务完成时 |
 | `task/OVERVIEW.md` | 任务全景预览：总览表 / 泳道 / 依赖图 / 里程碑卡片 | 每任务完成时 |
 | `record/` | 任务总结归档（`TF-XXX-标题-结果.md`） | 每正式任务完成时 |
 | `log/` | 任务日志（`TF-XXX-标题.md`） | 任务进行中 |
@@ -102,6 +102,7 @@ docs/task/OVERVIEW.md （同步统计与泳道；里程碑达成后对照质量�
 - `record/README.md` — 总结目录规范
 - `task/MASTER-PLAN.md` — 主行动计划
 - `task/OVERVIEW.md` — 任务全景预览
+- `task/SKILLS-REDESIGN.md` — Skills 功能重设计（QA 细化与整改方案，TF-033/034 依据）
 - `task/TASKS.md` — 可执行任务清单
 
 ---

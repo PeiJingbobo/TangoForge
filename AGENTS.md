@@ -65,7 +65,8 @@ internal/
 ├── auth/       # 来源识别（ui/agent/unknown）、Token 校验、权限中间件
 ├── api/        # HTTP / WebSocket 路由与处理器
 ├── mcp/        # MCP 工具注册与执行（v1 固定工具集，不动态注册）
-├── skill/      # Skill 文件扫描、索引、skill_info
+├── skill/      # Skill 技能包（内置 embed + 全局库）+ 宿主安装/卸载/状态
+├── guide/      # AI 使用说明书（免鉴权，HTTP/MCP/CLI 三端复用）
 ├── llm/        # LLM HTTP 客户端封装（供 parser/exporter 复用，仅 JSON 结构化通信）
 └── audit/      # 审计日志异步写入与导出
 ```
@@ -109,7 +110,7 @@ type Task struct {
 - **tasks**：见上；`project_id` 外键 + `(project_id, status)` 索引。
 - **permissions**：`(project_id, action, allowed)`——**仅存 Agent 权限范围**；action 为命名空间字符串（`task.read` / `task.create` / `import.run` …）；UI 不查表。
 - **import_drafts**：`id, project_id, source_file, parsed_json, status(pending/confirmed/discarded)`——LLM 解析草稿，确认后入库。
-- **skills**：仅缓存，数据源为 `{workdir}/.taskboard/skills/` 文件系统。
+- **skills 表已移除**（迁移 v3 drop，TF-033）：技能包改为内置 embed + 全局技能库 `~/.taskboard-app/skills/`，安装状态实时扫描宿主位置，无项目库依赖。
 - **audit_log**：`id, ts, actor, actor_class, action, target, result, detail`。
 
 ### 4.3 约束（铁律）

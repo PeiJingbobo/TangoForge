@@ -35,7 +35,7 @@ TangoForge 是一个**人机协作的任务看板系统**。用户通过 APP 图
 |-----------|------|
 | `meta.db` | SQLite 数据库：任务、权限、审计、草稿、技能索引 |
 | `config.yaml` | **仅限当前项目的业务配置**：导出模板、状态机、自定义字段、标签颜色等；不含全局/安全设置 |
-| `skills/` | AI Skill 文件（YAML/Markdown），**文件系统为唯一数据源** |
+| `skills/` | 已废弃（TF-033）：技能包改内置 embed + 全局技能库 `~/.taskboard-app/skills/` |
 | `audit.log` | 审计日志的**可导出文件**（数据本体在 `audit_log` 表，导出见 §7.5） |
 
 #### 1.3 全局配置（APP 级）
@@ -212,7 +212,7 @@ Agent / 客户端在每次调用中**必须显式指明项目目录**：
   | `export.*` | `export.complete` |
   | `project.*` | `project.imported / project.removed` |
   | `permission.*` | `permission.changed` |
-  | `skill.*` | `skill.changed` |
+  | `skill.*` | （TF-033 起无 DB 缓存，状态实时扫描，无事件推送） |
   | `state_machine.*` | `state_machine.changed` |
 
 - 事件结构含 `{type, project, data, ts}`，远程连接需 Token（§7.3）。
@@ -296,37 +296,43 @@ Agent / 客户端在每次调用中**必须显式指明项目目录**：
 
 #### 8.1 分工约定
 
-- **`AGENTS.md`（项目根目录，用户手写）**：要求 AI Agent **通过 TangoForge 工具进行项目管理**——即"**何时**使用工具"（场景判断）。
-- **`.taskboard/skills/`（Skill 文件）**：告诉 AI **具体功能如何使用**——即"**如何**操作"（工具用法、字段语义、状态机说明）。
-- 协作机制：AI Agent 在需要进行项目管理时，**自动激活对应 Skill** 完成操作；守护进程只提供 `skill_info` 查询能力，不解析 AGENTS.md。
+- **`AGENTS.md`（项目根目录，用户手写）**：要求 AI Agent **通过 TangoForge 工具进行项目管理**——即"**何时**使用工具"（场景判断）。App 提供**推荐提示词**（中/英文，一键复制）供用户粘贴。
+- **Skill 技能包（内置 + 全局技能库）**：告诉 AI **具体功能如何使用**——即"**如何**操作"（工具用法、字段语义、状态机说明）。App 可将技能包**安装到各类 Agent 宿主约定位置**（AGENTS.md / CLAUDE.md / .cursor/rules / copilot / ~/.claude/skills / ~/.workbuddy/skills），建立可发现性。
+- **AI 说明书端点（免鉴权）**：`GET /api/guide`（HTTP）/ MCP `guide` 工具 / CLI `tangoforge guide`——AI 未安装任何 Skill 时，先读说明书即可掌握系统全部调用方式（端点表/工具表/语义速查）。
+- 协作机制：AI Agent 在需要进行项目管理时，**自动激活对应 Skill** 完成操作（命中场景 → 读 SKILL.md → 按流程调 cli/mcp/http/scripts）；守护进程提供技能包安装/状态查询能力。
 
-#### 8.2 Skill 文件格式
+#### 8.2 Skill 技能包格式（v2，SKILL.md）
 
-- 支持 **YAML**（结构化）与 **Markdown**（纯描述），YAML schema 草案：
+- **SKILL.md**（Anthropic Agent Skills 规范靠拢）：YAML frontmatter + 正文 instructions：
 
   ```yaml
-  name: taskboard-basic
-  version: 1
+  ---
+  name: taskboard-basic          # 唯一标识
   description: 任务操作指引
-  instructions: |
-    使用 task_read / task_create 等工具完成项目管理……
+  version: "1.0.0"               # 安装状态比对依据
+  hosts: [AGENTS.md, CLAUDE.md]  # 适用宿主（空 = 全部）
+  when_to_use: 需要管理任务时激活
+  ---
+  # 正文：场景 → 调用方式（HTTP/MCP/CLI）→ 字段语义
   ```
 
-- **文件系统为唯一数据源**；`skills` 表仅作索引/缓存，守护进程启动时扫描 `skills/` 目录同步。
-- 解析失败仅告警，不阻断守护进程启动。
+- **技能包来源**：内置包（随 daemon embed 分发）+ 全局技能库（`~/.taskboard-app/skills/<name>/`，用户自定义/下载落点，同名覆盖内置）+ 全局默认模板（`_template/SKILL.md`，全局设置页可编辑）。
+- **安装 = 分发到宿主位置**：marker 宿主（AGENTS.md/CLAUDE.md/copilot）用 `<!-- tangoforge:skill:<name>:begin/end -->` 标记段（多包共存、可撤销）；目录宿主（~/.claude/skills 等）建 `<name>/`；状态实时扫描（missing/current/stale）。
+- 解析失败（缺 name / 坏 frontmatter）→ 拒绝或跳过，不阻断。
 
 #### 8.3 MCP 工具集（v1 固定）
 
 v1 MCP 暴露**固定核心工具集**，Skill 仅提供描述性引导，**不动态注册工具**（动态注册列入 V2）：
 
 ```
-project_list / project_import / project_init
+project_list / project_import / project_init / project_create
 task_list / task_read / task_create / task_update / task_archive / task_restore
 import_preview / import_confirm / import_discard
 export_markdown
 graph_get
 state_machine_get / state_machine_update
-skill_info
+skill_info / skill_install / skill_status / skill_uninstall
+guide（免鉴权说明书）
 permission_list
 ```
 
@@ -401,7 +407,8 @@ internal/
 ├── auth/       # 来源识别（ui/agent/unknown）、Token 校验、权限中间件
 ├── api/        # HTTP / WebSocket 路由与处理器
 ├── mcp/        # MCP 工具注册与执行（固定工具集）
-├── skill/      # Skill 文件扫描、索引、skill_info
+├── skill/      # Skill 技能包（内置 embed + 全局库）+ 宿主安装/卸载/状态
+├── guide/      # AI 使用说明书（免鉴权）
 ├── llm/        # LLM HTTP 客户端封装（供 parser/exporter 复用）
 └── audit/      # 审计日志异步写入与导出
 ```
@@ -460,7 +467,7 @@ CREATE TABLE import_drafts (     -- LLM 解析草稿（确认后入库）
   confirmed_at TEXT
 );
 
-CREATE TABLE skills (            -- 仅缓存，数据源为 skills/ 目录
+-- skills 表已移除（TF-033 v3 迁移 drop）；技能包改内置 embed + 全局库
   name       TEXT PRIMARY KEY,
   content    TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -522,7 +529,12 @@ export:
 | POST | `/api/export` | 重新生成 Markdown（`template_mode: default\|llm`, `target: overwrite\|copy`） | `export.run` |
 | POST | `/api/export/template/generate` | LLM 根据示例文档生成导出模板 | `export.run` |
 | GET | `/api/graph` | 全景图全量数据（服务端不聚簇） | `graph.read` |
-| GET | `/api/skills` / `/api/skills/:name` | skill 列表 / skill_info | `skill.read` |
+| GET | `/api/skills/packages[/{name}]` | 技能包列表/详情 | `skill.read` |
+| GET | `/api/skills/status` | 宿主安装状态矩阵 | `skill.read` |
+| POST | `/api/skills/install|uninstall` | 安装/卸载技能包 | `skill.install` |
+| PUT | `/api/skills/packages/{name}` | 写自定义技能包 | 仅 UI |
+| GET/PUT | `/api/skill-template` | 全局默认模板读写 | GET skill.read / PUT 仅 UI |
+| GET | `/api/guide` | AI 使用说明书 | **免鉴权** |
 | GET | `/api/permissions` | 查询 Agent 权限范围 | `permission.read` |
 | PUT | `/api/permissions` | 修改权限（仅 UI 凭据 + 回环） | 仅 UI |
 | GET | `/api/audit` | 审计查询（`?filter[actor]=&filter[action]=`） | `audit.read` |
