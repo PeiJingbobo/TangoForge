@@ -132,7 +132,10 @@ export function KanbanBoard({
           />
         ))}
       </div>
-      <DragOverlay>{activeTask ? <TaskCard task={activeTask} overlay /> : null}</DragOverlay>
+      {/* dropAnimation=null：松手即消失（不飞回原位置，避免与乐观落位视觉冲突产生闪烁） */}
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? <TaskCard task={activeTask} overlay /> : null}
+      </DragOverlay>
     </DndContext>
   )
 }

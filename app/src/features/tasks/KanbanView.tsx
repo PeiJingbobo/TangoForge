@@ -3,7 +3,11 @@ import { toast } from 'sonner'
 import { Search, Plus } from 'lucide-react'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { KanbanBoard } from '@/components/kanban/kanban-board'
-import { resolveDragTarget } from '@/components/kanban/drag-logic'
+import {
+  resolveDragTarget,
+  applyColumnOrder,
+  resolveColOrder,
+} from '@/components/kanban/drag-logic'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +27,7 @@ import { useEventInvalidator } from '@/hooks/useEvents'
 import { useKanbanMutations } from '@/hooks/useKanban'
 import { useProjectId } from '@/hooks/useProject'
 import { useTaskDrawerStore } from '@/stores/task-drawer'
+import type { Task } from '@/types/task'
 import { cn } from '@/lib/utils'
 
 /** 看板视图（TF-025）：状态机动态列 + dnd-kit 拖拽流转 + 虚拟滚动 + 过滤搜索 */
@@ -34,6 +39,8 @@ export function KanbanView() {
   const [query, setQuery] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  // 本地列内顺序（拖拽结束保持，避免数据刷新回跳闪烁；仅会话内，未记录列用默认序）
+  const [colOrder, setColOrder] = useState<Record<string, string[]>>({})
   const { getEffectiveStatus, moveTask } = useKanbanMutations(pid)
   const openTaskDrawer = useTaskDrawerStore((st) => st.openDrawer)
 
@@ -62,8 +69,15 @@ export function KanbanView() {
 
   const tasksById = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks])
 
+  // 看板展示顺序：本地列内顺序覆盖（拖拽结束保持；未记录列原序）
+  const displayTasks = useMemo(
+    () => applyColumnOrder(filtered, colOrder, getEffectiveStatus),
+    [filtered, colOrder, getEffectiveStatus],
+  )
+
   const createTask = useCreateTask(pid)
 
+  // 拖拽结束：状态流转 + 本地列内顺序保持（resolveColOrder 计算目标列新顺序）
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
     if (!over) return
@@ -75,6 +89,32 @@ export function KanbanView() {
     )
     if (!target) return
     moveTask(target.taskId, target.to)
+    const activeTask = tasksById.get(String(active.id))
+    if (!activeTask) return
+    const activeId = String(active.id)
+    const fromCol = getEffectiveStatus(activeTask)
+    setColOrder((prev) => {
+      const next = { ...prev }
+      // 目标列新顺序（当前 id 列表：colOrder 或默认，过滤已删除/失效任务）
+      const targetDefault = filtered
+        .filter((t) => getEffectiveStatus(t) === target.to)
+        .map((t) => t.id)
+      const targetIds = (prev[target.to] ?? targetDefault).filter((id) => tasksById.has(id))
+      const targetTasks = targetIds
+        .map((id) => tasksById.get(id))
+        .filter((t): t is Task => Boolean(t))
+      next[target.to] = resolveColOrder(targetTasks, String(over.id), activeId)
+      // 源列移除（跨列时）
+      if (fromCol !== target.to) {
+        const srcDefault = filtered
+          .filter((t) => getEffectiveStatus(t) === fromCol)
+          .map((t) => t.id)
+        next[fromCol] = (prev[fromCol] ?? srcDefault).filter(
+          (id) => id !== activeId && tasksById.has(id),
+        )
+      }
+      return next
+    })
   }
 
   return (
@@ -131,7 +171,7 @@ export function KanbanView() {
       ) : (
         <KanbanBoard
           states={columns}
-          tasks={filtered}
+          tasks={displayTasks}
           getEffectiveStatus={getEffectiveStatus}
           onOpenTask={(id) => openTaskDrawer({ taskId: id })}
           onDragEnd={handleDragEnd}

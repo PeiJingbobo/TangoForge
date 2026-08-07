@@ -43,3 +43,54 @@ export function resolveOverIndex(colTasks: Task[], overId: string, activeId: str
   if (activeIdx === -1) return overIdx
   return overIdx < activeIdx ? overIdx : overIdx + 1
 }
+
+/**
+ * 拖拽结束后的列内新顺序（纯函数，可单测）：
+ * 传入目标列完整任务数组（含 active）+ over 命中项 + activeId，
+ * 返回移除 active 后按目标插入位置重排的 id 数组
+ * （本地保持列内顺序，避免数据刷新回跳造成的闪烁）。
+ */
+export function resolveColOrder(colTasks: Task[], overId: string, activeId: string): string[] {
+  const target = resolveOverIndex(colTasks, overId, activeId) // 含 active 的插入点
+  const rest = colTasks.filter((t) => t.id !== activeId).map((t) => t.id)
+  const activeIdx = colTasks.findIndex((t) => t.id === activeId)
+  // active 在目标列表中且位于插入点之前 → 移除后坐标前移一位
+  const insert = activeIdx !== -1 && target > activeIdx ? target - 1 : target
+  return [...rest.slice(0, insert), activeId, ...rest.slice(insert)]
+}
+
+/**
+ * 按本地列内顺序覆盖重排任务列表（拖拽结束会话内保持顺序；未记录列保持原序）。
+ * 纯函数，可单测。
+ */
+export function applyColumnOrder(
+  tasks: Task[],
+  order: Record<string, string[]>,
+  statusOf: (t: Task) => string,
+): Task[] {
+  const groups = new Map<string, Task[]>()
+  for (const t of tasks) {
+    const s = statusOf(t)
+    if (!groups.has(s)) groups.set(s, [])
+    groups.get(s)!.push(t)
+  }
+  const out: Task[] = []
+  for (const [status, group] of groups) {
+    const ordered = order[status]
+    if (!ordered || ordered.length === 0) {
+      out.push(...group)
+      continue
+    }
+    const byId = new Map(group.map((t) => [t.id, t]))
+    const seen = new Set<string>()
+    for (const id of ordered) {
+      const t = byId.get(id)
+      if (t && !seen.has(id)) {
+        out.push(t)
+        seen.add(id)
+      }
+    }
+    for (const t of group) if (!seen.has(t.id)) out.push(t)
+  }
+  return out
+}

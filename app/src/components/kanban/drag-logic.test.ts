@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { resolveDragTarget, resolveOverIndex } from './drag-logic'
+import {
+  resolveDragTarget,
+  resolveOverIndex,
+  resolveColOrder,
+  applyColumnOrder,
+} from './drag-logic'
 import type { Task } from '@/types/task'
 
 function mk(id: string, status: string): Task {
@@ -88,5 +93,44 @@ describe('resolveOverIndex（拖拽目标插入位置，含 active 的列内 ind
 
   it('空列 + 跨列拖入 → index 0', () => {
     expect(resolveOverIndex([], 'todo-column-id', 'outside')).toBe(0)
+  })
+})
+
+describe('resolveColOrder（拖拽结束列内新顺序）', () => {
+  const col = [mk('A', 'todo'), mk('B', 'todo'), mk('C', 'todo'), mk('D', 'todo')]
+
+  it('同列向前拖（C → over B）→ C 插 B 前', () => {
+    expect(resolveColOrder(col, 'B', 'C')).toEqual(['A', 'C', 'B', 'D'])
+  })
+
+  it('同列向后拖（B → over C）→ B 插 C 后', () => {
+    expect(resolveColOrder(col, 'C', 'B')).toEqual(['A', 'C', 'B', 'D'])
+  })
+
+  it('原地（over 自身）→ 顺序不变', () => {
+    expect(resolveColOrder(col, 'B', 'B')).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('跨列拖到末尾（active 不在列，over 未命中）→ 插末尾', () => {
+    expect(resolveColOrder(col, 'todo-column-id', 'X')).toEqual(['A', 'B', 'C', 'D', 'X'])
+  })
+})
+
+describe('applyColumnOrder（本地列内顺序覆盖）', () => {
+  const tasks = [mk('A', 'todo'), mk('B', 'todo'), mk('C', 'doing'), mk('D', 'todo')]
+  const statusOf = (t: Task) => t.status
+
+  it('无覆盖 → 按状态分组原序（todo 组 [A,B,D] + doing 组 [C]）', () => {
+    expect(applyColumnOrder(tasks, {}, statusOf).map((t) => t.id)).toEqual(['A', 'B', 'D', 'C'])
+  })
+
+  it('todo 列覆盖 [D, B, A] → 按覆盖序，未记录（doing）保持原序', () => {
+    const out = applyColumnOrder(tasks, { todo: ['D', 'B', 'A'] }, statusOf)
+    expect(out.map((t) => t.id)).toEqual(['D', 'B', 'A', 'C'])
+  })
+
+  it('覆盖含已删除 id → 过滤；未覆盖任务追加列尾', () => {
+    const out = applyColumnOrder(tasks, { todo: ['D', 'ghost', 'A'] }, statusOf)
+    expect(out.map((t) => t.id)).toEqual(['D', 'A', 'B', 'C'])
   })
 })
