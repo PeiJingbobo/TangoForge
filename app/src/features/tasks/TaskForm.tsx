@@ -283,6 +283,7 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
       {/* 依赖 */}
       <div className="mt-6">
         <Label className="mb-2 text-muted-foreground">依赖（depends_on）</Label>
+        {/* 第一行：依赖标签流 */}
         <div className="flex flex-wrap items-center gap-1.5">
           {dependTasks.map((t) => (
             <Badge
@@ -303,7 +304,11 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
               )}
             </Badge>
           ))}
-          {!readOnly && (
+          {dependTasks.length === 0 && <span className="text-sm text-muted-foreground">无</span>}
+        </div>
+        {/* 第二行：添加依赖入口（始终位于所有标签下方） */}
+        {!readOnly && (
+          <div className="mt-1.5">
             <Select value="" onValueChange={addDependency}>
               <SelectTrigger
                 aria-label="添加依赖"
@@ -322,9 +327,8 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
                 ))}
               </SelectContent>
             </Select>
-          )}
-          {dependTasks.length === 0 && <span className="text-sm text-muted-foreground">无</span>}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 子任务（只读展示） */}
