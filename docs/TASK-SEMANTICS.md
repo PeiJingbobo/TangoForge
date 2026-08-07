@@ -226,7 +226,7 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 - 中间件：`actor_class=ui` 直接放行；其余查表，未授权 403 `PERMISSION_DENIED` + denied 审计；**行缺失/未知 action → denied**（安全默认）。
 - `GET /api/permissions` 返回**全量 17 项**（含 allowed=false，QA P3-6），action=permission.read。
 - `PUT /api/permissions` **仅 UI**（回环 + X-UI-Token；actor==ui 校验）；请求体**全量覆盖** `{"actions": {...}}`，未提交项重置 false，未知 action 拒绝（QA P3-5）。
-- `/api/projects` 组豁免 X-Project（QA P3-2）：GET/POST 放行（project.read 默认授予，无项目上下文不逐项查表）；`DELETE /api/projects/:id` 仅 UI。
+- `/api/projects` 组豁免 X-Project（QA P3-2）：GET/POST 放行（project.read 默认授予，无项目上下文不逐项查表）；`DELETE /api/projects/:id` 与 `PATCH /api/projects/:id`（TF-035 重命名）**仅 UI**（注册表级操作，Agent / 远程一律 403）；重命名仅改 name 行（空名 → `TASK_INVALID` 422），审计 `project.renamed`。
 - `PATCH /api/tasks/:id` 动态权限：body 含 status → 二次校验 `task.update_status`（ensureAction）；其余字段 → `task.update`（路由静态挂载）。
 
 ### 12.3 异步审计（TF-012，REQUIREMENTS.md §7.5）

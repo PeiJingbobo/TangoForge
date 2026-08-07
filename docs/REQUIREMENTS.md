@@ -513,6 +513,7 @@ export:
 | GET | `/api/projects` | 项目列表 | `project.read` |
 | POST | `/api/projects/import` | 导入目录为项目（无元数据则引导初始化） | `project.read`（UI 不限） |
 | DELETE | `/api/projects/:id` | 移除项目记录（不动磁盘） | 仅 UI |
+| PATCH | `/api/projects/:id` | 重命名项目（仅改 name 行，TF-035） | 仅 UI |
 | GET | `/api/tasks` | 任务树（`?filter[status]=&q=&page=&size=`） | `task.read` |
 | POST | `/api/tasks` | 创建任务 | `task.create` |
 | GET | `/api/tasks/:id` | 任务详情 | `task.read` |

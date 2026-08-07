@@ -18,8 +18,9 @@
 | P5 前端应用 | 7 | 7 | 0 | 0 |
 | P5.5 项目设置页 | 1 | 1 | 0 | 0 |
 | P5.6 Skills 重设计 | 2 | 2 | 0 | 0 |
+| P5.7 项目右键菜单 | 1 | 1 | 0 | 0 |
 | P6 测试与交付 | 3 | 0 | 0 | 3 |
-| **合计** | **34** | **31** | **0** | **3** |
+| **合计** | **35** | **32** | **0** | **3** |
 
 > 每完成一个任务，更新本表、OVERVIEW.md 统计，并新建 `docs/record/TF-XXX-<标题>-<结果>.md` 总结与 `docs/log/TF-XXX-<标题>.md` 日志。
 
@@ -418,6 +419,24 @@
   - [x] 前端 147 用例全绿（SkillsPanel 4 例新增）+ typecheck + lint + electron build 全绿
   - [x] Go 全绿（模板端点 2 例新增）
 - **总结文件**：`docs/record/TF-034-Skills前端重构-成功.md`
+
+---
+
+## P5.7 项目右键菜单（用户需求，TF-035）
+
+### TF-035 项目列表右键菜单（P0，依赖 TF-024）✅ 已完成
+
+- **涉及模块**：`internal/project`、`internal/api`、`app/electron`、`app/src/components/layout`、`app/src/components/ui`
+- **描述**：全局导航栏项目列表项右键菜单：
+  - **重命名**：`project.Service.Rename`（仅改 projects.name 行，空名拒绝，回读新记录）+ `PATCH /api/projects/:id`（仅 UI，同删除权限语义；审计 `project.renamed`）+ 前端重命名 Dialog（Enter 提交）
+  - **删除项目**：复用 `DELETE /api/projects/:id`（仅 UI，不动磁盘数据）+ 二次确认 Dialog（删除当前项目自动清空全局项目态）
+  - **在文件夹中打开**：preload 暴露 `shell.revealPath` + 主进程 `shell:revealPath` IPC（目录存在 `showItemInFolder` 选中，不存在 `openPath` 打开上级兜底）；Web 环境 toast 提示仅桌面版可用
+  - 新增 shadcn `context-menu` 组件（@radix-ui/react-context-menu）
+- **验收标准**：
+  - [x] Go 全绿（project 3 例：改名保 workdir/空名拒绝/404；api 1 例：agent 403/UI 200/空名 422/404）
+  - [x] 前端 150 用例全绿（+3：重命名 PATCH/删除确认+DELETE/Web 打开文件夹提示）+ typecheck/lint/electron build
+  - [x] daemon 实测：agent 重命名 403、UI 200、列表反映新名称
+- **总结文件**：`docs/record/TF-035-项目右键菜单-成功.md`
 
 ---
 
