@@ -59,7 +59,6 @@ let spawned: ChildProcess | null = null
 /** 探活 → 拉起 → 等待 Health Check；返回是否可用 */
 export async function ensureDaemonRunning(): Promise<boolean> {
   if (await isDaemonAlive()) {
-    refreshUiToken()
     return true
   }
 
@@ -70,7 +69,6 @@ export async function ensureDaemonRunning(): Promise<boolean> {
     while (Date.now() < deadline) {
       await sleep(POLL_INTERVAL_MS)
       if (await isDaemonAlive()) {
-        refreshUiToken()
         return true
       }
     }
@@ -84,7 +82,6 @@ export async function ensureDaemonRunning(): Promise<boolean> {
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS)
     if (await isDaemonAlive()) {
-      refreshUiToken()
       return true
     }
   }
@@ -103,11 +100,6 @@ export function readUiToken(): string {
   } catch {
     return ''
   }
-}
-
-let uiToken = ''
-function refreshUiToken(): void {
-  uiToken = readUiToken()
 }
 
 /* ---------- API 代理（渲染进程 → IPC → 主进程 fetch daemon） ---------- */
@@ -133,9 +125,10 @@ async function apiProxy(req: ApiRequestPayload): Promise<ApiProxyResult> {
   }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (req.project) headers['X-Project'] = req.project
-  // 按需兜底：token 未初始化（如 ensureRunning 未完成）时读取一次，避免全局端点 403
-  if (!uiToken) refreshUiToken()
-  if (uiToken) headers['X-UI-Token'] = uiToken
+  // UI 凭据实时读取（config.yaml 极小，读开销可忽略）：彻底消除初始化时序/缓存失效导致的
+  // 全局端点 403（如 ensureRunning 未完成、多实例、daemon 热重载 token 变更）。
+  const token = readUiToken()
+  if (token) headers['X-UI-Token'] = token
   try {
     const res = await fetch(`${DAEMON_BASE_URL}${req.path}`, {
       method,
