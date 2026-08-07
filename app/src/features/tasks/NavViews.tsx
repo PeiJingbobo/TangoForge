@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { TreeNav } from '@/components/common/TreeNav'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +7,7 @@ import { useTasks } from '@/hooks/useTasks'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
 import { useProjectId } from '@/hooks/useProject'
+import { useTaskDrawerStore } from '@/stores/task-drawer'
 import type { Task, TaskTreeNode } from '@/types/task'
 
 function TaskRow({ task, onClick }: { task: Task; onClick: (id: string) => void }) {
@@ -88,7 +88,6 @@ function StatusView({
 /** 导航三视图页（TF-026）：树形 / 时间线 / 状态分类 */
 export function NavPage() {
   const pid = useProjectId()
-  const navigate = useNavigate()
   const { data: taskData } = useTasks(undefined, pid)
   const { data: sm } = useStateMachine(pid)
   useEventInvalidator(pid)
@@ -96,7 +95,8 @@ export function NavPage() {
   const flat = useMemo(() => flattenTree(taskData?.tree ?? []), [taskData])
   const states = sm?.States ?? []
 
-  const openTask = (id: string) => navigate(`/project/${encodeURIComponent(pid ?? '')}/tasks/${id}`)
+  const openTaskDrawer = useTaskDrawerStore((st) => st.openDrawer)
+  const openTask = (id: string) => openTaskDrawer({ taskId: id })
 
   const treeWithIds = (taskData?.tree ?? []) as TaskTreeNode[]
 

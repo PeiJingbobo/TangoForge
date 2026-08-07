@@ -6,30 +6,62 @@ import { ApiError } from '@/api/client'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Separator } from '@/components/ui/separator'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { useTask, useTasks, useUpdateTask, useArchiveTask, useRestoreTask } from '@/hooks/useTasks'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
 import { useProjectId } from '@/hooks/useProject'
-import type { UpdateTaskInput } from '@/types/task'
+import { useTaskDrawerStore, type TaskDrawerMode } from '@/stores/task-drawer'
+import type { Task, UpdateTaskInput } from '@/types/task'
 
 /**
- * 任务详情（TF-026，UI-VISION 场景 C）：
- * 阅读流（标题 → meta → 描述 → 子块）+ 属性栏分割线分组 + sticky 底部操作。
+ * 任务详情抽屉（TF 改造）：全局右侧抽屉形态。
+ * - props 化：taskId 优先级高（内部 useTask 加载 + useUpdateTask 保存）；
+ *   传入 task 对象时直接使用，编辑完成经 onSaved(latest) 回调最新详情（不内部发请求）；
+ * - mode：'edit'（默认，可编辑保存）/ 'read'（只读展示）；
+ * - 复用 TaskForm（行内编辑 + 差异提交）。
  */
-export function TaskDetail({ taskId }: { taskId: string }) {
+export interface TaskDetailDrawerProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** 任务 id（优先级高：内部加载详情并内部保存） */
+  taskId?: string
+  /** 任务详情对象（传入时直接使用；编辑完成经 onSaved 回调） */
+  task?: Task
+  mode?: TaskDrawerMode
+  /** 编辑保存成功回调（task 对象模式必需；taskId 模式保存后也回调最新详情） */
+  onSaved?: (task: Task) => void
+}
+
+export function TaskDetailDrawer({
+  open,
+  onOpenChange,
+  taskId,
+  task: taskProp,
+  mode = 'edit',
+  onSaved,
+}: TaskDetailDrawerProps) {
   const pid = useProjectId()
-  const navigate = useNavigate()
-  const { data: task, isLoading } = useTask(taskId, pid)
-  const { data: sm } = useStateMachine(pid)
+  // taskId 模式加载（open=false 时不请求）；task 对象模式不加载
+  const { data: loaded } = useTask(taskId && open ? taskId : undefined, pid)
   const { data: taskData } = useTasks(undefined, pid)
+  const { data: sm } = useStateMachine(pid)
   const updateTask = useUpdateTask(pid)
   const archiveTask = useArchiveTask(pid)
   const restoreTask = useRestoreTask(pid)
   const [busy, setBusy] = useState(false)
 
   useEventInvalidator(pid)
+
+  // taskId 模式：用加载数据；task 对象模式：直接用 props（优先级 id > 对象，但对象非空时以对象为展示源）
+  const task = taskProp ?? loaded
 
   const allTasks = useMemo(() => flattenTree(taskData?.tree ?? []), [taskData])
   const states = useMemo(() => sm?.States ?? [], [sm])
@@ -38,26 +70,33 @@ export function TaskDetail({ taskId }: { taskId: string }) {
     return (task?.depends_on ?? []).map((id) => byId.get(id) ?? id)
   }, [allTasks, task])
 
-  if (isLoading || !task) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-9 w-2/3" />
-        <Skeleton className="h-5 w-1/3" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    )
-  }
-
   const handleSubmit = (body: UpdateTaskInput & { status?: string }) => {
+    if (!task) return
+    if (taskProp) {
+      // 对象模式：不发请求，显式构造最新详情经回调交给调用方（避免 body 展开类型漂移）
+      const latest: Task = {
+        ...task,
+        title: body.title ?? task.title,
+        description: body.description ?? task.description,
+        status: body.status ?? task.status,
+        priority: body.priority === undefined ? task.priority : Number(body.priority),
+        assignee: body.assignee ?? task.assignee,
+        tags: body.tags ?? task.tags,
+        depends_on: body.depends_on ?? task.depends_on,
+      }
+      onSaved?.(latest)
+      return
+    }
+    // taskId 模式：内部保存
     setBusy(true)
     updateTask.mutate(
       { id: task.id, body },
       {
         onSuccess: (t) => {
           toast.success('已保存', { description: t.title })
+          onSaved?.(t)
         },
         onError: (err) => {
-          // 依赖环/非法流转等业务错误：toast 展示后端 message（含无环提示语义）
           toast.error(err instanceof Error ? err.message : '保存失败', {
             description:
               err instanceof ApiError && err.code === 'CIRCULAR_DEPENDENCY'
@@ -71,6 +110,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   }
 
   const confirmArchive = () => {
+    if (!task) return
     const children = allTasks.filter((t) => t.parent_id === task.id)
     const msg =
       children.length > 0
@@ -88,7 +128,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 ? `仍有 ${r.dependent_count} 个任务依赖它`
                 : undefined,
         })
-        navigate(`/project/${encodeURIComponent(pid ?? '')}/kanban`)
+        onOpenChange(false)
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : '归档失败'),
       onSettled: () => setBusy(false),
@@ -96,6 +136,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   }
 
   const confirmRestore = () => {
+    if (!task) return
     setBusy(true)
     restoreTask.mutate(
       { id: task.id },
@@ -108,77 +149,122 @@ export function TaskDetail({ taskId }: { taskId: string }) {
   }
 
   const archiveAction =
-    task.status === 'archived' ? (
-      <Button variant="ghost" onClick={confirmRestore} disabled={busy} className="text-success-ink">
-        <RotateCcw className="size-4" /> 还原
-      </Button>
-    ) : (
-      <Button
-        variant="ghost"
-        onClick={confirmArchive}
-        disabled={busy}
-        className="text-destructive-ink"
-      >
-        <Archive className="size-4" /> 归档
-      </Button>
-    )
+    task && mode === 'edit' ? (
+      task.status === 'archived' ? (
+        <Button
+          variant="ghost"
+          onClick={confirmRestore}
+          disabled={busy}
+          className="text-success-ink"
+        >
+          <RotateCcw className="size-4" /> 还原
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          onClick={confirmArchive}
+          disabled={busy}
+          className="text-destructive-ink"
+        >
+          <Archive className="size-4" /> 归档
+        </Button>
+      )
+    ) : null
 
   return (
-    <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_260px]">
-      {/* 左：阅读流 + 编辑 */}
-      <div className="min-w-0">
-        <TaskForm
-          task={task}
-          states={states}
-          allTasks={allTasks}
-          saving={busy}
-          onSubmit={handleSubmit}
-          archiveAction={archiveAction}
-        />
-      </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <SheetHeader className="border-b border-divider px-6 py-4">
+          <SheetTitle className="text-base">任务详情</SheetTitle>
+          <SheetDescription>
+            {task ? `${task.status}${task.priority > 0 ? ` · P${task.priority}` : ''}` : '加载中…'}
+            {mode === 'read' ? ' · 只读' : ' · 编辑'}
+          </SheetDescription>
+        </SheetHeader>
 
-      {/* 右：属性栏（分割线分组，UI-VISION §2.5） */}
-      <aside className="hidden lg:block">
-        <div className="space-y-0">
-          <div className="py-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">项目</span>
-              <span className="font-medium">{pid?.split(/[\\/]/).pop()}</span>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {!task ? (
+            <div className="space-y-4">
+              <Skeleton className="h-9 w-2/3" />
+              <Skeleton className="h-5 w-1/3" />
+              <Skeleton className="h-40 w-full" />
             </div>
-            <div className="mt-2 flex justify-between text-sm">
-              <span className="text-muted-foreground">创建</span>
-              <span className="font-medium">{new Date(task.created_at).toLocaleString()}</span>
+          ) : (
+            <div className="space-y-6">
+              <TaskForm
+                task={task}
+                states={states}
+                allTasks={allTasks}
+                saving={busy}
+                readOnly={mode === 'read'}
+                onSubmit={handleSubmit}
+                archiveAction={archiveAction}
+              />
+
+              {/* 元信息（只读，抽屉内纵向排列） */}
+              <div className="rounded-xl border border-divider p-4 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">依赖</span>
+                  <span className="text-right font-medium">
+                    {dependNames.length > 0 ? dependNames.join('、') : '无'}
+                  </span>
+                </div>
+                <div className="mt-2 flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">创建</span>
+                  <span className="font-medium">{new Date(task.created_at).toLocaleString()}</span>
+                </div>
+                <div className="mt-2 flex justify-between gap-3">
+                  <span className="shrink-0 text-muted-foreground">更新</span>
+                  <span className="font-medium">{new Date(task.updated_at).toLocaleString()}</span>
+                </div>
+                <div className="mt-2 text-muted-foreground">来源</div>
+                <div className="mt-0.5 break-all font-mono text-xs">
+                  {task.source_file
+                    ? `${task.source_file}${task.source_section ? ` / ${task.source_section}` : ''}`
+                    : '手动创建'}
+                </div>
+              </div>
             </div>
-            <div className="mt-2 flex justify-between text-sm">
-              <span className="text-muted-foreground">更新</span>
-              <span className="font-medium">{new Date(task.updated_at).toLocaleString()}</span>
-            </div>
-          </div>
-          <Separator />
-          <div className="py-3">
-            <div className="flex justify-between gap-3 text-sm">
-              <span className="shrink-0 text-muted-foreground">依赖</span>
-              <span className="text-right font-medium">
-                {dependNames.length > 0 ? dependNames.join('、') : '无'}
-              </span>
-            </div>
-          </div>
-          <Separator />
-          <div className="py-3">
-            <div className="text-sm text-muted-foreground">来源</div>
-            <div className="mt-1 break-all font-mono text-xs">
-              {task.source_file
-                ? `${task.source_file}${task.source_section ? ` / ${task.source_section}` : ''}`
-                : '手动创建'}
-            </div>
-          </div>
+          )}
         </div>
-      </aside>
-    </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
+/**
+ * 全局任务抽屉（store 桥接）：挂载于 AppLayout，
+ * 各入口（看板/导航/全景图/新建）通过 useTaskDrawerStore.openDrawer 打开。
+ */
+export function GlobalTaskDrawer() {
+  const { open, taskId, task, mode, onSaved, closeDrawer } = useTaskDrawerStore()
+  return (
+    <TaskDetailDrawer
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) closeDrawer()
+      }}
+      taskId={taskId}
+      task={task}
+      mode={mode}
+      onSaved={onSaved}
+    />
+  )
+}
+
+/**
+ * 路由兼容页（/project/:id/tasks/:taskId）：直接访问/刷新旧链接时渲染抽屉（背景为空）。
+ */
 export function TaskDetailPage() {
   const { taskId } = useParams()
-  return <TaskDetail taskId={taskId ?? ''} />
+  const navigate = useNavigate()
+  return (
+    <TaskDetailDrawer
+      open
+      taskId={taskId}
+      onOpenChange={(o) => {
+        if (!o) navigate(-1)
+      }}
+    />
+  )
 }

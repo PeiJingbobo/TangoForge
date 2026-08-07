@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { Search, Plus } from 'lucide-react'
 import type { DragEndEvent } from '@dnd-kit/core'
@@ -23,6 +22,7 @@ import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
 import { useKanbanMutations } from '@/hooks/useKanban'
 import { useProjectId } from '@/hooks/useProject'
+import { useTaskDrawerStore } from '@/stores/task-drawer'
 import { cn } from '@/lib/utils'
 
 /** 看板视图（TF-025）：状态机动态列 + dnd-kit 拖拽流转 + 虚拟滚动 + 过滤搜索 */
@@ -30,12 +30,12 @@ export function KanbanView() {
   const { data: taskData } = useTasks()
   const { data: sm } = useStateMachine()
   const pid = useProjectId()
-  const navigate = useNavigate()
 
   const [query, setQuery] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const { getEffectiveStatus, moveTask } = useKanbanMutations(pid)
+  const openTaskDrawer = useTaskDrawerStore((st) => st.openDrawer)
 
   // WS 实时失效（多端等价：其他通道的写操作实时反映）
   useEventInvalidator(pid)
@@ -133,7 +133,7 @@ export function KanbanView() {
           states={columns}
           tasks={filtered}
           getEffectiveStatus={getEffectiveStatus}
-          onOpenTask={(id) => navigate(`/project/${encodeURIComponent(pid ?? '')}/tasks/${id}`)}
+          onOpenTask={(id) => openTaskDrawer({ taskId: id })}
           onDragEnd={handleDragEnd}
         />
       )}
@@ -147,7 +147,7 @@ export function KanbanView() {
           try {
             const t = await createTask.mutateAsync({ title, status })
             toast.success(`任务已创建：${t.title}`)
-            navigate(`/project/${encodeURIComponent(pid ?? '')}/tasks/${t.id}`)
+            openTaskDrawer({ taskId: t.id })
           } catch (err) {
             toast.error(err instanceof Error ? err.message : '创建失败')
           }

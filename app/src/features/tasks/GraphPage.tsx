@@ -1,18 +1,18 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router'
 import { useGraph } from '@/hooks/useGraph'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
 import { useProjectId } from '@/hooks/useProject'
+import { useTaskDrawerStore } from '@/stores/task-drawer'
 import { GraphView } from '@/components/graph/graph-view'
 import { Skeleton } from '@/components/ui/skeleton'
 
 /** 全景地图页（TF-028）：D3 力导向全量任务图 */
 export function GraphPage() {
   const pid = useProjectId()
-  const navigate = useNavigate()
   const { data: graph, isLoading } = useGraph(pid)
   const { data: sm } = useStateMachine(pid)
+  const openTaskDrawer = useTaskDrawerStore((st) => st.openDrawer)
   useEventInvalidator(pid)
 
   const nodeCount = graph?.nodes.length ?? 0
@@ -45,7 +45,7 @@ export function GraphPage() {
         <GraphView
           data={graph ?? { nodes: [], edges: [] }}
           states={sm?.States ?? []}
-          onSelect={(id) => navigate(`/project/${encodeURIComponent(pid ?? '')}/tasks/${id}`)}
+          onSelect={(id) => openTaskDrawer({ taskId: id })}
         />
       )}
     </div>

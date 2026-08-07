@@ -4,6 +4,7 @@ import { useThemeMode } from '@/hooks/useThemeMode'
 import { useProjects } from '@/hooks/useProjects'
 import { useDaemonStatus } from '@/hooks/useDaemonStatus'
 import { useProjectStore } from '@/stores/project'
+import { GlobalTaskDrawer } from '@/features/tasks/TaskDetail'
 import { cn } from '@/lib/utils'
 
 /**
@@ -132,6 +133,9 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* 全局任务详情抽屉（当前页保留，抽屉浮层覆盖） */}
+      <GlobalTaskDrawer />
     </div>
   )
 }

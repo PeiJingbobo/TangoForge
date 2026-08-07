@@ -23,6 +23,8 @@ export interface TaskFormProps {
   /** 全量任务（依赖选择/子任务标题引用） */
   allTasks: Task[]
   saving?: boolean
+  /** 只读模式：禁用全部编辑入口与保存（详情抽屉只读态） */
+  readOnly?: boolean
   onSubmit: (body: UpdateTaskInput & { status?: string }) => void
   onCancel?: () => void
   archiveAction?: React.ReactNode
@@ -33,6 +35,7 @@ export function TaskForm({
   states,
   allTasks,
   saving,
+  readOnly = false,
   onSubmit,
   onCancel,
   archiveAction,
@@ -103,8 +106,10 @@ export function TaskForm({
 
   return (
     <div>
-      {/* 标题（点击行内编辑） */}
-      {editingTitle ? (
+      {/* 标题（只读纯文本 / 点击行内编辑） */}
+      {readOnly ? (
+        <h1 className="text-h1 text-foreground">{title}</h1>
+      ) : editingTitle ? (
         <div className="flex items-center gap-2">
           <Input
             autoFocus
@@ -138,7 +143,7 @@ export function TaskForm({
 
       {/* meta 行：状态/优先级/负责人 */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Select value={status} onValueChange={setStatus}>
+        <Select value={status} onValueChange={setStatus} disabled={readOnly}>
           <SelectTrigger
             aria-label="状态"
             className="h-8 w-auto gap-2 rounded-full border-border bg-muted px-3 text-xs"
@@ -153,7 +158,11 @@ export function TaskForm({
             ))}
           </SelectContent>
         </Select>
-        <Select value={String(priority)} onValueChange={(v) => setPriority(Number(v))}>
+        <Select
+          value={String(priority)}
+          onValueChange={(v) => setPriority(Number(v))}
+          disabled={readOnly}
+        >
           <SelectTrigger
             aria-label="优先级"
             className="h-8 w-auto gap-2 rounded-full border-border bg-muted px-3 text-xs"
@@ -173,13 +182,20 @@ export function TaskForm({
           onChange={(e) => setAssignee(e.target.value)}
           placeholder="负责人"
           aria-label="负责人"
+          readOnly={readOnly}
           className="h-8 w-28 rounded-full border-border bg-muted px-3 text-xs"
         />
       </div>
 
-      {/* 描述（点击行内编辑） */}
+      {/* 描述（只读纯文本 / 点击行内编辑） */}
       <div className="mt-6">
-        {editingDesc ? (
+        {readOnly ? (
+          description ? (
+            <p className="text-body leading-relaxed whitespace-pre-wrap">{description}</p>
+          ) : (
+            <span className="text-body text-muted-foreground">暂无描述</span>
+          )
+        ) : editingDesc ? (
           <textarea
             autoFocus
             value={description}
@@ -214,41 +230,44 @@ export function TaskForm({
       {/* 标签 */}
       <div className="mt-6 flex flex-wrap items-center gap-1.5">
         {tags.map((t) => (
-          <Badge key={t} className="gap-1 pr-1.5">
+          <Badge key={t} className={cn('gap-1', !readOnly && 'pr-1.5')}>
             {t}
-            <button
-              type="button"
-              aria-label={`移除标签 ${t}`}
-              onClick={() => setTags(tags.filter((x) => x !== t))}
-              className="rounded-full hover:text-destructive-ink"
-            >
-              <X className="size-3" />
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                aria-label={`移除标签 ${t}`}
+                onClick={() => setTags(tags.filter((x) => x !== t))}
+                className="rounded-full hover:text-destructive-ink"
+              >
+                <X className="size-3" />
+              </button>
+            )}
           </Badge>
         ))}
-        {newTag ? (
-          <Input
-            autoFocus
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addTag()
-              if (e.key === 'Escape') setNewTag('')
-            }}
-            onBlur={addTag}
-            className="h-7 w-24 rounded-full px-2 text-xs"
-            aria-label="新标签"
-          />
-        ) : (
-          <button
-            type="button"
-            aria-label="添加标签"
-            onClick={() => setNewTag(' ')}
-            className="flex h-7 items-center gap-1 rounded-full border border-dashed border-border px-2.5 text-xs text-muted-foreground hover:border-primary-300 hover:text-primary-600"
-          >
-            <Plus className="size-3" /> 标签
-          </button>
-        )}
+        {!readOnly &&
+          (newTag ? (
+            <Input
+              autoFocus
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addTag()
+                if (e.key === 'Escape') setNewTag('')
+              }}
+              onBlur={addTag}
+              className="h-7 w-24 rounded-full px-2 text-xs"
+              aria-label="新标签"
+            />
+          ) : (
+            <button
+              type="button"
+              aria-label="添加标签"
+              onClick={() => setNewTag(' ')}
+              className="flex h-7 items-center gap-1 rounded-full border border-dashed border-border px-2.5 text-xs text-muted-foreground hover:border-primary-300 hover:text-primary-600"
+            >
+              <Plus className="size-3" /> 标签
+            </button>
+          ))}
       </div>
 
       {/* 依赖 */}
@@ -256,36 +275,41 @@ export function TaskForm({
         <Label className="mb-2 text-muted-foreground">依赖（depends_on）</Label>
         <div className="flex flex-wrap items-center gap-1.5">
           {dependTasks.map((t) => (
-            <Badge key={t.id} variant="outline" className="gap-1 pr-1.5">
+            <Badge key={t.id} variant="outline" className={cn('gap-1', !readOnly && 'pr-1.5')}>
               {t.title}
-              <button
-                type="button"
-                aria-label={`移除依赖 ${t.title}`}
-                onClick={() => setDependsOn(dependsOn.filter((id) => id !== t.id))}
-                className="rounded-full hover:text-destructive-ink"
-              >
-                <X className="size-3" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  aria-label={`移除依赖 ${t.title}`}
+                  onClick={() => setDependsOn(dependsOn.filter((id) => id !== t.id))}
+                  className="rounded-full hover:text-destructive-ink"
+                >
+                  <X className="size-3" />
+                </button>
+              )}
             </Badge>
           ))}
-          <Select value="" onValueChange={addDependency}>
-            <SelectTrigger
-              aria-label="添加依赖"
-              className="h-7 w-auto gap-1 rounded-full border border-dashed border-border px-2.5 text-xs text-muted-foreground"
-            >
-              <Plus className="size-3" /> 添加依赖
-            </SelectTrigger>
-            <SelectContent>
-              {candidateDeps.length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">没有可依赖的任务</div>
-              )}
-              {candidateDeps.slice(0, 50).map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!readOnly && (
+            <Select value="" onValueChange={addDependency}>
+              <SelectTrigger
+                aria-label="添加依赖"
+                className="h-7 w-auto gap-1 rounded-full border border-dashed border-border px-2.5 text-xs text-muted-foreground"
+              >
+                <Plus className="size-3" /> 添加依赖
+              </SelectTrigger>
+              <SelectContent>
+                {candidateDeps.length === 0 && (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">没有可依赖的任务</div>
+                )}
+                {candidateDeps.slice(0, 50).map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {dependTasks.length === 0 && <span className="text-sm text-muted-foreground">无</span>}
         </div>
       </div>
 
@@ -308,17 +332,19 @@ export function TaskForm({
         </div>
       )}
 
-      {/* sticky 底部操作（UI-VISION §2.5 QA-3） */}
+      {/* sticky 底部操作（UI-VISION §2.5 QA-3）；只读模式仅保留归档/还原入口 */}
       <div className="sticky bottom-0 -mx-6 mt-8 flex items-center justify-end gap-2 border-t border-divider bg-muted/80 px-6 py-3 backdrop-blur">
         {archiveAction}
-        {onCancel && (
+        {!readOnly && onCancel && (
           <Button variant="ghost" onClick={onCancel} disabled={saving}>
             取消
           </Button>
         )}
-        <Button onClick={handleSubmit} disabled={!dirty || saving}>
-          {saving ? '保存中…' : dirty ? '保存修改' : '已保存'}
-        </Button>
+        {!readOnly && (
+          <Button onClick={handleSubmit} disabled={!dirty || saving}>
+            {saving ? '保存中…' : dirty ? '保存修改' : '已保存'}
+          </Button>
+        )}
       </div>
     </div>
   )
