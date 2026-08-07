@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"text/template"
+	"time"
 
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
@@ -215,6 +217,64 @@ func TestGenerateTemplate_InvalidTemplate(t *testing.T) {
 	// 不写盘。
 	if _, err := os.Stat(filepath.Join(wd, ".taskboard", "generated-template.tmpl")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("非法模板不应写盘")
+	}
+}
+
+// TF-038：LLM 模板使用 dateFormat 等扩充函数 → 校验通过 + 渲染正常。
+func TestGenerateTemplate_DateFuncs(t *testing.T) {
+	validTmpl := `---
+title: "{{.Project.Name}}"
+generated_at: "{{dateFormat .GeneratedAt}}"
+---
+{{range .Tasks}}
+{{header .Level .Title}} [{{.Status}}]
+创建于: {{dateFormat .CreatedAt "2006年01月02日"}} | 优先级: {{upper (printf "%d" .Priority)}}
+{{if hasPrefix .Title "父"}}父级任务{{end}}
+{{end}}`
+	srv := mockLLM(t, validTmpl)
+	wd, ts := newEnv(t)
+	seedTasks(t, ts, wd)
+	svc := newService(t, srv.URL, ts)
+
+	tmpl, err := svc.GenerateTemplate(context.Background(), wd, "# 示例\n## 任务A\n")
+	if err != nil {
+		t.Fatalf("GenerateTemplate(dateFormat): %v", err)
+	}
+	if tmpl != validTmpl {
+		t.Fatalf("返回模板不符: %s", tmpl)
+	}
+
+	// llm 模式渲染：dateFormat / upper / hasPrefix 均可用。
+	res, err := svc.Render(context.Background(), wd, RenderOptions{TemplateMode: "llm", Target: "copy"})
+	if err != nil {
+		t.Fatalf("Render(llm): %v", err)
+	}
+	if !strings.Contains(res.Content, "generated_at: \"20") {
+		t.Fatalf("dateFormat 未生效: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "优先级: 4") || !strings.Contains(res.Content, "父级任务") {
+		t.Fatalf("upper/hasPrefix 未生效: %s", res.Content)
+	}
+}
+
+// dateFormat 边界：time.Time / RFC3339 字符串 / 非法输入不崩溃。
+func TestDateFuncs_Edges(t *testing.T) {
+	funcs := templateFuncs()
+	tmpl := template.Must(template.New("t").Funcs(funcs).Parse(
+		`{{dateFormat .T}}|{{dateFormat .S}}|{{dateFormat .Bad}}|{{now}}`))
+	var b strings.Builder
+	if err := tmpl.Execute(&b, map[string]any{
+		"T":   time.Date(2026, 8, 7, 10, 30, 0, 0, time.Local),
+		"S":   "2026-08-07T10:30:00+08:00",
+		"Bad": "not-a-date",
+	}); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := b.String()
+	for _, want := range []string{"2026-08-07|2026-08-07|not-a-date|"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("输出 %q 不含 %q", out, want)
+		}
 	}
 }
 

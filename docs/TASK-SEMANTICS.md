@@ -463,7 +463,7 @@ UpdateInput 采用**全指针字段**，nil = 该字段不更新：
 
 - `template_mode: default`（默认）：项目配置 `export.template_path` 非空 → 自定义模板；空 → 内置默认模板（`internal/exporter/templates/default.tmpl`）。
 - `template_mode: llm`：必须已通过 template/generate 生成模板（config.template_path 指向），否则 `TEMPLATE_INVALID`。
-- 模板引擎 Go `text/template`（禁止其他模板语言）；函数：`join` / `header level title`（输出 2+level 个 `#`）。
+- 模板引擎 Go `text/template`（禁止其他模板语言）；函数（TF-038 扩充，LLM 生成模板可用）：`join` / `header level title`（输出 2+level 个 `#`）/ `dateFormat time [layout]`（RFC3339 字符串或时间对象 → 默认 `2006-01-02`，可自定义布局）/ `now` / `upper` / `lower` / `trim` / `title` / `hasPrefix` / `hasSuffix`。
 - **默认模板往返格式**（可被 TF-018 parser 重新导入）：Front Matter（title/generated_at）+ `##`/`###` 标题层级 + `- 状态: <key>` 元数据行 + 优先级/标签/负责人行。
 
 ### 18.2 导出目标与结果

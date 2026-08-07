@@ -190,8 +190,15 @@ func (s *Service) GenerateTemplate(ctx context.Context, workdir string, example 
 
 模板数据：
 - .Project.Name（项目名）、.GeneratedAt（时间戳 RFC3339）
-- .Tasks：[]FlatTask 展平列表，每项含 Task 全部字段（Title/Description/Status/Priority/Tags/Assignee/DependsOn）与 Level（层级，顶层 0）
-可用函数：header level title（输出 2+level 个 # 标题）、join list sep（连接字符串数组）
+- .Tasks：[]FlatTask 展平列表，每项含 Task 全部字段（Title/Description/Status/Priority/Tags/Assignee/DependsOn/CreatedAt/UpdatedAt）与 Level（层级，顶层 0）
+
+可用函数（只能使用以下函数，不得发明其他函数名）：
+- header level title —— 输出 2+level 个 # 的标题
+- join list sep —— 连接字符串数组
+- dateFormat time [layout] —— 格式化时间（接受 RFC3339 字符串或时间对象，默认输出 2006-01-02；可用第二参自定义 Go 布局）
+- now —— 当前时间 RFC3339
+- upper / lower / trim / title s —— 字符串大小写与去空白
+- hasPrefix / hasSuffix s prefix —— 前后缀判断
 
 要求：
 1. 只输出模板内容本身，禁止解释或代码围栏。
@@ -290,9 +297,47 @@ func validateWorkdir(workdir string) error {
 }
 
 // templateFuncs 模板函数集（渲染与 LLM 模板校验共用）。
+//
+// TF-038 修复：LLM 生成模板使用 dateFormat 时报 "function not defined"——
+// 扩充常用函数（时间格式化/字符串处理），并在 LLM prompt 中明确清单，
+// 减少 LLM 输出未定义函数导致的 TEMPLATE_INVALID。
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"join":   strings.Join,
-		"header": func(level int, title string) string { return strings.Repeat("#", 2+level) + " " + title },
+		"join": strings.Join,
+		"header": func(level int, title string) string {
+			return strings.Repeat("#", 2+level) + " " + title
+		},
+		// dateFormat 格式化时间：接受 time.Time 或 RFC3339 字符串；
+		// 可选第二个参数为 Go 时间布局（默认 2006-01-02）。
+		"dateFormat": func(v any, layouts ...string) string {
+			layout := "2006-01-02"
+			if len(layouts) > 0 && layouts[0] != "" {
+				layout = layouts[0]
+			}
+			switch t := v.(type) {
+			case time.Time:
+				return t.Format(layout)
+			case string:
+				if t == "" {
+					return ""
+				}
+				parsed, err := time.Parse(time.RFC3339, t)
+				if err != nil {
+					return t // 非 RFC3339 原样返回（不阻断渲染）
+				}
+				return parsed.Format(layout)
+			default:
+				return fmt.Sprintf("%v", v)
+			}
+		},
+		// now 当前时间（RFC3339；模板顶部时间戳用）。
+		"now": func() string { return time.Now().Format(time.RFC3339) },
+		// 字符串处理（LLM 生成模板常用）。
+		"upper":     strings.ToUpper,
+		"lower":     strings.ToLower,
+		"trim":      strings.TrimSpace,
+		"title":     func(s string) string { return strings.ToUpper(s[:1]) + s[1:] },
+		"hasPrefix": strings.HasPrefix,
+		"hasSuffix": strings.HasSuffix,
 	}
 }
