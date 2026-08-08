@@ -113,10 +113,16 @@ function normalizeDraftDeps(list: ParsedTask[]): ParsedTask[] {
 export interface DraftReviewProps {
   draftId: string
   onExit: () => void
+  /** 外部显式项目标识（workdir 或 id）；缺省读 useProjectId（项目内使用场景）。
+   *  引导流程等尚无项目 store 上下文时传入。 */
+  project?: string
+  /** 确认导入成功回调（引导流程用于把状态同步到步骤 gate）。 */
+  onConfirmed?: () => void
 }
 
-export function DraftReview({ draftId, onExit }: DraftReviewProps) {
-  const pid = useProjectId()
+export function DraftReview({ draftId, onExit, project, onConfirmed }: DraftReviewProps) {
+  const fallbackPid = useProjectId()
+  const pid = project ?? fallbackPid
   const { data: detail, isLoading } = useDraftDetail(draftId, pid)
   const updateTasks = useUpdateDraftTasks(pid)
   const confirmDraft = useConfirmDraft(pid)
@@ -215,6 +221,7 @@ export function DraftReview({ draftId, onExit }: DraftReviewProps) {
             }`,
           },
         )
+        onConfirmed?.()
         onExit()
       },
       onError: (e) => toast.error(e instanceof Error ? e.message : '确认失败'),
