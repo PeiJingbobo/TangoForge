@@ -61,12 +61,31 @@ cd app && pnpm install
 
 ### 运行
 
+**使用脚本（推荐，自动拉起守护进程 + 启动客户端）：**
+
 ```bash
-./scripts/dev-run.sh           # 自动拉起守护进程 + 启动桌面客户端
-./scripts/dev-run.sh debug     # 调试模式（打开 DevTools）
+# macOS / Linux
+./scripts/dev-run.sh            # 正常启动
+./scripts/dev-run.sh debug      # 调试模式（打开 DevTools）
 ```
 
-首次启动进入项目导入引导：选择工作目录 → LLM 接入 → 导入草稿 → Agent 权限 → 安装 Skill → 进入项目。
+```bat
+:: Windows
+scripts\dev-run.bat             :: 正常启动
+scripts\dev-run.bat debug       :: 调试模式（打开 DevTools）
+```
+
+**不使用脚本，手动运行（任意平台通用）：**
+
+```bash
+# ① 启动守护进程（后台常驻，端口 19810；退出 App 后仍在）
+bin/tangoforge-daemon          # macOS/Linux；Windows 为 bin\tangoforge-daemon.exe
+
+# ② 启动桌面客户端
+cd app && pnpm dev             # 调试模式（打开 DevTools）：ELECTRON_DEBUG=1 pnpm dev
+```
+
+> 首次启动进入项目导入引导：选择工作目录 → LLM 接入 → 导入草稿 → Agent 权限 → 安装 Skill → 进入项目。
 
 ## 构建预发布版本
 
