@@ -44,7 +44,8 @@ function resolveDaemonPath(): string | null {
   if (app.isPackaged) {
     candidates.push(join(process.resourcesPath, 'bin', daemonBinName()))
   } else {
-    const repoBin = join(__dirname, '..', '..', '..', '..', 'bin')
+    // dev：__dirname = app/out/main → 向上 3 级到仓库根（out/main → out → app → 仓库根）。
+    const repoBin = join(__dirname, '..', '..', '..', 'bin')
     candidates.push(join(repoBin, daemonBinName()))
   }
   for (const c of candidates) {

@@ -24,12 +24,13 @@ import { join, resolve } from 'path'
  * CLI 目录：打包版 = resources/bin（extraResources 打入）；dev = 仓库根 bin/。
  */
 
-/** 当前 App 分发 CLI 的目录（打包版 resources/bin；dev 仓库 bin/） */
+/** 当前 App 分发 CLI 的目录（打包版 resources/bin；dev 仓库根 bin/） */
 export function resolveCliDir(): string {
   if (app.isPackaged) {
     return join(process.resourcesPath, 'bin')
   }
-  return resolve(__dirname, '..', '..', '..', '..', 'bin')
+  // dev：__dirname = app/out/main → 向上 3 级到仓库根（out/main → out → app → 仓库根）。
+  return resolve(__dirname, '..', '..', '..', 'bin')
 }
 
 function cliName(): string {
