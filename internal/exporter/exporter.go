@@ -295,6 +295,10 @@ func flattenTree(nodes []*task.TaskTreeNode, level int, out *[]FlatTask) {
 }
 
 // resolveDepTitles 将每个任务的 DependsOn（UUID 列表）映射为标题列表（TF-039）。
+//
+// 关键：**就地覆盖 DependsOn 为标题**（同时填充 DepTitles）——因为既有 LLM 生成模板 /
+// 自定义模板普遍使用 {{join .DependsOn ", "}} 渲染依赖，若只新增 DepTitles 字段，
+// 这些模板仍会输出 UUID（用户实测：导出仍是依赖 ID）。
 // 依赖任务不在当前导出集合（已归档等）→ 保留原 ID 兜底，不丢失信息。
 func resolveDepTitles(flat []FlatTask) {
 	titleByID := make(map[string]string, len(flat))
@@ -316,6 +320,7 @@ func resolveDepTitles(flat []FlatTask) {
 			}
 		}
 		flat[i].DepTitles = titles
+		flat[i].DependsOn = titles // 就地替换：老模板用 .DependsOn 也输出标题
 	}
 }
 

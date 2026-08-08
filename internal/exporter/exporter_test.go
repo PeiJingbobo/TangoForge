@@ -139,6 +139,38 @@ func TestRender_DepTitlesAndUniquePath(t *testing.T) {
 	}
 }
 
+// TF-039：旧 LLM 模板用 {{join .DependsOn}} 渲染依赖——DependsOn 已就地替换为标题，
+// 老模板同样输出标题而非 UUID。
+func TestRender_LegacyTemplateDependsOnAsTitle(t *testing.T) {
+	wd, ts := newEnv(t)
+	seedTasks(t, ts, wd)
+	svc := newService(t, "", ts)
+
+	// 自定义模板（模拟旧 LLM 生成物）：直接用 .DependsOn 输出依赖。
+	legacy := `{{range .Tasks}}{{.Title}} 依赖 {{join .DependsOn ", "}}
+{{end}}`
+	legacyPath := filepath.Join(wd, ".taskboard", "legacy.tmpl")
+	if err := os.WriteFile(legacyPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.LoadProject(wd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Export.TemplatePath = legacyPath
+	if err := config.SaveProject(wd, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := svc.Render(context.Background(), wd, RenderOptions{Target: "copy"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(res.Content, "父任务 依赖 子任务") {
+		t.Fatalf("老模板 .DependsOn 应输出标题:\n%s", res.Content)
+	}
+}
+
 func TestRender_CustomTemplate(t *testing.T) {
 	wd, ts := newEnv(t)
 	seedTasks(t, ts, wd)
