@@ -13,6 +13,7 @@ coverage.out
 .workbuddy/
 
 # ---- Agent 宿主安装产物（TF-042：技能包安装目录 + 技能锁） ----
+# 注意：.github/（CI workflows）与 .husky/（hooks 配置）是项目基础设施，不得忽略。
 .agents/
 .claude/
 .cursor/
