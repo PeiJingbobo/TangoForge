@@ -77,6 +77,7 @@ docs/task/OVERVIEW.md （同步统计与泳道；里程碑达成后对照质量�
 | `REQUIREMENTS-REVIEW.md` | – | 35 项 QA 决策记录（Q1~Q35） | 新一期评审追加 |
 | `TECHNICAL.md` | v1.0 | 技术落地规范（Go + 前端 shadcn-ui） | 技术决策变化 |
 | `UI-VISION.md` | v1.0 | 视觉要求与设计规范（P5 视觉基线，5 项铁律 + token + QA 记录） | 视觉需求变化（追加 QA 记录） |
+| `BUILD-RELEASE.md` | v1.0 | 预发布版本编译指南（mac/Windows 双平台 electron-builder 打包） | 打包配置/流程变化 |
 | `AGENTS.md`（docs 副本） | v1.3 | 开发约束（根目录为权威，本副本同步） | 根目录变更后同步 |
 
 ### 4.2 任务与过程类（本项目工作流）

@@ -1,0 +1,53 @@
+# TangoForge 预发布打包配置（electron-builder）
+# 产物目录：release/；编译输入：electron-vite 输出 out/（main/preload/renderer）
+appId: com.tangoforge.app
+productName: TangoForge
+copyright: Copyright © 2026 TangoForge
+
+directories:
+  buildResources: build   # 图标等资源（build/icon.icns / icon.ico / icon.png）
+  output: release         # 打包产物输出目录
+
+# 仅打包 electron-vite 编译产物与运行时清单，排除源码与配置
+files:
+  - out/**
+  - package.json
+  - "!src/**"
+  - "!electron/**"
+  - "!electron.vite.config.ts"
+  - "!tsconfig*.json"
+  - "!*.test.*"
+  - "!**/*.map"
+
+asar: true
+
+# 应用图标：推荐 build/icon.icns（mac）、build/icon.ico（win）；
+# 未提供时 electron-builder 使用 Electron 默认图标（仅警告不阻断）。
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+    - target: zip
+  # 预发布（未签名）：identity: null 跳过代码签名；
+  # 正式发布时改为默认（自动查找开发者证书）或显式 identity: "Developer ID Application: xxx"
+  identity: null
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+win:
+  target:
+    - target: nsis
+    - target: portable
+  # 预发布（未签名）：signAndEditExecutable: false 跳过签名；
+  # 正式发布时配置证书（win.certificateFile / CSC_LINK 环境变量）
+  signAndEditExecutable: false
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  artifactName: ${productName}-${version}-setup.${ext}
+
+dmg:
+  artifactName: ${productName}-${version}.${ext}
