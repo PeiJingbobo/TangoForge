@@ -103,7 +103,9 @@ echo "==> 3/3 启动 Electron（electron-vite dev）"
 # 调试模式：./dev-run.sh debug（或 TF_DEBUG=1）→ 打开渲染进程 DevTools
 if [ "${1:-}" = "debug" ] || [ "${TF_DEBUG:-}" = "1" ]; then
   echo "    调试模式：渲染进程 DevTools 将打开（查看 UI 层报错/白屏原因）"
-  cd "$ROOT/app" && ELECTRON_DEBUG=1 corepack pnpm dev
+  # 过滤 DevTools 面板自身的无害噪音（源 devtools://，如 Autofill.enable 未实现 /
+  # VE context 报错——Chromium CDP 小版本错位所致，不影响应用）；业务日志不受影响。
+  cd "$ROOT/app" && ELECTRON_DEBUG=1 corepack pnpm dev 2>&1 | grep -v "devtools://" || true
 else
   cd "$ROOT/app" && corepack pnpm dev
 fi
