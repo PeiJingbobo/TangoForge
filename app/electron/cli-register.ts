@@ -243,18 +243,33 @@ function registerCli(): string {
 
 function unregisterCli(): string {
   if (process.platform === 'win32') {
+    // 移除已注册的 tangoforge 路径（不限于当前 CLI 目录）：当前目录 +
+    // 实际解析到的目录（可能是旧版本/dev 版注册的）。
     const dir = resolveCliDir()
+    const oldPath = findInPath()
+    const oldDir = oldPath ? dirnameOf(oldPath) : null
+    const removed: string[] = []
     const current = getUserPath()
-    const entries = current.split(';').filter((e) => e.trim() !== '' && e.trim() !== dir)
-    if (entries.join(';') === current) return '未在用户 PATH 中发现该 CLI 目录，无需卸载'
+    const entries = current.split(';').filter((e) => {
+      const t = e.trim()
+      if (t === '') return false
+      if (t === dir || (oldDir !== null && t === oldDir)) {
+        if (!removed.includes(t)) removed.push(t)
+        return false
+      }
+      return true
+    })
+    if (entries.join(';') === current) return '未在用户 PATH 中发现 tangoforge 目录，无需卸载'
     setUserPath(entries.join(';'))
-    return `已卸载注册：${dir}`
+    return `已卸载注册：${removed.join('、')}`
   }
 
+  // mac / linux：卸载应移除已注册的 tangoforge 链接（不论其指向当前 CLI 还是
+  // 旧版本/dev 版注册物）+ 从所有 shell profile 移除注入行。
   const link = join(macBinDir(), 'tangoforge')
   let removedLink = false
   try {
-    if (existsSync(link) && realOf(link) === realOf(cliPath())) {
+    if (existsSync(link)) {
       rmSync(link, { force: true })
       removedLink = true
     }
