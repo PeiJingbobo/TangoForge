@@ -5,19 +5,19 @@ productName: TangoForge
 copyright: Copyright © 2026 TangoForge
 
 directories:
-  buildResources: build   # 图标等资源（build/icon.icns / icon.ico / icon.png）
-  output: release         # 打包产物输出目录
+  buildResources: build # 图标等资源（build/icon.icns / icon.ico / icon.png）
+  output: release # 打包产物输出目录
 
 # 仅打包 electron-vite 编译产物与运行时清单，排除源码与配置
 files:
   - out/**
   - package.json
-  - "!src/**"
-  - "!electron/**"
-  - "!electron.vite.config.ts"
-  - "!tsconfig*.json"
-  - "!*.test.*"
-  - "!**/*.map"
+  - '!src/**'
+  - '!electron/**'
+  - '!electron.vite.config.ts'
+  - '!tsconfig*.json'
+  - '!*.test.*'
+  - '!**/*.map'
 
 asar: true
 
