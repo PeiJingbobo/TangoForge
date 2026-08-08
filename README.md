@@ -116,4 +116,6 @@ Agent 默认**只读**；写操作（创建/流转/导入导出等）需在客�
 
 ## License
 
-暂未指定。上传前请补充 LICENSE（建议 MIT / Apache-2.0）。
+[GNU General Public License v3.0](LICENSE)（GPL-3.0，强 Copyleft）
+
+依据源代码重新分发或修改后的衍生作品，必须同样以 GPL-3.0 开源发布。
