@@ -167,6 +167,7 @@ type flattenResult struct {
 
 // resolveDependsOn 将 depends_on 引用解析为任务 ID：
 // 优先按草稿内临时 ID 匹配（LLM 解析新格式）；未命中再按标题匹配（兼容旧草稿标题引用）。
+// 引用支持 Markdown 锚点链接 `[标题](#锚点)`（TF-040 导出格式）——先提取链接文本再匹配。
 // 无法解析的引用（如被依赖任务标题已被修改、旧草稿标题引用失效）**跳过并计数**——
 // 确认导入不因坏引用整次失败（宽容降级），由返回的 dropped 数量提示用户（草稿中间态可交互修复）。
 // ID/标题不唯一仍视为结构性错误。
@@ -191,7 +192,7 @@ func resolveDependsOn(flattened []flattenResult) (map[string][]string, int, erro
 	for _, f := range flattened {
 		var ids []string
 		for _, dep := range f.DependsOn {
-			ref := strings.TrimSpace(dep)
+			ref := extractLinkText(strings.TrimSpace(dep))
 			id, ok := idIndex[ref]
 			if !ok {
 				id, ok = titleIndex[ref]
@@ -206,4 +207,16 @@ func resolveDependsOn(flattened []flattenResult) (map[string][]string, int, erro
 		out[f.ID] = ids
 	}
 	return out, dropped, nil
+}
+
+// extractLinkText 从依赖引用中提取可匹配文本（TF-040）：
+//   - `[标题](#锚点)`（导出锚点链接格式）→ 链接文本「标题」；
+//   - 纯文本（临时 ID / 旧标题引用）→ 原样返回。
+func extractLinkText(ref string) string {
+	if strings.HasPrefix(ref, "[") {
+		if end := strings.Index(ref, "]("); end > 0 {
+			return strings.TrimSpace(ref[1:end])
+		}
+	}
+	return ref
 }

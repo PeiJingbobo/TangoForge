@@ -115,19 +115,20 @@ func TestRender_DefaultTemplate(t *testing.T) {
 	}
 }
 
-// TF-039：依赖导出为标题（可读）而非 UUID；copy 模式每次导出独立文件不覆盖。
+// TF-039/040：依赖导出为 Markdown 锚点链接（可读 + 可跳转）而非 UUID；
+// copy 模式每次导出独立文件不覆盖。
 func TestRender_DepTitlesAndUniquePath(t *testing.T) {
 	wd, ts := newEnv(t)
 	seedTasks(t, ts, wd)
 	svc := newService(t, "", ts)
 
-	// 父任务依赖子任务：导出内容应出现子任务标题，而非 UUID。
+	// 父任务依赖子任务：导出内容应为锚点链接 [子任务](#子任务)，而非 UUID。
 	res, err := svc.Render(context.Background(), wd, RenderOptions{Target: "copy"})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !strings.Contains(res.Content, "依赖: 子任务") {
-		t.Fatalf("依赖应导出标题「子任务」:\n%s", res.Content)
+	if !strings.Contains(res.Content, "依赖: [子任务](#子任务)") {
+		t.Fatalf("依赖应导出锚点链接:\n%s", res.Content)
 	}
 	// 再次导出 → 不同路径（时间戳秒级，两次调用文件不覆盖）。
 	res2, err := svc.Render(context.Background(), wd, RenderOptions{Target: "copy"})
@@ -139,8 +140,8 @@ func TestRender_DepTitlesAndUniquePath(t *testing.T) {
 	}
 }
 
-// TF-039：旧 LLM 模板用 {{join .DependsOn}} 渲染依赖——DependsOn 已就地替换为标题，
-// 老模板同样输出标题而非 UUID。
+// TF-039：旧 LLM 模板用 {{join .DependsOn}} 渲染依赖——DependsOn 已就地替换为锚点链接，
+// 老模板同样输出链接而非 UUID。
 func TestRender_LegacyTemplateDependsOnAsTitle(t *testing.T) {
 	wd, ts := newEnv(t)
 	seedTasks(t, ts, wd)
@@ -166,8 +167,8 @@ func TestRender_LegacyTemplateDependsOnAsTitle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !strings.Contains(res.Content, "父任务 依赖 子任务") {
-		t.Fatalf("老模板 .DependsOn 应输出标题:\n%s", res.Content)
+	if !strings.Contains(res.Content, "父任务 依赖 [子任务](#子任务)") {
+		t.Fatalf("老模板 .DependsOn 应输出锚点链接:\n%s", res.Content)
 	}
 }
 

@@ -196,7 +196,7 @@ func (s *Service) GenerateTemplate(ctx context.Context, workdir string, example 
 模板数据：
 - .Project.Name（项目名）、.GeneratedAt（时间戳 RFC3339）
 - .Tasks：[]FlatTask 展平列表，每项含 Task 全部字段（Title/Description/Status/Priority/Tags/Assignee/CreatedAt/UpdatedAt）与 Level（层级，顶层 0）
-- 依赖可读性（重要）：.DepTitles 是依赖任务的**标题列表**（与 .DependsOn 一一对应），渲染依赖时请用 .DepTitles（如 {{join .DepTitles ", "}}）而非 UUID 列表
+- 依赖可读性（重要）：.DependsOn 已格式化为 Markdown 锚点链接数组（如「[子任务](#子任务)」，锚点=标题 slug），渲染依赖时请用 {{join .DependsOn ", "}}（可点击跳转文档内标题）；.DepTitles 为纯标题数组
 
 可用函数（只能使用以下函数，不得发明其他函数名）：
 - header level title —— 输出 2+level 个 # 的标题
@@ -294,11 +294,15 @@ func flattenTree(nodes []*task.TaskTreeNode, level int, out *[]FlatTask) {
 	}
 }
 
-// resolveDepTitles 将每个任务的 DependsOn（UUID 列表）映射为标题列表（TF-039）。
+// resolveDepTitles 将每个任务的 DependsOn（UUID 列表）映射为可读引用（TF-039/TF-040）。
 //
-// 关键：**就地覆盖 DependsOn 为标题**（同时填充 DepTitles）——因为既有 LLM 生成模板 /
-// 自定义模板普遍使用 {{join .DependsOn ", "}} 渲染依赖，若只新增 DepTitles 字段，
-// 这些模板仍会输出 UUID（用户实测：导出仍是依赖 ID）。
+// 引用格式为 Markdown 锚点链接 `[标题](#锚点)`：
+// - 可读：导出文档中依赖直接显示任务标题；
+// - 可点击：支持锚点的渲染器（GitHub/Typora/VS Code 等）点击跳转到文档内对应标题；
+// - 可往返：parser 解析依赖时提取链接文本（标题）按标题匹配回 UUID。
+//
+// 关键：**就地覆盖 DependsOn**（同时填充 DepTitles 纯标题）——既有 LLM 生成模板 /
+// 自定义模板普遍使用 {{join .DependsOn ", "}} 渲染依赖，就地覆盖后老模板同样生效。
 // 依赖任务不在当前导出集合（已归档等）→ 保留原 ID 兜底，不丢失信息。
 func resolveDepTitles(flat []FlatTask) {
 	titleByID := make(map[string]string, len(flat))
@@ -311,17 +315,39 @@ func resolveDepTitles(flat []FlatTask) {
 		if len(flat[i].DependsOn) == 0 {
 			continue
 		}
+		links := make([]string, 0, len(flat[i].DependsOn))
 		titles := make([]string, 0, len(flat[i].DependsOn))
 		for _, id := range flat[i].DependsOn {
 			if t, ok := titleByID[id]; ok {
+				links = append(links, "["+t+"]("+anchorOf(t)+")")
 				titles = append(titles, t)
 			} else {
-				titles = append(titles, id) // 依赖不在集合内：原样保留 ID
+				links = append(links, id) // 依赖不在集合内：原样保留 ID
+				titles = append(titles, id)
 			}
 		}
 		flat[i].DepTitles = titles
-		flat[i].DependsOn = titles // 就地替换：老模板用 .DependsOn 也输出标题
+		flat[i].DependsOn = links // 就地替换：老模板用 .DependsOn 也输出锚点链接
 	}
+}
+
+// anchorOf 生成标题的 Markdown 锚点（GitHub 风格 slug）：
+// 小写化、空格转连字符、移除标题中常见的锚点干扰字符（#、[]() 等）。
+// 中文标题保持原样（主流渲染器支持中文锚点）。
+func anchorOf(title string) string {
+	s := strings.ToLower(strings.TrimSpace(title))
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == ' ' || r == '\t':
+			b.WriteByte('-')
+		case strings.ContainsRune("#[]()<>`&,.!?;:'\"\\/|{}", r):
+			// 跳过锚点干扰字符
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return "#" + b.String()
 }
 
 // resolveTargetPath 解析输出路径（QA P4-1 §18.2）。

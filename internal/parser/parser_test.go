@@ -453,6 +453,44 @@ func TestResolveDependsOn_ByID(t *testing.T) {
 	}
 }
 
+// TestResolveDependsOn_LinkAnchor（TF-040）：导出格式为 Markdown 锚点链接
+// `[标题](#锚点)`——解析时提取链接文本（标题）按标题匹配。
+func TestResolveDependsOn_LinkAnchor(t *testing.T) {
+	flat := []flattenResult{
+		{RefID: "T1", ID: "u1", Title: "配置加载与热重载"},
+		{RefID: "T2", ID: "u2", Title: "数据库迁移脚本"},
+	}
+	// 锚点链接引用（TF-040 导出格式）：提取「数据库迁移脚本」按标题匹配。
+	flat[0].DependsOn = []string{"[数据库迁移脚本](#数据库迁移脚本)"}
+	out, dropped, err := resolveDependsOn(flat)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if dropped != 0 {
+		t.Fatalf("dropped: %d", dropped)
+	}
+	if len(out["u1"]) != 1 || out["u1"][0] != "u2" {
+		t.Fatalf("锚点链接引用: %v", out["u1"])
+	}
+}
+
+// TestExtractLinkText（TF-040）：链接文本提取纯函数。
+func TestExtractLinkText(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"[子任务](#子任务)", "子任务"},
+		{"[付款流程](/docs/付款流程)", "付款流程"},
+		{"T2", "T2"}, // 临时 ID 原样
+		{"数据库迁移脚本", "数据库迁移脚本"}, // 纯标题原样
+		{"[缺失括号]", "[缺失括号]"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := extractLinkText(c.in); got != c.want {
+			t.Fatalf("extractLinkText(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 // TestConfirm_DropsBadDep：旧草稿标题引用在标题修改后失效 → 确认导入成功且 dropped 计数。
 func TestConfirm_DropsBadDep(t *testing.T) {
 	doc := `{"tasks":[
