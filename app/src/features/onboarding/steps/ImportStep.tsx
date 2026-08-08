@@ -223,12 +223,13 @@ export function ImportStep({
 
       {/* 草稿预览/修改 Dialog（复用 DraftReview） */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="flex max-h-[92vh] w-[min(94vw,1080px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogContent className="flex h-[88vh] w-[min(96vw,1280px)] flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>草稿预览</DialogTitle>
             <DialogDescription>预览并修改解析出的任务草稿，确认后入库。</DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {/* 固定高度容器：DraftReview 内部仅任务列表区滚动 */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
             {draft && (
               <DraftReview
                 draftId={draft.id}

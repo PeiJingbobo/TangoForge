@@ -243,9 +243,11 @@ export function DraftReview({ draftId, onExit, project, onConfirmed }: DraftRevi
   }
 
   return (
-    <div>
+    // 全高 flex column：头部固定，仅任务列表区域内部滚动（参考 TreeNav 布局；
+    // 页面场景父无确定高度时退化为自然高度，由页面容器滚动）
+    <div className="flex h-full min-h-0 flex-col">
       {/* 审阅头部：返回 + 标题 + 统计 + 操作（关闭/丢弃/确认导入） */}
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      <div className="mb-5 flex shrink-0 flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onExit}
@@ -286,20 +288,20 @@ export function DraftReview({ draftId, onExit, project, onConfirmed }: DraftRevi
         </div>
       </div>
 
-      {/* 三视图预览（与任务导航一致） */}
-      <Tabs defaultValue="tree">
-        <TabsList>
+      {/* 三视图预览（与任务导航一致）；仅内容区滚动 */}
+      <Tabs defaultValue="tree" className="flex min-h-0 flex-1 flex-col">
+        <TabsList className="shrink-0">
           <TabsTrigger value="tree">树形</TabsTrigger>
           <TabsTrigger value="timeline">时间线</TabsTrigger>
           <TabsTrigger value="status">状态分类</TabsTrigger>
         </TabsList>
-        <TabsContent value="tree" className="pt-4">
+        <TabsContent value="tree" className="min-h-0 flex-1 overflow-y-auto pt-4">
           <TreeNav tree={treeNodes} onSelect={setEditId} />
         </TabsContent>
-        <TabsContent value="timeline" className="pt-4">
+        <TabsContent value="timeline" className="min-h-0 flex-1 overflow-y-auto pt-4">
           <TimelineView tasks={flatTasks} onOpen={setEditId} />
         </TabsContent>
-        <TabsContent value="status" className="pt-4">
+        <TabsContent value="status" className="min-h-0 flex-1 overflow-y-auto pt-4">
           <StatusView tasks={flatTasks} states={states} onOpen={setEditId} />
         </TabsContent>
       </Tabs>
