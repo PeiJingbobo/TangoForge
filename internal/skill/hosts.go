@@ -35,30 +35,26 @@ const (
 	KindDir      = "dir"
 )
 
-// Hosts v1 宿主矩阵（QA-S1 用户确认：4 项目级 + 2 用户级）。
+// Hosts v2 宿主矩阵（TF-042 用户确认：移除全部单文件 .md 宿主，只保留目录型 .xxx/skills）。
+// 移除：AGENTS.md / CLAUDE.md / copilot(.github/copilot-instructions.md) / .cursor/rules(.mdc)。
+// 全部宿主均为「目录型」KindDir：<宿主根>/<技能包名>/SKILL.md——天然支持多包共存、整包卸载。
 var Hosts = []Host{
 	{
-		Key: "AGENTS.md", Label: "AGENTS.md（CodeBuddy/通用）", Scope: ScopeProject, Kind: KindMarker,
-		PathFn: func(workdir, _, _ string) string {
-			return filepath.Join(workdir, "AGENTS.md")
-		},
-	},
-	{
-		Key: "CLAUDE.md", Label: "CLAUDE.md（Claude Code）", Scope: ScopeProject, Kind: KindMarker,
-		PathFn: func(workdir, _, _ string) string {
-			return filepath.Join(workdir, "CLAUDE.md")
-		},
-	},
-	{
-		Key: ".cursor/rules", Label: ".cursor/rules（Cursor）", Scope: ScopeProject, Kind: KindFile,
+		Key: ".claude/skills", Label: ".claude/skills（Claude Code）", Scope: ScopeProject, Kind: KindDir,
 		PathFn: func(workdir, _, name string) string {
-			return filepath.Join(workdir, ".cursor", "rules", "tangoforge-"+sanitizeName(name)+".mdc")
+			return filepath.Join(workdir, ".claude", "skills", sanitizeName(name), "SKILL.md")
 		},
 	},
 	{
-		Key: "copilot", Label: ".github/copilot-instructions.md（Copilot）", Scope: ScopeProject, Kind: KindMarker,
-		PathFn: func(workdir, _, _ string) string {
-			return filepath.Join(workdir, ".github", "copilot-instructions.md")
+		Key: ".cursor/skills", Label: ".cursor/skills（Cursor）", Scope: ScopeProject, Kind: KindDir,
+		PathFn: func(workdir, _, name string) string {
+			return filepath.Join(workdir, ".cursor", "skills", sanitizeName(name), "SKILL.md")
+		},
+	},
+	{
+		Key: ".github/skills", Label: ".github/skills（GitHub Copilot）", Scope: ScopeProject, Kind: KindDir,
+		PathFn: func(workdir, _, name string) string {
+			return filepath.Join(workdir, ".github", "skills", sanitizeName(name), "SKILL.md")
 		},
 	},
 	{

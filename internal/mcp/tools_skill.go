@@ -32,11 +32,11 @@ func (s *Server) handleSkillInfo(ctx context.Context, req mcp.CallToolRequest) (
 	})
 }
 
-// toolSkillInstall 安装技能包到宿主位置（skill_install，TF-033）。
+// toolSkillInstall 安装技能包到宿主位置（skill_install，TF-033；宿主矩阵 TF-042 目录型）。
 var toolSkillInstall = mcp.NewTool("skill_install",
-	mcp.WithDescription("将技能包复制到指定 Agent 宿主的约定位置（AGENTS.md/CLAUDE.md/.cursor/rules/copilot/~/.claude/skills/~/.workbuddy/skills），建立可发现性。需 project + host + packages。"),
+	mcp.WithDescription("将技能包复制到指定 Agent 宿主的目录型位置（.claude/skills/.cursor/skills/.github/skills/~/.claude/skills/~/.workbuddy/skills，各目录下 <包名>/SKILL.md），建立可发现性。需 project + host + packages。"),
 	mcp.WithString("project", mcp.Required(), mcp.Description("项目工作目录绝对路径")),
-	mcp.WithString("host", mcp.Required(), mcp.Description("宿主 key：AGENTS.md / CLAUDE.md / .cursor/rules / copilot / user-claude / user-codebuddy")),
+	mcp.WithString("host", mcp.Required(), mcp.Description("宿主 key：.claude/skills / .cursor/skills / .github/skills / user-claude / user-codebuddy")),
 	mcp.WithArray("packages", mcp.Required(), mcp.Description("技能包名称列表（批量安装）"), mcp.Items(map[string]any{"type": "string"})),
 )
 

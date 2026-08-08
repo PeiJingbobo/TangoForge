@@ -271,13 +271,13 @@ func TestTools_SkillInstallStatusUninstall(t *testing.T) {
 	if isErr, _ := res["isError"].(bool); isErr {
 		t.Fatalf("skill_status: %s", resultText(t, res))
 	}
-	if !strings.Contains(resultText(t, res), "AGENTS.md") {
+	if !strings.Contains(resultText(t, res), ".claude/skills") {
 		t.Fatalf("skill_status 缺宿主: %s", resultText(t, res))
 	}
 
 	// install（skill.install 默认 false）→ 拒绝。
 	res = callTool(t, c, "skill_install",
-		map[string]any{"project": dir, "host": "AGENTS.md", "packages": []any{"taskboard-basic"}})
+		map[string]any{"project": dir, "host": ".claude/skills", "packages": []any{"taskboard-basic"}})
 	if isErr, _ := res["isError"].(bool); !isErr {
 		t.Fatalf("未授权 install 应拒绝: %s", resultText(t, res))
 	}

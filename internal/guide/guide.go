@@ -189,7 +189,7 @@ func Render(port int) string {
 	b.WriteString("- **审计**：所有写操作异步写入项目库 `audit_log`（actor/action/target/result），只追加不可篡改；\n")
 	b.WriteString("  `GET /api/audit/export` 导出文本文件。\n")
 	b.WriteString("- **Skill 技能包**：`GET /api/skills/packages` 查看内置+全局技能库；`POST /api/skills/install`\n")
-	b.WriteString("  把技能包复制到宿主约定位置（AGENTS.md / CLAUDE.md / .cursor/rules / copilot /\n")
-	b.WriteString("  ~/.claude/skills / ~/.workbuddy/skills）；`GET /api/skills/status` 检查安装状态。\n")
+	b.WriteString("  把技能包复制到宿主目录型位置（.claude/skills / .cursor/skills / .github/skills /\n")
+	b.WriteString("  ~/.claude/skills / ~/.workbuddy/skills，各目录下 <包名>/SKILL.md）；`GET /api/skills/status` 检查安装状态。\n")
 	return b.String()
 }

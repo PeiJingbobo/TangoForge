@@ -81,7 +81,7 @@ describe('SkillsPanel', () => {
     name: 'taskboard-basic',
     version: '1.0.0',
     description: 'TangoForge 使用指南',
-    hosts: ['AGENTS.md', 'CLAUDE.md', '.cursor/rules', 'copilot', 'user-claude', 'user-codebuddy'],
+    hosts: ['.claude/skills', '.cursor/skills', '.github/skills', 'user-claude', 'user-codebuddy'],
     when_to_use: '需要管理任务时',
     instructions: '# taskboard-basic\n\n使用 task_read',
     content: 'full content',
@@ -91,26 +91,20 @@ describe('SkillsPanel', () => {
 
   const STATUS: HostStatus[] = [
     {
-      key: 'AGENTS.md',
-      label: 'AGENTS.md（CodeBuddy/通用）',
+      key: '.claude/skills',
+      label: '.claude/skills（Claude Code）',
       scope: 'project',
       installed: [{ name: 'taskboard-basic', version: '1.0.0', state: 'current' }],
     },
     {
-      key: 'CLAUDE.md',
-      label: 'CLAUDE.md（Claude Code）',
+      key: '.cursor/skills',
+      label: '.cursor/skills（Cursor）',
       scope: 'project',
       installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
     },
     {
-      key: '.cursor/rules',
-      label: '.cursor/rules（Cursor）',
-      scope: 'project',
-      installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
-    },
-    {
-      key: 'copilot',
-      label: '.github/copilot-instructions.md（Copilot）',
+      key: '.github/skills',
+      label: '.github/skills（GitHub Copilot）',
       scope: 'project',
       installed: [{ name: 'taskboard-basic', version: '', state: 'missing' }],
     },
@@ -143,8 +137,9 @@ describe('SkillsPanel', () => {
   it('渲染技能库 + 安装状态矩阵', async () => {
     render(<SkillsPanel />, { wrapper })
     await waitFor(() => expect(screen.getAllByText('taskboard-basic').length).toBeGreaterThan(0))
-    // 安装向导宿主选项。
-    expect(screen.getByText('AGENTS.md')).toBeInTheDocument()
+    // 安装向导宿主选项（目录型 .claude/skills 等，无 .md 宿主）。
+    expect(screen.getAllByText('.claude/skills（Claude Code）').length).toBeGreaterThan(0)
+    expect(screen.queryByText('AGENTS.md')).not.toBeInTheDocument()
     // 状态矩阵 current 徽章。
     expect(screen.getAllByText('已安装').length).toBeGreaterThan(0)
     expect(screen.getAllByText('未安装').length).toBeGreaterThan(0)
@@ -161,7 +156,7 @@ describe('SkillsPanel', () => {
           data: [
             {
               name: 'taskboard-basic',
-              host: 'AGENTS.md',
+              host: '.claude/skills',
               action: 'install',
               version: '1.0.0',
               ok: true,
@@ -172,13 +167,13 @@ describe('SkillsPanel', () => {
     )
     render(<SkillsPanel />, { wrapper })
     await waitFor(() => expect(screen.getAllByText('taskboard-basic').length).toBeGreaterThan(0))
-    // 安装向导区选宿主（首个 AGENTS.md Badge）。
-    await user.click(screen.getAllByRole('button', { name: /AGENTS.md/ })[0])
+    // 安装向导区选宿主（首个 .claude/skills Badge）。
+    await user.click(screen.getAllByRole('button', { name: /\.claude\/skills/ })[0])
     // 安装向导区勾选技能包（首个 taskboard-basic Badge）。
     await user.click(screen.getAllByRole('button', { name: /taskboard-basic/ })[0])
-    await user.click(screen.getByRole('button', { name: /安装到 AGENTS.md/ }))
+    await user.click(screen.getByRole('button', { name: /安装到 \.claude\/skills/ }))
     await waitFor(() =>
-      expect(installBody).toEqual({ host: 'AGENTS.md', packages: ['taskboard-basic'] }),
+      expect(installBody).toEqual({ host: '.claude/skills', packages: ['taskboard-basic'] }),
     )
   })
 
@@ -190,13 +185,15 @@ describe('SkillsPanel', () => {
         uninstallCalled = true
         return HttpResponse.json({
           code: 0,
-          data: [{ name: 'taskboard-basic', host: 'AGENTS.md', action: 'uninstall', ok: true }],
+          data: [
+            { name: 'taskboard-basic', host: '.claude/skills', action: 'uninstall', ok: true },
+          ],
         })
       }),
     )
     render(<SkillsPanel />, { wrapper })
     await waitFor(() => expect(screen.getAllByText('已安装').length).toBeGreaterThan(0))
-    // AGENTS.md 行有「卸载」按钮（表内有多个卸载，取第一个）。
+    // .claude/skills 行有「卸载」按钮（表内有多个卸载，取第一个）。
     const uninstallBtns = screen.getAllByRole('button', { name: '卸载' })
     await user.click(uninstallBtns[0])
     await waitFor(() => expect(screen.getByText('确认卸载技能包')).toBeInTheDocument())

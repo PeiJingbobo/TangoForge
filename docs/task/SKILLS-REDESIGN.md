@@ -36,17 +36,24 @@
 
 ## 2. QA 决策记录（已确认 + 方案建议）
 
-### QA-S1 宿主支持矩阵（✅ 用户已确认：多宿主 v1）
+### QA-S1 宿主支持矩阵（✅ 用户已确认：多宿主 v1 → **TF-042 目录型 v2**）
+
+> **TF-042（2026-08-08）**：移除全部单文件 `.md` 宿主（`AGENTS.md` / `CLAUDE.md` /
+> `.github/copilot-instructions.md`）与 `.mdc` 文件宿主（`.cursor/rules`），
+> 宿主矩阵收敛为 **5 个目录型宿主**（`.xxx/skills`），安装形态统一为
+> `<宿主根>/<技能包名>/SKILL.md` 目录复制——天然多包共存、整包卸载、无标记段复杂度。
 
 | 宿主 | 项目级安装位置 | 用户级安装位置 | 安装形态 |
 |---|---|---|---|
-| CodeBuddy / 通用 | `AGENTS.md`（项目根） | `~/.workbuddy/skills/` | 追加**标记段**（可识别/可撤销） |
-| Claude Code | `CLAUDE.md`（项目根） | `~/.claude/skills/<name>/SKILL.md` | SKILL.md 目录复制 |
-| Cursor | `.cursor/rules/*.mdc`（每包一文件） | `~/.cursor/rules/` | 单文件 `.mdc` |
-| GitHub Copilot | `.github/copilot-instructions.md` | — | 追加标记段 |
+| Claude Code | `.claude/skills/<name>/SKILL.md` | `~/.claude/skills/<name>/SKILL.md` | SKILL.md 目录复制 |
+| Cursor | `.cursor/skills/<name>/SKILL.md` | — | SKILL.md 目录复制 |
+| GitHub Copilot | `.github/skills/<name>/SKILL.md` | — | SKILL.md 目录复制 |
+| WorkBuddy（全局） | — | `~/.workbuddy/skills/<name>/SKILL.md` | SKILL.md 目录复制 |
 
-> **单文件宿主（AGENTS.md / CLAUDE.md / copilot-instructions.md）多包共存**：用
-> `<!-- tangoforge:skill:<name>:begin --> … :end -->` HTML 注释包裹，可追加多包、可按包卸载。
+> 宿主 key（API/MCP/CLI 共用）：`.claude/skills` / `.cursor/skills` / `.github/skills` /
+> `user-claude` / `user-codebuddy`。前后端矩阵单一定义：
+> 后端 `internal/skill/hosts.go` `Hosts`、前端 `app/src/features/skills/hosts.ts` `SKILL_HOSTS`
+> （项目 Skills 配置页与导入引导向导共用，保证两端选择项一致）。
 
 ### QA-S2 技能源定位（✅ 用户已确认：彻底废弃 `.taskboard/skills/`）
 
@@ -85,7 +92,7 @@
 name: taskboard-basic            # 唯一标识
 description: 用 TangoForge 管理项目任务
 version: "1.0.0"                 # 安装状态比对依据
-hosts: [AGENTS.md, CLAUDE.md, .cursor/rules, copilot]  # 适用宿主
+hosts: [.claude/skills, .cursor/skills, .github/skills, user-claude, user-codebuddy]  # 适用宿主
 when_to_use: 需要创建/更新/查询/流转项目任务时激活
 ---
 # 正文：场景 → 调用方式（HTTP/MCP/CLI 三端示例）→ 字段语义
@@ -96,7 +103,7 @@ when_to_use: 需要创建/更新/查询/流转项目任务时激活
 | 操作 | 行为 |
 |---|---|
 | **获取（download）** | 内置包 → 复制到全局技能库（`~/.taskboard-app/skills/<name>/`），幂等（已存在则提示已获取） |
-| **安装（install）** | 从技能库复制到指定宿主位置（项目级或用户级）；单文件宿主追加标记段；目录宿主建 `<name>/` 或 `.mdc` |
+| **安装（install）** | 从技能库复制到指定宿主位置（项目级或用户级）；全部为目录型宿主，建 `<宿主根>/<name>/SKILL.md` |
 | **状态（status）** | 扫描各宿主位置：`missing`（未安装）/ `current`（已装且版本一致）/ `stale`（库有新版） |
 | **更新（update）** | `stale` 时重新复制/替换宿主文件（先卸后装或整段替换） |
 | **卸载（uninstall）** | 移除宿主标记段 / 删除安装目录文件 |
@@ -134,9 +141,9 @@ when_to_use: 需要创建/更新/查询/流转项目任务时激活
                 └───────┬──────────┘              │
                         │ 复制文件                │ 免鉴权（回环+局域网）
         ┌───────────────▼──────────────────────────▼───────────────┐
-        │  宿主位置（各类 Agent 约定）                              │
-        │  AGENTS.md / CLAUDE.md / .cursor/rules/ /                 │
-        │  .github/copilot-instructions.md / ~/.claude/skills/      │
+        │  宿主位置（各类 Agent 约定，目录型 .xxx/skills）          │
+        │  .claude/skills / .cursor/skills / .github/skills /        │
+        │  ~/.claude/skills / ~/.workbuddy/skills（各 <name>/SKILL.md）│
         └───────────────────────────────────────────────────────────┘
                         │ 会话启动/运行中发现
         ┌───────────────▼───────────────────────────┐

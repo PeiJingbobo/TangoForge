@@ -20,7 +20,7 @@ const sampleSkill = `---
 name: taskboard-basic
 description: 任务操作指引
 version: "1.0.0"
-hosts: [AGENTS.md, CLAUDE.md]
+hosts: [.claude/skills, .cursor/skills]
 when_to_use: 需要管理任务时
 ---
 # 正文
@@ -39,7 +39,7 @@ func TestParseSKILLMD(t *testing.T) {
 		pkg.Description != "任务操作指引" || pkg.WhenToUse != "需要管理任务时" {
 		t.Fatalf("字段不符: %+v", pkg)
 	}
-	if len(pkg.Hosts) != 2 || pkg.Hosts[0] != "AGENTS.md" || pkg.Hosts[1] != "CLAUDE.md" {
+	if len(pkg.Hosts) != 2 || pkg.Hosts[0] != ".claude/skills" || pkg.Hosts[1] != ".cursor/skills" {
 		t.Fatalf("hosts 不符: %+v", pkg.Hosts)
 	}
 	if !strings.Contains(pkg.Instructions, "task_read") {
@@ -161,46 +161,60 @@ func TestDefaultTemplate(t *testing.T) {
 
 // --- 宿主安装 / 卸载 / 状态 ---
 
-func TestInstallMarkerHost(t *testing.T) {
+// 宿主矩阵回归保护（TF-042）：全部为目录型 .xxx/skills，禁止单文件 .md 宿主。
+func TestHosts_AllDirNoMd(t *testing.T) {
+	if len(Hosts) != 5 {
+		t.Fatalf("宿主矩阵应为 5 个（3 项目级 + 2 用户级），got %d: %+v", len(Hosts), Hosts)
+	}
+	for _, h := range Hosts {
+		if h.Kind != KindDir {
+			t.Fatalf("宿主 %s 应为目录型 KindDir，got %s", h.Key, h.Kind)
+		}
+		if strings.HasSuffix(h.Key, ".md") || strings.Contains(h.Key, ".md") {
+			t.Fatalf("宿主 %s 不得为 .md 单文件形式", h.Key)
+		}
+		// 目录型路径必须以 /<name>/SKILL.md 结尾（整包目录语义）。
+		p := h.PathFn("/work", "/home", "pkg-a")
+		if !strings.HasSuffix(p, "/pkg-a/SKILL.md") {
+			t.Fatalf("宿主 %s 路径应为目录形态 <根>/pkg-a/SKILL.md，got %s", h.Key, p)
+		}
+	}
+}
+
+func TestInstallDirHost(t *testing.T) {
 	svc, home := newTestService(t)
 	defer func() { _ = svc.Close() }()
 	ctx := context.Background()
 	workdir := t.TempDir()
 
-	// 安装到 AGENTS.md（marker）。
-	results, err := svc.Install(ctx, workdir, "AGENTS.md", []string{"taskboard-basic"})
+	// 安装到 .claude/skills（目录型）：{workdir}/.claude/skills/<name>/SKILL.md。
+	results, err := svc.Install(ctx, workdir, ".claude/skills", []string{"taskboard-basic"})
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	if len(results) != 1 || !results[0].Ok || results[0].Action != "install" {
 		t.Fatalf("结果: %+v", results)
 	}
-	agentsPath := filepath.Join(workdir, "AGENTS.md")
-	data, _ := os.ReadFile(agentsPath)
-	if !strings.Contains(string(data), "tangoforge:skill:taskboard-basic:begin") {
-		t.Fatalf("标记段缺失:\n%s", string(data))
+	skillPath := filepath.Join(workdir, ".claude", "skills", "taskboard-basic", "SKILL.md")
+	data, _ := os.ReadFile(skillPath)
+	if !strings.Contains(string(data), "name: taskboard-basic") {
+		t.Fatalf("SKILL.md 内容缺失:\n%s", string(data))
 	}
 
-	// 再装一个自定义包 → 多包共存。
+	// 再装一个自定义包 → 多包共存（同宿主不同包目录）。
 	myContent := strings.Replace(sampleSkill, "taskboard-basic", "my-skill", 1)
 	_, _ = svc.WriteUserPackage(ctx, "my-skill", myContent)
-	if _, err := svc.Install(ctx, workdir, "AGENTS.md", []string{"my-skill"}); err != nil {
+	if _, err := svc.Install(ctx, workdir, ".claude/skills", []string{"my-skill"}); err != nil {
 		t.Fatalf("install second: %v", err)
 	}
-	data, _ = os.ReadFile(agentsPath)
-	if !strings.Contains(string(data), "tangoforge:skill:taskboard-basic:begin") ||
-		!strings.Contains(string(data), "tangoforge:skill:my-skill:begin") {
-		t.Fatalf("多包共存失败:\n%s", string(data))
+	if _, err := os.Stat(filepath.Join(workdir, ".claude", "skills", "my-skill", "SKILL.md")); err != nil {
+		t.Fatalf("第二包目录缺失: %v", err)
 	}
 
-	// 重复安装 → update 语义 + 不产生重复段。
-	results, _ = svc.Install(ctx, workdir, "AGENTS.md", []string{"taskboard-basic"})
+	// 重复安装 → update 语义（覆盖写同一文件）。
+	results, _ = svc.Install(ctx, workdir, ".claude/skills", []string{"taskboard-basic"})
 	if results[0].Action != "update" {
 		t.Fatalf("重复安装应为 update: %+v", results[0])
-	}
-	data, _ = os.ReadFile(agentsPath)
-	if strings.Count(string(data), "tangoforge:skill:taskboard-basic:begin") != 1 {
-		t.Fatalf("重复段出现:\n%s", string(data))
 	}
 
 	// 状态 → current。
@@ -210,7 +224,7 @@ func TestInstallMarkerHost(t *testing.T) {
 	}
 	found := false
 	for _, hs := range status {
-		if hs.Key == "AGENTS.md" {
+		if hs.Key == ".claude/skills" {
 			for _, inst := range hs.Installed {
 				if inst.Name == "taskboard-basic" && inst.State == StateCurrent {
 					found = true
@@ -219,62 +233,44 @@ func TestInstallMarkerHost(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("AGENTS.md 应有 current 状态: %+v", status)
+		t.Fatalf(".claude/skills 应有 current 状态: %+v", status)
 	}
 
-	// 卸载 taskboard-basic → 仅 my-skill 保留。
-	results, err = svc.Uninstall(ctx, workdir, "AGENTS.md", []string{"taskboard-basic"})
+	// 卸载 taskboard-basic → 目录删除；my-skill 保留。
+	results, err = svc.Uninstall(ctx, workdir, ".claude/skills", []string{"taskboard-basic"})
 	if err != nil || !results[0].Ok {
 		t.Fatalf("Uninstall: %v %+v", err, results)
 	}
-	data, _ = os.ReadFile(agentsPath)
-	if strings.Contains(string(data), "tangoforge:skill:taskboard-basic") {
-		t.Fatalf("卸载后 taskboard-basic 段残留:\n%s", string(data))
+	if _, err := os.Stat(filepath.Dir(skillPath)); !os.IsNotExist(err) {
+		t.Fatalf("卸载后包目录应删除: %v", err)
 	}
-	if !strings.Contains(string(data), "tangoforge:skill:my-skill:begin") {
-		t.Fatalf("my-skill 段被误删:\n%s", string(data))
+	if _, err := os.Stat(filepath.Join(workdir, ".claude", "skills", "my-skill", "SKILL.md")); err != nil {
+		t.Fatalf("my-skill 被误删: %v", err)
 	}
 	_ = home
 }
 
-func TestInstallDirAndFileHost(t *testing.T) {
+func TestInstallAllDirHosts(t *testing.T) {
 	svc, home := newTestService(t)
 	defer func() { _ = svc.Close() }()
 	ctx := context.Background()
 	workdir := t.TempDir()
 
-	// dir 宿主 user-claude：{home}/.claude/skills/<name>/SKILL.md。
-	if _, err := svc.Install(ctx, workdir, "user-claude", []string{"taskboard-basic"}); err != nil {
-		t.Fatalf("install user-claude: %v", err)
-	}
-	claudePath := filepath.Join(home, ".claude", "skills", "taskboard-basic", "SKILL.md")
-	if _, err := os.Stat(claudePath); err != nil {
-		t.Fatalf("user-claude 安装文件缺失: %v", err)
-	}
-
-	// file 宿主 .cursor/rules：{workdir}/.cursor/rules/tangoforge-<name>.mdc。
-	if _, err := svc.Install(ctx, workdir, ".cursor/rules", []string{"taskboard-basic"}); err != nil {
-		t.Fatalf("install cursor: %v", err)
-	}
-	cursorPath := filepath.Join(workdir, ".cursor", "rules", "tangoforge-taskboard-basic.mdc")
-	if _, err := os.Stat(cursorPath); err != nil {
-		t.Fatalf("cursor 安装文件缺失: %v", err)
-	}
-
-	// 卸载 dir 宿主 → 删除目录。
-	if _, err := svc.Uninstall(ctx, workdir, "user-claude", []string{"taskboard-basic"}); err != nil {
-		t.Fatalf("uninstall user-claude: %v", err)
-	}
-	if _, err := os.Stat(filepath.Dir(claudePath)); !os.IsNotExist(err) {
-		t.Fatalf("dir 宿主卸载后目录应删除: %v", err)
-	}
-
-	// 卸载 file 宿主 → 删除文件。
-	if _, err := svc.Uninstall(ctx, workdir, ".cursor/rules", []string{"taskboard-basic"}); err != nil {
-		t.Fatalf("uninstall cursor: %v", err)
-	}
-	if _, err := os.Stat(cursorPath); !os.IsNotExist(err) {
-		t.Fatalf("file 宿主卸载后文件应删除: %v", err)
+	// 遍历全部 5 个宿主：安装 → 包目录存在 → 卸载 → 目录删除。
+	for _, h := range Hosts {
+		if _, err := svc.Install(ctx, workdir, h.Key, []string{"taskboard-basic"}); err != nil {
+			t.Fatalf("install %s: %v", h.Key, err)
+		}
+		path := h.PathFn(workdir, home, "taskboard-basic")
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("%s 安装文件缺失 %s: %v", h.Key, path, err)
+		}
+		if _, err := svc.Uninstall(ctx, workdir, h.Key, []string{"taskboard-basic"}); err != nil {
+			t.Fatalf("uninstall %s: %v", h.Key, err)
+		}
+		if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+			t.Fatalf("%s 卸载后包目录应删除: %v", h.Key, err)
+		}
 	}
 }
 
@@ -289,8 +285,8 @@ func TestInstall_UnknownHostAndHostsFilter(t *testing.T) {
 		t.Fatalf("期望 ErrUnknownHost, got %v", err)
 	}
 
-	// 自定义包声明 hosts 仅 [AGENTS.md]：安装到 user-claude 应拒绝（逐包结果 Error）。
-	limited := "---\nname: limited-skill\nversion: \"1.0.0\"\nhosts: [AGENTS.md]\n---\n# Limited\n"
+	// 自定义包声明 hosts 仅 [.claude/skills]：安装到 user-claude 应拒绝（逐包结果 Error）。
+	limited := "---\nname: limited-skill\nversion: \"1.0.0\"\nhosts: [.claude/skills]\n---\n# Limited\n"
 	if _, err := svc.WriteUserPackage(ctx, "limited-skill", limited); err != nil {
 		t.Fatalf("WriteUserPackage: %v", err)
 	}
@@ -303,7 +299,7 @@ func TestInstall_UnknownHostAndHostsFilter(t *testing.T) {
 	}
 
 	// 不存在包 → 结果含错误。
-	results, _ = svc.Install(ctx, workdir, "AGENTS.md", []string{"no-such"})
+	results, _ = svc.Install(ctx, workdir, ".claude/skills", []string{"no-such"})
 	if results[0].Ok {
 		t.Fatalf("不存在包应失败: %+v", results[0])
 	}
@@ -316,7 +312,7 @@ func TestStatus_StaleAfterUserEdit(t *testing.T) {
 	workdir := t.TempDir()
 
 	// 安装内置 v1.0.0 → current。
-	_, _ = svc.Install(ctx, workdir, "AGENTS.md", []string{"taskboard-basic"})
+	_, _ = svc.Install(ctx, workdir, ".claude/skills", []string{"taskboard-basic"})
 	// 用户自定义覆盖为 2.0.0 → stale（宿主仍 1.0.0）。
 	override := strings.Replace(sampleSkill, "version: \"1.0.0\"", "version: \"2.0.0\"", 1)
 	if _, err := svc.WriteUserPackage(ctx, "taskboard-basic", override); err != nil {
@@ -327,7 +323,7 @@ func TestStatus_StaleAfterUserEdit(t *testing.T) {
 		t.Fatalf("Status: %v", err)
 	}
 	for _, hs := range status {
-		if hs.Key == "AGENTS.md" {
+		if hs.Key == ".claude/skills" {
 			for _, inst := range hs.Installed {
 				if inst.Name == "taskboard-basic" && inst.State != StateStale {
 					t.Fatalf("应为 stale: %+v", inst)

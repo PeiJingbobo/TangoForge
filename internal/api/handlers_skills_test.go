@@ -78,7 +78,7 @@ func TestSkills_WriteCustomPackage(t *testing.T) {
 	dir := importProjectViaAPI(t, srv)
 
 	// UI 写自定义包 → 200 + 出现在列表。
-	content := "---\nname: my-skill\ndescription: 自定义技能\nversion: \"0.1.0\"\nhosts: [AGENTS.md]\nwhen_to_use: 自定义场景\n---\n# My Skill\n\n自定义正文\n"
+	content := "---\nname: my-skill\ndescription: 自定义技能\nversion: \"0.1.0\"\nhosts: [.claude/skills]\nwhen_to_use: 自定义场景\n---\n# My Skill\n\n自定义正文\n"
 	writeUserSkill(t, srv, dir, "my-skill", content)
 
 	rec := uiReq(t, srv, http.MethodGet, "/api/skills/packages", dir, "")
@@ -160,9 +160,9 @@ func TestSkills_InstallStatusUninstall(t *testing.T) {
 		t.Fatalf("初始应全 missing: %+v", status)
 	}
 
-	// 安装 taskboard-basic 到 AGENTS.md（skill.install 权限：UI 放行）。
+	// 安装 taskboard-basic 到 .claude/skills（skill.install 权限：UI 放行）。
 	rec = uiReq(t, srv, http.MethodPost, "/api/skills/install", dir,
-		`{"host":"AGENTS.md","packages":["taskboard-basic"]}`)
+		`{"host":".claude/skills","packages":["taskboard-basic"]}`)
 	body = mustCode(t, rec, http.StatusOK, "install")
 	var installResp struct {
 		Data []skill.InstallResult `json:"data"`
@@ -174,19 +174,19 @@ func TestSkills_InstallStatusUninstall(t *testing.T) {
 	if len(results) != 1 || !results[0].Ok || results[0].Action != "install" {
 		t.Fatalf("install 结果: %+v", results)
 	}
-	// 宿主文件已写入标记段。
-	agentsPath := filepath.Join(dir, "AGENTS.md")
-	data, err := os.ReadFile(agentsPath)
+	// 宿主包目录已写入 SKILL.md。
+	skillPath := filepath.Join(dir, ".claude", "skills", "taskboard-basic", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
 	if err != nil {
-		t.Fatalf("read AGENTS.md: %v", err)
+		t.Fatalf("read SKILL.md: %v", err)
 	}
-	if !strings.Contains(string(data), "tangoforge:skill:taskboard-basic:begin") {
-		t.Fatalf("标记段缺失: %s", string(data))
+	if !strings.Contains(string(data), "name: taskboard-basic") {
+		t.Fatalf("SKILL.md 内容缺失: %s", string(data))
 	}
 
 	// 再次安装 → update 语义。
 	rec = uiReq(t, srv, http.MethodPost, "/api/skills/install", dir,
-		`{"host":"AGENTS.md","packages":["taskboard-basic"]}`)
+		`{"host":".claude/skills","packages":["taskboard-basic"]}`)
 	body = mustCode(t, rec, http.StatusOK, "reinstall")
 	var updateResp struct {
 		Data []skill.InstallResult `json:"data"`
@@ -205,16 +205,16 @@ func TestSkills_InstallStatusUninstall(t *testing.T) {
 	_ = json.Unmarshal([]byte(body), &statusResp)
 	status = statusResp.Data
 	for _, hs := range status {
-		if hs.Key == "AGENTS.md" {
+		if hs.Key == ".claude/skills" {
 			if hs.Installed[0].State != "current" {
-				t.Fatalf("AGENTS.md 应为 current: %+v", hs.Installed)
+				t.Fatalf(".claude/skills 应为 current: %+v", hs.Installed)
 			}
 		}
 	}
 
-	// 卸载 → 文件移除标记段。
+	// 卸载 → 包目录删除。
 	rec = uiReq(t, srv, http.MethodPost, "/api/skills/uninstall", dir,
-		`{"host":"AGENTS.md","packages":["taskboard-basic"]}`)
+		`{"host":".claude/skills","packages":["taskboard-basic"]}`)
 	body = mustCode(t, rec, http.StatusOK, "uninstall")
 	var uninstallResp struct {
 		Data []skill.InstallResult `json:"data"`
@@ -225,8 +225,8 @@ func TestSkills_InstallStatusUninstall(t *testing.T) {
 	if !uninstallResp.Data[0].Ok {
 		t.Fatalf("uninstall 结果: %+v", uninstallResp.Data[0])
 	}
-	if _, err := os.Stat(agentsPath); !os.IsNotExist(err) {
-		t.Fatalf("卸载后宿主文件应被删除（仅含技能段）: %v", err)
+	if _, err := os.Stat(filepath.Dir(skillPath)); !os.IsNotExist(err) {
+		t.Fatalf("卸载后包目录应删除: %v", err)
 	}
 
 	// 未知宿主 → 422。
@@ -239,7 +239,7 @@ func TestSkills_InstallStatusUninstall(t *testing.T) {
 
 	// Agent 安装（无 skill.install 权限，默认 false）→ 403。
 	rec = agentReq(t, srv, http.MethodPost, "/api/skills/install", dir,
-		`{"host":"AGENTS.md","packages":["taskboard-basic"]}`)
+		`{"host":".claude/skills","packages":["taskboard-basic"]}`)
 	mustCode(t, rec, http.StatusForbidden, "agent install forbidden")
 }
 

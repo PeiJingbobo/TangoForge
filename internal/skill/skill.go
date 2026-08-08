@@ -6,9 +6,9 @@
 //     无项目库依赖、无状态（安装状态实时扫描宿主位置）；
 //   - SKILL.md 格式（Anthropic Agent Skills 规范靠拢）：YAML frontmatter
 //     （name/description/version/hosts/when_to_use）+ 正文 instructions；
-//   - 安装 = 把 SKILL.md（及可选资源）复制到宿主约定位置（AGENTS.md / CLAUDE.md /
-//     .cursor/rules/ / .github/copilot-instructions.md / ~/.claude/skills/ / ~/.workbuddy/skills/），
-//     建立可发现性；单文件宿主用标记段（可识别/可撤销），目录宿主建 <name>/；
+//   - 安装 = 把 SKILL.md（及可选资源）复制到宿主约定位置（目录型 .xxx/skills：
+//     .claude/skills / .cursor/skills / .github/skills / ~/.claude/skills / ~/.workbuddy/skills），
+//     建立可发现性；全部宿主均为目录形态（<宿主根>/<name>/SKILL.md），整包卸载。
 //   - 状态检测：missing / current / stale（按 version 比对，实时扫描）。
 //
 // 分层铁律（AGENTS.md §3.2）：本包为业务层，禁止引用 api / mcp / cmd。

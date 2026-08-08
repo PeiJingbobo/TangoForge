@@ -3,10 +3,12 @@ import { toast } from 'sonner'
 import { CheckCircle2, Loader2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSkillPackages, useSkillInstall } from '@/hooks/useSkills'
+import { SKILL_HOSTS, DEFAULT_SKILL_HOST } from '@/features/skills/hosts'
 
 /**
  * 引导 Step 4：为工作目录安装 Skill（TF-041 简化版）。
- * 选择宿主（默认 AGENTS.md）+ 勾选技能包 → 安装；或跳过。
+ * 宿主选择与项目 Skills 配置页共用 SKILL_HOSTS（TF-042：全部目录型 .xxx/skills，
+ * 无单文件 .md 宿主），按项目级/用户级分组展示全部目标宿主；默认 .claude/skills。
  */
 export function SkillStep({
   workdir,
@@ -17,15 +19,12 @@ export function SkillStep({
 }) {
   const { data: packages, isLoading } = useSkillPackages(workdir)
   const install = useSkillInstall(workdir)
-  const [host, setHost] = useState('AGENTS.md')
+  const [host, setHost] = useState(DEFAULT_SKILL_HOST)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [done, setDone] = useState(false)
 
-  const HOSTS = [
-    { key: 'AGENTS.md', label: 'AGENTS.md（项目级）' },
-    { key: 'CLAUDE.md', label: 'CLAUDE.md（项目级）' },
-    { key: '.cursor/rules', label: '.cursor/rules（项目级）' },
-  ]
+  const projectHosts = SKILL_HOSTS.filter((h) => h.scope === 'project')
+  const userHosts = SKILL_HOSTS.filter((h) => h.scope === 'user')
 
   // 默认全选内置包（source=builtin）。
   useEffect(() => {
@@ -76,18 +75,11 @@ export function SkillStep({
     )
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-xl border border-divider bg-muted/50 p-3">
-        <Wrench className="mt-0.5 size-4 shrink-0 text-primary-600" />
-        <p className="text-xs text-muted-foreground">
-          将技能包写入项目宿主文件（如 AGENTS.md），增强 Agent 对本项目的协作规范。可选步骤。
-        </p>
-      </div>
-
-      {/* 宿主选择 */}
+  const HostGroup = ({ title, hosts }: { title: string; hosts: typeof SKILL_HOSTS }) => (
+    <div>
+      <div className="mb-1.5 text-label text-muted-foreground">{title}</div>
       <div className="flex flex-wrap gap-2">
-        {HOSTS.map((h) => (
+        {hosts.map((h) => (
           <button
             key={h.key}
             type="button"
@@ -102,6 +94,23 @@ export function SkillStep({
           </button>
         ))}
       </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 rounded-xl border border-divider bg-muted/50 p-3">
+        <Wrench className="mt-0.5 size-4 shrink-0 text-primary-600" />
+        <p className="text-xs text-muted-foreground">
+          将技能包写入宿主目录（如 .claude/skills、.cursor/skills 下的
+          <code className="mx-1 rounded bg-muted px-1 font-mono">&lt;包名&gt;/SKILL.md</code>
+          ），增强 Agent 对本项目的协作规范。可选步骤。
+        </p>
+      </div>
+
+      {/* 宿主选择（全部目标宿主，按作用域分组） */}
+      <HostGroup title="目标宿主 · 项目级" hosts={projectHosts} />
+      <HostGroup title="目标宿主 · 用户级（全局）" hosts={userHosts} />
 
       {/* 技能包勾选 */}
       {packages && packages.length > 0 ? (

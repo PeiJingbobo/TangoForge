@@ -2,7 +2,7 @@
 name: taskboard-basic
 description: 使用 TangoForge 管理项目任务（创建/查询/更新/流转/归档）
 version: "1.0.0"
-hosts: [AGENTS.md, CLAUDE.md, .cursor/rules, copilot, user-claude, user-codebuddy]
+hosts: [.claude/skills, .cursor/skills, .github/skills, user-claude, user-codebuddy]
 when_to_use: 需要创建、查询、更新、流转、归档或还原项目任务时激活本技能
 ---
 

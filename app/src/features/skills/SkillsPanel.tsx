@@ -36,16 +36,7 @@ import {
 } from '@/hooks/useSkills'
 import { cn } from '@/lib/utils'
 import type { SkillPackage } from '@/types/models'
-
-/** Agent 宿主矩阵（与后端 skill.Hosts 对齐） */
-const HOSTS: { key: string; label: string; scope: 'project' | 'user' }[] = [
-  { key: 'AGENTS.md', label: 'AGENTS.md', scope: 'project' },
-  { key: 'CLAUDE.md', label: 'CLAUDE.md', scope: 'project' },
-  { key: '.cursor/rules', label: '.cursor/rules（Cursor）', scope: 'project' },
-  { key: 'copilot', label: 'copilot-instructions.md', scope: 'project' },
-  { key: 'user-claude', label: '~/.claude/skills', scope: 'user' },
-  { key: 'user-codebuddy', label: '~/.workbuddy/skills', scope: 'user' },
-]
+import { SKILL_HOSTS } from '@/features/skills/hosts'
 
 /** 状态徽章样式 */
 const STATE_META: Record<string, { label: string; cls: string }> = {
@@ -147,7 +138,7 @@ export function SkillsPanel() {
           <div>
             <div className="mb-1.5 text-label text-muted-foreground">① 选择目标宿主</div>
             <div className="flex flex-wrap gap-1.5">
-              {HOSTS.map((h) => (
+              {SKILL_HOSTS.map((h) => (
                 <Badge
                   key={h.key}
                   role="button"
@@ -361,7 +352,7 @@ export function SkillsPanel() {
   )
 }
 
-/* ---------- 技能库（内置 + 自定义，含 AGENTS.md 提示词复制） ---------- */
+/* ---------- 技能库（内置 + 自定义，含宿主提示词复制） ---------- */
 
 const AGENTS_PROMPT_ZH = `> TangoForge 是本项目使用的任务管理中间件（本地守护进程，端口 19810）。
 > 当你需要管理本项目任务（创建/查询/更新/流转状态/导入导出 Markdown）时，
@@ -369,7 +360,7 @@ const AGENTS_PROMPT_ZH = `> TangoForge 是本项目使用的任务管理中间�
 >
 > 用法：先读说明书 \`curl http://127.0.0.1:19810/api/guide\`（或 MCP guide 工具），
 > 按其中 HTTP/MCP/CLI 方式调用；所有请求必须带 X-Project 项目目录头。
-> 项目下已安装的 Skill 位于 AGENTS.md / CLAUDE.md / .cursor/rules 等宿主位置，
+> 项目下已安装的 Skill 位于 .claude/skills / .cursor/skills / .github/skills 等宿主目录，
 > 命中任务场景时优先读取对应 SKILL.md 按其流程执行。`
 
 const AGENTS_PROMPT_EN = `> TangoForge is the task management middleware used by this project
@@ -380,7 +371,7 @@ const AGENTS_PROMPT_EN = `> TangoForge is the task management middleware used by
 > Usage: first read the guide at \`curl http://127.0.0.1:19810/api/guide\`
 > (or the MCP "guide" tool), then call via HTTP/MCP/CLI per its instructions;
 > every request must carry the X-Project header with the project workdir.
-> Installed Skills live in AGENTS.md / CLAUDE.md / .cursor/rules etc.,
+> Installed Skills live in .claude/skills / .cursor/skills / .github/skills etc.,
 > read the matching SKILL.md and follow it when a task scenario hits.`
 
 function SkillLibrary() {
@@ -412,7 +403,7 @@ function SkillLibrary() {
   const startNew = () => {
     setEditingName('')
     setDraft(
-      '---\nname: my-skill\ndescription: 自定义技能\nversion: "0.1.0"\nhosts: [AGENTS.md, CLAUDE.md, .cursor/rules, copilot, user-claude, user-codebuddy]\nwhen_to_use: 何时使用本技能\n---\n# 技能正文\n\n（填写 AI 操作指引）\n',
+      '---\nname: my-skill\ndescription: 自定义技能\nversion: "0.1.0"\nhosts: [.claude/skills, .cursor/skills, .github/skills, user-claude, user-codebuddy]\nwhen_to_use: 何时使用本技能\n---\n# 技能正文\n\n（填写 AI 操作指引）\n',
     )
   }
 
