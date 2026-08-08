@@ -21,6 +21,16 @@ files:
 
 asar: true
 
+# 内嵌守护进程（tangoforge-daemon）必须随包分发：主进程
+# resolveDaemonPath 在打包版只查 resources/bin/<daemon>。
+# 打包前需先编译对应平台二进制到仓库根 bin/（见 README 后端编译命令）。
+extraResources:
+  - from: ../bin
+    to: bin
+    filter:
+      - tangoforge-daemon
+      - tangoforge-daemon.exe
+
 # 应用图标：推荐 build/icon.icns（mac）、build/icon.ico（win）；
 # 未提供时 electron-builder 使用 Electron 默认图标（仅警告不阻断）。
 
