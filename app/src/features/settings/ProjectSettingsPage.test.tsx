@@ -185,7 +185,8 @@ describe('ProjectSettingsPage（TF-032 项目设置：派生流转规则 + 拖�
         }),
       }),
     )
-  })
+    // 长 YAML 逐字符输入 + 覆盖率模式下 CI 环境慢 → 放宽超时
+  }, 15000)
 
   it('YAML 手写重复流转规则：保存后被重新生成覆盖（每状态一条 from 规则）', async () => {
     let putBody: unknown = null
@@ -215,7 +216,8 @@ describe('ProjectSettingsPage（TF-032 项目设置：派生流转规则 + 拖�
       return acc
     }, {})
     expect(fromCounts).toEqual({ todo: 1, doing: 1, done: 1 })
-  })
+    // 长 YAML 逐字符输入 + 覆盖率模式下 CI 环境慢 → 放宽超时
+  }, 15000)
 
   it('YAML 非法：保存时提示解析失败，不发 PUT', async () => {
     const toastError = vi.spyOn(toast, 'error').mockImplementation(() => '')
@@ -257,7 +259,8 @@ describe('ProjectSettingsPage（TF-032 项目设置：派生流转规则 + 拖�
     await user.click(screen.getByRole('button', { name: '保存修改' }))
     await waitFor(() => expect(toastError).toBeCalled())
     expect(String(toastError.mock.calls[0]?.[0])).toContain('任务占用')
-    expect(screen.getByLabelText('状态 1 名称')).toHaveValue('待办占用中')
+    // 422 失败后保留编辑值（CI 慢环境组件回填可能滞后 → waitFor）
+    await waitFor(() => expect(screen.getByLabelText('状态 1 名称')).toHaveValue('待办占用中'))
     toastError.mockRestore()
   })
 
