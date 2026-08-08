@@ -1,4 +1,4 @@
-# ---- Go ----
+# ---- Go 编译产物 ----
 bin/
 *.exe
 *.test
@@ -12,12 +12,22 @@ coverage.out
 # WorkBuddy 会话数据（记忆/技能缓存）
 .workbuddy/
 
-# ---- 前端 ----
+# ---- Agent 宿主安装产物（TF-042：技能包安装目录 + 技能锁） ----
+.agents/
+.claude/
+.cursor/
+.kilocode/
+skills-lock.json
+
+# ---- 前端依赖与构建产物 ----
 node_modules/
 app/node_modules/
 app/dist/
 app/out/
 app/release/
+release/
+*.blockmap
+*.tsbuildinfo
 app/*.local
 
 # ---- OS / IDE ----
@@ -31,6 +41,7 @@ Thumbs.db
 *.log
 tmp/
 *.tmp
+_tmp_*
 
 # ---- 环境 ----
 .env
