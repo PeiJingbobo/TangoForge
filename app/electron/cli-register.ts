@@ -83,10 +83,26 @@ function realOf(p: string): string {
 export function cliStatus(): CliStatus {
   const found = findInPath()
   const cli = cliPath()
+  let registered = found !== null
+  let path = found
+  // mac/Linux 补充通道：非登录 shell 不加载 shell profile（command -v 探测不到
+  // bash_profile 注入的 PATH），但注册物（~/bin/tangoforge → 当前 CLI）存在即为
+  // 已注册（新开终端生效）。
+  if (!registered && process.platform !== 'win32') {
+    const link = join(macBinDir(), 'tangoforge')
+    try {
+      if (existsSync(link) && realOf(link) === realOf(cli)) {
+        registered = true
+        path = link
+      }
+    } catch {
+      // 链接损坏等 → 视为未注册
+    }
+  }
   return {
-    registered: found !== null,
-    path: found,
-    ours: found !== null && realOf(found) === realOf(cli),
+    registered,
+    path,
+    ours: registered && path !== null && realOf(path) === realOf(cli),
     cliPath: cli,
   }
 }
