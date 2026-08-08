@@ -12,6 +12,7 @@ on:
       - 'Makefile'
       - '.golangci.yml'
       - 'scripts/**'
+      - '.github/workflows/backend-ci.yml'
   pull_request:
     paths:
       - 'cmd/**'
@@ -22,6 +23,7 @@ on:
       - 'Makefile'
       - '.golangci.yml'
       - 'scripts/**'
+      - '.github/workflows/backend-ci.yml'
 
 jobs:
   test:
