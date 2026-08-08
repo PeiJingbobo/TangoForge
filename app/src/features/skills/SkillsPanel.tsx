@@ -147,7 +147,8 @@ export function SkillsPanel() {
   }
 
   return (
-    <div className="space-y-6">
+    // 主体内部滚动（TF-042）：占满父容器剩余高度，仅此面板滚动，四周留细微间距
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-1 pr-2">
       {/* ① 安装向导：先选宿主 → 勾选包 → 批量安装（QA Q3） */}
       <section className="rounded-2xl border border-divider bg-card p-5">
         <div className="flex items-center gap-2">
