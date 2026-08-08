@@ -7,6 +7,14 @@ set -e
 BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLI="$BIN_DIR/tangoforge"
 if [ ! -f "$CLI" ]; then
+  # 仓库场景：脚本在 scripts/，CLI 在仓库根 bin/。
+  REPO_BIN="$(cd "$BIN_DIR/../bin" 2>/dev/null && pwd)"
+  if [ -n "$REPO_BIN" ] && [ -f "$REPO_BIN/tangoforge" ]; then
+    BIN_DIR="$REPO_BIN"
+    CLI="$BIN_DIR/tangoforge"
+  fi
+fi
+if [ ! -f "$CLI" ]; then
   echo "!! 未找到 CLI：$CLI"
   exit 1
 fi

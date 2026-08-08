@@ -6,6 +6,14 @@ $ErrorActionPreference = 'Stop'
 $Bin = $PSScriptRoot
 $Cli = Join-Path $Bin 'tangoforge.exe'
 if (-not (Test-Path $Cli)) {
+    # 仓库场景：脚本在 scripts/，CLI 在仓库根 bin/。
+    $repoBin = Join-Path $Bin '..\bin'
+    if (Test-Path (Join-Path $repoBin 'tangoforge.exe')) {
+        $Bin = (Resolve-Path $repoBin).Path
+        $Cli = Join-Path $Bin 'tangoforge.exe'
+    }
+}
+if (-not (Test-Path $Cli)) {
     Write-Host "!! 未找到 CLI：$Cli"
     exit 1
 }
