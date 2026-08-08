@@ -59,6 +59,13 @@ go build -o bin/tangoforge-daemon ./cmd/daemon
 cd app && pnpm install
 ```
 
+> **Windows 首次运行注意**：若 `pnpm dev` 报 `Error: Electron uninstall`（electron 的 postinstall 被 pnpm 跳过导致二进制未下载），手动补齐：
+> ```powershell
+> $env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+> cd C:\path\to\TangoForge
+> node node_modules\electron\install.js
+> ```
+
 ### 运行
 
 **使用脚本（推荐，自动拉起守护进程 + 启动客户端）：**

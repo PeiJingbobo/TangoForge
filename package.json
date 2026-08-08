@@ -21,5 +21,11 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.2.11"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  }
 }
