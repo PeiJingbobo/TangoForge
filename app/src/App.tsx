@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { HashRouter, Navigate, Route, Routes } from 'react-router' // HashRouter：Electron 打包 file:// 下 BrowserRouter History API 不可靠（路由切换静默失败），hash 模式零服务器兼容
 import { AppLayout } from '@/components/layout/app-layout'
 import { ProjectPanel } from '@/components/project/project-panel'
 import { Toaster } from '@/components/ui/sonner'
@@ -44,7 +44,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<WorkspacePage />} />
@@ -65,7 +65,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
       <Toaster />
     </QueryClientProvider>
   )
