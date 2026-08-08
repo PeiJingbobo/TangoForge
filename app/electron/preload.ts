@@ -61,7 +61,7 @@ const api = {
       return () => ipcRenderer.removeListener('window:maximized-change', handler)
     },
   },
-  /** CLI 全局注册管理（全局设置页「CLI 板块」）：状态检测 / 注册 / 卸载 */
+  /** CLI 全局注册管理（全局设置页「CLI 板块」）：状态检测 / 注册 / 更新 / 卸载 */
   cli: {
     status: (): Promise<{
       registered: boolean
@@ -70,6 +70,8 @@ const api = {
       cliPath: string
     }> => ipcRenderer.invoke('cli:status'),
     register: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('cli:register'),
+    /** 已注册但指向其他版本（dev/旧版）时，更新为当前 App 的 CLI 并保持优先 */
+    update: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('cli:update'),
     unregister: (): Promise<{ ok: boolean; message: string }> =>
       ipcRenderer.invoke('cli:unregister'),
   },

@@ -16,12 +16,13 @@ function mockCli(overrides: Partial<CliStatus> = {}) {
   }
   const status = vi.fn().mockResolvedValue(base)
   const register = vi.fn().mockResolvedValue({ ok: true, message: '已注册到全局' })
+  const update = vi.fn().mockResolvedValue({ ok: true, message: '已更新到当前版本' })
   const unregister = vi.fn().mockResolvedValue({ ok: true, message: '已卸载注册' })
   Object.defineProperty(window, 'tangoforge', {
-    value: { cli: { status, register, unregister } },
+    value: { cli: { status, register, update, unregister } },
     configurable: true,
   })
-  return { status, register, unregister }
+  return { status, register, update, unregister }
 }
 
 describe('CLISettingsSection（QA 2026-08-08 CLI 板块）', () => {
@@ -70,6 +71,24 @@ describe('CLISettingsSection（QA 2026-08-08 CLI 板块）', () => {
     mockCli({ registered: true, path: '/usr/local/bin/tangoforge', ours: false })
     render(<CLISettingsSection />)
     expect(await screen.findByText(/非本 App 分发的 CLI/)).toBeInTheDocument()
+  })
+
+  it('已注册但指向其他版本：警示 + 更新按钮 → 点击调用 update + toast + 刷新', async () => {
+    const { update, status } = mockCli({
+      registered: true,
+      path: '/Users/dev/bin/tangoforge',
+      ours: false,
+    })
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    const user = userEvent.setup()
+    render(<CLISettingsSection />)
+    expect(await screen.findByText(/已注册，但指向其他位置/)).toBeInTheDocument()
+    const btn = screen.getByRole('button', { name: '更新到当前版本' })
+    await user.click(btn)
+    expect(update).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('已更新到当前版本'))
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2))
+    toastSpy.mockRestore()
   })
 
   it('Web 环境（无 window.tangoforge.cli）：提示仅桌面端可用', () => {

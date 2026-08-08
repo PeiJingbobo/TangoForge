@@ -42,7 +42,7 @@ export function CLISettingsSection() {
   }, [refresh])
 
   const act = async (
-    key: 'register' | 'unregister',
+    key: 'register' | 'update' | 'unregister',
     fn: () => Promise<{ ok: boolean; message: string }>,
   ) => {
     setBusy(key)
@@ -70,6 +70,7 @@ export function CLISettingsSection() {
   if (loading && !status) return <Skeleton className="h-40 w-full" />
 
   const registered = status?.registered ?? false
+  const ours = status?.ours ?? false
 
   return (
     <div className="space-y-4">
@@ -102,6 +103,13 @@ export function CLISettingsSection() {
         </div>
       )}
 
+      {registered && !ours && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-warning-ink">
+          检测到 tangoforge
+          已注册，但指向其他位置（可能为旧版本或开发版）。更新后新终端将使用当前版本，并保持优先解析。
+        </div>
+      )}
+
       <div className="space-y-1.5 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <TerminalSquare className="size-3.5 shrink-0" />
@@ -113,12 +121,21 @@ export function CLISettingsSection() {
             <CheckCircle2 className="size-3.5 shrink-0 text-success" />
             <span>当前解析：</span>
             <code className="truncate font-mono text-[11px]">{status.path}</code>
-            {!status.ours && <span className="text-warning-ink">（非本 App 分发的 CLI）</span>}
+            {!ours && <span className="text-warning-ink">（非本 App 分发的 CLI）</span>}
           </div>
         )}
       </div>
 
       <div className="flex items-center gap-2">
+        {registered && !ours && (
+          <Button
+            disabled={busy !== null}
+            onClick={() => void act('update', () => window.tangoforge!.cli!.update())}
+          >
+            {busy === 'update' && <Loader2 className="size-4 animate-spin" />}
+            更新到当前版本
+          </Button>
+        )}
         {registered ? (
           <Button
             variant="outline"

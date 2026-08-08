@@ -86,12 +86,12 @@ export function cliStatus(): CliStatus {
   let registered = found !== null
   let path = found
   // mac/Linux 补充通道：非登录 shell 不加载 shell profile（command -v 探测不到
-  // bash_profile 注入的 PATH），但注册物（~/bin/tangoforge → 当前 CLI）存在即为
-  // 已注册（新开终端生效）。
+  // profile 注入的 PATH），但注册物（~/bin/tangoforge）存在即视为已注册——
+  // 不论其指向当前 App 还是旧版本/dev 版（ours 单独判定，UI 据此提示更新）。
   if (!registered && process.platform !== 'win32') {
     const link = join(macBinDir(), 'tangoforge')
     try {
-      if (existsSync(link) && realOf(link) === realOf(cli)) {
+      if (existsSync(link)) {
         registered = true
         path = link
       }
@@ -105,6 +105,47 @@ export function cliStatus(): CliStatus {
     ours: registered && path !== null && realOf(path) === realOf(cli),
     cliPath: cli,
   }
+}
+
+/**
+ * 更新注册到当前版本：检测到 tangoforge 已注册但指向其他位置（旧版本/dev 版）时，
+ * 由用户确认后把当前 App 的 CLI 更新为 PATH 解析目标（并保持优先）。
+ */
+function updateCli(): string {
+  const cli = cliPath()
+  if (!existsSync(cli)) return `未找到 CLI：${cli}（请确认 App 安装完整）`
+
+  if (process.platform === 'win32') {
+    const dir = resolveCliDir()
+    // 移除解析到的旧目录（status.path 所在目录），再把当前目录置顶。
+    const oldPath = findInPath()
+    const current = getUserPath()
+    const entries = current.split(';').filter((e) => {
+      const t = e.trim()
+      return t !== '' && t !== dir && (oldPath === null || t !== dirnameOf(oldPath))
+    })
+    entries.unshift(dir)
+    setUserPath(entries.join(';'))
+    return `已更新：${dir}（已置顶；新开终端生效）`
+  }
+
+  // mac / linux：重建链接指向当前 CLI + 确保全部 profile 注入。
+  const binDir = macBinDir()
+  mkdirSync(binDir, { recursive: true })
+  const link = join(binDir, 'tangoforge')
+  try {
+    rmSync(link, { force: true })
+    symlinkSync(cli, link)
+  } catch (err) {
+    return `更新符号链接失败：${err instanceof Error ? err.message : err}`
+  }
+  const touched = injectPathIntoRcs(binDir)
+  return `已更新：${link}（PATH 已注入 ${touched.join('、')}，新开终端生效）`
+}
+
+/** 取路径所在目录（Windows 反斜杠兼容）。 */
+function dirnameOf(p: string): string {
+  return p.includes('\\') ? p.slice(0, p.lastIndexOf('\\')) : p.slice(0, p.lastIndexOf('/'))
 }
 
 /* ---------- Windows：用户 PATH 追加/移除（PowerShell，避免 setx 1024 截断） ---------- */
@@ -250,6 +291,13 @@ export function registerCliIpc(): void {
       return { ok: true, message: unregisterCli() }
     } catch (err) {
       return { ok: false, message: `卸载失败：${err instanceof Error ? err.message : err}` }
+    }
+  })
+  ipcMain.handle('cli:update', (): { ok: boolean; message: string } => {
+    try {
+      return { ok: true, message: updateCli() }
+    } catch (err) {
+      return { ok: false, message: `更新失败：${err instanceof Error ? err.message : err}` }
     }
   })
 }
