@@ -135,11 +135,35 @@ function setUserPath(pathValue: string): void {
 
 /* ---------- macOS：~/bin 符号链接 + shell profile PATH ---------- */
 
-function macShellRc(): string {
+/**
+ * 需要注入 PATH 的 shell profile 列表（macOS 默认登录 shell 为 zsh）：
+ * .zshrc 总是写入（zsh 不加载 bash_profile）；.bash_profile/.bashrc 存在时一并写入，
+ * 保证无论用户使用 zsh 还是 bash 的新终端都能生效。
+ */
+function macShellRcs(): string[] {
   const home = homedir()
-  if (existsSync(join(home, '.bash_profile'))) return join(home, '.bash_profile')
-  if (existsSync(join(home, '.bashrc'))) return join(home, '.bashrc')
-  return join(home, '.zshrc')
+  const rcs: string[] = [join(home, '.zshrc')]
+  for (const name of ['.bash_profile', '.bashrc']) {
+    const p = join(home, name)
+    if (existsSync(p) && !rcs.includes(p)) rcs.push(p)
+  }
+  return rcs
+}
+
+/** 向 profile 幂等注入 PATH marker；返回实际写入的 rc 列表。 */
+function injectPathIntoRcs(binDir: string): string[] {
+  const marker = `export PATH="${binDir}:$PATH"`
+  const touched: string[] = []
+  for (const rc of macShellRcs()) {
+    const existing = existsSync(rc) ? readFileSync(rc, 'utf8') : ''
+    if (existing.includes(marker)) {
+      touched.push(rc)
+      continue
+    }
+    writeFileSync(rc, `\n# TangoForge CLI\n${marker}\n`, { flag: 'a' })
+    touched.push(rc)
+  }
+  return touched
 }
 
 function macBinDir(): string {
@@ -162,7 +186,7 @@ function registerCli(): string {
     return `已注册：${dir}（新开终端生效）`
   }
 
-  // mac / linux：~/bin 链接 + profile PATH。
+  // mac / linux：~/bin 链接 + 全部 shell profile PATH。
   const binDir = macBinDir()
   mkdirSync(binDir, { recursive: true })
   const link = join(binDir, 'tangoforge')
@@ -172,13 +196,8 @@ function registerCli(): string {
   } catch (err) {
     return `创建符号链接失败：${err instanceof Error ? err.message : err}`
   }
-  const rc = macShellRc()
-  const marker = `export PATH="${binDir}:$PATH"`
-  if (existsSync(rc) && readFileSync(rc, 'utf8').includes(marker)) {
-    return `已注册：${link}（PATH 已注入 ${rc}）`
-  }
-  writeFileSync(rc, `\n# TangoForge CLI\n${marker}\n`, { flag: 'a' })
-  return `已注册：${link}（PATH 已注入 ${rc}，新开终端生效）`
+  const touched = injectPathIntoRcs(binDir)
+  return `已注册：${link}（PATH 已注入 ${touched.join('、')}，新开终端生效）`
 }
 
 function unregisterCli(): string {
@@ -201,11 +220,11 @@ function unregisterCli(): string {
   } catch {
     removedLink = false
   }
-  // 移除 profile 中注入的行（幂等）。
-  const rc = macShellRc()
+  // 从所有 shell profile 移除注入的 PATH 行（幂等）。
   const marker = `export PATH="${macBinDir()}:$PATH"`
   try {
-    if (existsSync(rc)) {
+    for (const rc of macShellRcs()) {
+      if (!existsSync(rc)) continue
       const lines = readFileSync(rc, 'utf8')
         .split('\n')
         .filter((l) => !l.includes(marker))

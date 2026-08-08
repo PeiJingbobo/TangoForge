@@ -23,18 +23,16 @@ TARGET_DIR="$HOME/bin"
 mkdir -p "$TARGET_DIR"
 ln -sf "$CLI" "$TARGET_DIR/tangoforge"
 
-# 选择 shell 配置文件（mac 默认 zsh；存在 bash_profile 则用 bash）。
-RC_FILE="$HOME/.zshrc"
-if [ -f "$HOME/.bash_profile" ]; then
-  RC_FILE="$HOME/.bash_profile"
-fi
-if [ -f "$HOME/.bashrc" ] && [ ! -f "$HOME/.bash_profile" ]; then
-  RC_FILE="$HOME/.bashrc"
-fi
+# PATH 注入所有 shell profile（macOS 默认登录 shell 为 zsh，zsh 不加载
+# bash_profile）：.zshrc 总是写入；.bash_profile/.bashrc 存在时一并写入。
+INJECTED=""
+for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+  [ -f "$rc" ] || [ "$(basename "$rc")" = ".zshrc" ] || continue
+  if ! grep -qF "export PATH=\"$TARGET_DIR" "$rc" 2>/dev/null; then
+    printf '\n# TangoForge CLI\nexport PATH="%s:$PATH"\n' "$TARGET_DIR" >> "$rc"
+  fi
+  INJECTED="$INJECTED $rc"
+done
 
-if ! grep -qF "export PATH=\"$TARGET_DIR" "$RC_FILE" 2>/dev/null; then
-  printf '\n# TangoForge CLI\nexport PATH="%s:$PATH"\n' "$TARGET_DIR" >> "$RC_FILE"
-fi
-
-echo "已注册 CLI：$TARGET_DIR/tangoforge -> $CLI（PATH 已写入 $RC_FILE）"
+echo "已注册 CLI：$TARGET_DIR/tangoforge -> $CLI（PATH 已写入：$INJECTED）"
 echo "验证：新开终端执行 tangoforge --help（需守护进程运行；App 启动会自动拉起）"
