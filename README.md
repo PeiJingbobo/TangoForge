@@ -113,6 +113,34 @@ pnpm dist:win    # Windows：nsis + portable
 
 > 产物默认输出到本机磁盘（如 `~/tangoforge-release`）；未签名，安装时系统会提示"未知开发者"。
 
+## CLI 使用与全局注册
+
+打包产物 `resources/bin/` 内包含 **CLI（tangoforge）** 与 **守护进程（tangoforge-daemon）** 双二进制（App 启动自动拉起 daemon；CLI 通过 HTTP 与 daemon 等价操作，见 `tangoforge --help`）。
+
+**方式一：直接使用（免注册）**
+
+```bash
+# Windows（安装目录内）
+"C:\Program Files\TangoForge\resources\bin\tangoforge.exe" --help
+# macOS（App 内）
+/Applications/TangoForge.app/Contents/Resources/bin/tangoforge --help
+```
+
+**方式二：注册到全局 PATH（推荐，注册后任意终端直接 `tangoforge`）**
+
+```powershell
+# Windows：追加到当前用户 PATH（幂等）
+powershell -ExecutionPolicy Bypass -File "<安装目录>\resources\bin\register-cli.ps1"
+```
+
+```bash
+# macOS / Linux：创建 ~/bin/tangoforge 链接并注入 shell PATH（幂等）
+"<App 路径>/Contents/Resources/bin/register-cli.sh"
+```
+
+> 注册后**新开终端**生效；CLI 依赖守护进程运行（App 启动即自动拉起，或 `scripts/dev-run.sh` / `dev-run.bat`）。
+> 常用：`tangoforge projects list`、`tangoforge tasks list --project <工作目录>`、`tangoforge import preview`、`tangoforge guide`。
+
 ## AI Agent 接入
 
 ```bash

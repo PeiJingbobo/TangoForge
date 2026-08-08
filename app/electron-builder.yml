@@ -21,15 +21,24 @@ files:
 
 asar: true
 
-# 内嵌守护进程（tangoforge-daemon）必须随包分发：主进程
-# resolveDaemonPath 在打包版只查 resources/bin/<daemon>。
+# 内嵌守护进程 + CLI 必须随包分发：主进程 resolveDaemonPath 在打包版只查
+# resources/bin/<daemon>；CLI（tangoforge）供用户在终端使用（可经
+# scripts/register-cli 脚本注册到全局 PATH）。
 # 打包前需先编译对应平台二进制到仓库根 bin/（见 README 后端编译命令）。
 extraResources:
   - from: ../bin
     to: bin
     filter:
+      - tangoforge
+      - tangoforge.exe
       - tangoforge-daemon
       - tangoforge-daemon.exe
+  # CLI 全局注册脚本（与二进制同目录，便于安装后直接执行）
+  - from: ../scripts
+    to: bin
+    filter:
+      - register-cli.ps1
+      - register-cli.sh
 
 # 应用图标：推荐 build/icon.icns（mac）、build/icon.ico（win）；
 # 未提供时 electron-builder 使用 Electron 默认图标（仅警告不阻断）。
