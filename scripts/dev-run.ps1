@@ -1,4 +1,4 @@
-# TangoForge 桌面端开发启动（Windows）
+﻿# TangoForge 桌面端开发启动（Windows）
 # 用法：scripts\dev-run.bat           正常启动
 #       scripts\dev-run.bat debug    调试模式（打开渲染进程 DevTools）
 # 或直接：powershell -ExecutionPolicy Bypass -File scripts\dev-run.ps1 [-Debug]
