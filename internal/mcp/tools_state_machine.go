@@ -3,11 +3,10 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-
-	"github.com/mark3labs/mcp-go/mcp"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/task"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // toolStateMachineGet 读取项目状态机定义。

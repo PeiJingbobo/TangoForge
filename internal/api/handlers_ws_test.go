@@ -5,12 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"tangoforge/internal/config"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
-
-	"tangoforge/internal/config"
 )
 
 // startWSTestServer 启动真实 HTTP 服务（WS 测试需要真实监听）。

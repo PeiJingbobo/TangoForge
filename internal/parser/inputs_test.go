@@ -82,8 +82,10 @@ func TestScanMarkdownFiles_Recursive(t *testing.T) {
 		t.Fatalf("扫描到 %d 个文件（应 4）: %v", len(got), got)
 	}
 	// 字典序（含子目录按路径排序）。
-	want := []string{filepath.Join(base, "a.md"), filepath.Join(base, "b.md"),
-		filepath.Join(base, "c.markdown"), filepath.Join(sub, "d.md")}
+	want := []string{
+		filepath.Join(base, "a.md"), filepath.Join(base, "b.md"),
+		filepath.Join(base, "c.markdown"), filepath.Join(sub, "d.md"),
+	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("顺序异常: got=%v want=%v", got, want)

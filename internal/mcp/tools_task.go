@@ -2,10 +2,9 @@ package mcp
 
 import (
 	"context"
+	"tangoforge/internal/task"
 
 	"github.com/mark3labs/mcp-go/mcp"
-
-	"tangoforge/internal/task"
 )
 
 // 工具定义（v1 固定工具集，REQUIREMENTS.md §8.3）。

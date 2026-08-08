@@ -17,7 +17,6 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动（零信任依赖约束）
 )
@@ -95,9 +94,4 @@ func ProjectExists(ctx context.Context, db *sql.DB, workdir string) (bool, error
 // homeDir 由调用方提供（如 os.UserHomeDir），本层不做环境探测。
 func RegistryDBPath(homeDir string) string {
 	return filepath.Join(homeDir, ".taskboard-app", "registry.db")
-}
-
-// nowRFC3339 返回 RFC3339 本地时区时间文本（与 QA Q7 确认的时间戳格式一致）。
-func nowRFC3339() string {
-	return time.Now().Format(time.RFC3339)
 }

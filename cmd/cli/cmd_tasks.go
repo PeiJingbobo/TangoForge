@@ -12,7 +12,7 @@ import (
 // runTasks tasks 子命令分发：list / get / create / update / status / archive / restore / delete。
 func runTasks(args []string, g cliGlobal) error {
 	if len(args) < 1 {
-		return fmt.Errorf("用法: tangoforge tasks <list|get|create|update|status|archive|restore|delete> ...")
+		return fmt.Errorf("用法: tangoforge tasks <list|get|create|update|status|archive|restore|delete>")
 	}
 	c := newCLIClient(g)
 	sub, rest := args[0], args[1:]
@@ -247,7 +247,7 @@ func cmdTaskDelete(args []string, g cliGlobal, c *cliClient) error {
 // runProjects projects 子命令分发：list / import / remove。
 func runProjects(args []string, g cliGlobal) error {
 	if len(args) < 1 {
-		return fmt.Errorf("用法: tangoforge projects <list|import|remove> ...")
+		return fmt.Errorf("用法: tangoforge projects <list|import|remove>")
 	}
 	c := newCLIClient(g)
 	switch args[0] {
@@ -276,7 +276,7 @@ func runProjects(args []string, g cliGlobal) error {
 		if err != nil {
 			return err
 		}
-		printOutput(g, resp, func(data json.RawMessage) string { return "已移除注册记录（磁盘数据保留）" })
+		printOutput(g, resp, func(_ json.RawMessage) string { return "已移除注册记录（磁盘数据保留）" })
 		return nil
 	}
 	return fmt.Errorf("未知 projects 子命令: %s", args[0])

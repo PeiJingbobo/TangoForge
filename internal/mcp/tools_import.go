@@ -2,11 +2,10 @@ package mcp
 
 import (
 	"context"
-
-	"github.com/mark3labs/mcp-go/mcp"
-
 	"tangoforge/internal/parser"
 	"tangoforge/internal/task"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // import 域工具（草稿流，TF-018 业务层）。

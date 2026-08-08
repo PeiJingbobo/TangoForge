@@ -11,12 +11,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/task"
+	"testing"
 )
 
 // initParserProject 初始化临时项目（meta.db + 默认 config.yaml，含状态机 label）。

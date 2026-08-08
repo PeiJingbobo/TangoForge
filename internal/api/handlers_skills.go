@@ -3,12 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
-
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/skill"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // handleSkills GET /api/skills（skill.read）：技能包列表（内置 + 全局库，按名称升序）。

@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"tangoforge/internal/auth"
+	"tangoforge/internal/db"
 	"time"
 
 	"github.com/gorilla/websocket"
-
-	"tangoforge/internal/auth"
-	"tangoforge/internal/db"
 )
 
 // Event WebSocket 事件（REQUIREMENTS.md §5.3，结构 {type, project, data, ts}）。
@@ -91,9 +90,11 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(_ *http.Request) bool { return true },
 }
 
-const wsWriteWait = 10 * time.Second
-const wsPongWait = 60 * time.Second
-const wsPingPeriod = (wsPongWait * 9) / 10
+const (
+	wsWriteWait  = 10 * time.Second
+	wsPongWait   = 60 * time.Second
+	wsPingPeriod = (wsPongWait * 9) / 10
+)
 
 // handleWS WebSocket 事件订阅（GET /ws/events?project=<workdir>）。
 //

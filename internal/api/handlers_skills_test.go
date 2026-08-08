@@ -6,9 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/skill"
+	"testing"
 )
 
 // writeUserSkill 向全局技能库（测试 Server 的临时 homeDir）写入自定义技能包。

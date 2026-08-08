@@ -21,13 +21,13 @@ func nextTaskNumber(ctx context.Context, repo TaskRepo) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("task: list for next number: %w", err)
 	}
-	max := 0
+	maxN := 0
 	for _, t := range tasks {
-		if n, ok := parseTaskNumber(t.Number); ok && n > max {
-			max = n
+		if n, ok := parseTaskNumber(t.Number); ok && n > maxN {
+			maxN = n
 		}
 	}
-	return formatTaskNumber(max + 1), nil
+	return formatTaskNumber(maxN + 1), nil
 }
 
 // ensureTaskNumbers 批量分配编号（ImportTasks 事务外调用）：
@@ -40,13 +40,13 @@ func ensureTaskNumbers(ctx context.Context, repo TaskRepo, tasks []Task) error {
 	if err != nil {
 		return fmt.Errorf("task: list for numbers: %w", err)
 	}
-	max := 0
+	maxN := 0
 	for _, t := range all {
 		if t.Number != "" {
 			used[t.Number] = true
 		}
-		if n, ok := parseTaskNumber(t.Number); ok && n > max {
-			max = n
+		if n, ok := parseTaskNumber(t.Number); ok && n > maxN {
+			maxN = n
 		}
 	}
 	for i := range tasks {
@@ -57,8 +57,8 @@ func ensureTaskNumbers(ctx context.Context, repo TaskRepo, tasks []Task) error {
 		}
 		// 空或冲突 → 分配下一个 T 序号。
 		for {
-			max++
-			next := formatTaskNumber(max)
+			maxN++
+			next := formatTaskNumber(maxN)
 			if !used[next] {
 				used[next] = true
 				tasks[i].Number = next

@@ -28,9 +28,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
-
 	"tangoforge/internal/config"
+	"time"
 )
 
 // APIKind 协议类型（config.LLMConfig.APIKind 取值）。
@@ -404,7 +403,7 @@ func extractJSON(text string) (json.RawMessage, error) {
 		if start < 0 {
 			return nil, errors.New("未找到 JSON 起始字符")
 		}
-		open, close := byte('['), byte(']')
+		openB, closeB := byte('['), byte(']')
 		depth := 0
 		inStr := false
 		esc := false
@@ -425,9 +424,9 @@ func extractJSON(text string) (json.RawMessage, error) {
 			if inStr {
 				continue
 			}
-			if ch == open {
+			if ch == openB {
 				depth++
-			} else if ch == close {
+			} else if ch == closeB {
 				depth--
 				if depth == 0 {
 					end = i + 1
@@ -436,7 +435,7 @@ func extractJSON(text string) (json.RawMessage, error) {
 			}
 		}
 	} else {
-		open, close := byte('{'), byte('}')
+		openB, closeB := byte('{'), byte('}')
 		depth := 0
 		inStr := false
 		esc := false
@@ -457,9 +456,9 @@ func extractJSON(text string) (json.RawMessage, error) {
 			if inStr {
 				continue
 			}
-			if ch == open {
+			if ch == openB {
 				depth++
-			} else if ch == close {
+			} else if ch == closeB {
 				depth--
 				if depth == 0 {
 					end = i + 1

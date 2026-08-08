@@ -8,10 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"testing"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"testing"
 )
 
 // openTestConn 打开已初始化的项目库连接（测试直接访问 repo 用）。

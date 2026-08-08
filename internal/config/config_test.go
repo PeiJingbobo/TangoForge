@@ -342,7 +342,7 @@ func TestUpdateProjectFile_EmptyStatesFallsBackToDefault(t *testing.T) {
 	if err := os.WriteFile(ProjectConfigPath(workdir), []byte("state_machine: {}\nexport: {}\n"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	err := UpdateProjectFile(workdir, func(cfg *ProjectConfig) {})
+	err := UpdateProjectFile(workdir, func(_ *ProjectConfig) {})
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}

@@ -6,9 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
-	"testing"
-
 	"tangoforge/internal/db"
+	"testing"
 )
 
 // ---- 测试辅助 ----
@@ -124,9 +123,22 @@ func TestCreate_PriorityNormalize(t *testing.T) {
 		in   any
 		want int
 	}{
-		{nil, 0}, {0, 0}, {5, 5}, {3, 3}, {int64(2), 2}, {4.0, 4},
-		{"lowest", 0}, {"none", 0}, {"low", 1}, {"normal", 3}, {"default", 3},
-		{"high", 4}, {"highest", 5}, {"critical", 5}, {"urgent", 5}, {"3", 3},
+		{nil, 0},
+		{0, 0},
+		{5, 5},
+		{3, 3},
+		{int64(2), 2},
+		{4.0, 4},
+		{"lowest", 0},
+		{"none", 0},
+		{"low", 1},
+		{"normal", 3},
+		{"default", 3},
+		{"high", 4},
+		{"highest", 5},
+		{"critical", 5},
+		{"urgent", 5},
+		{"3", 3},
 	}
 	for _, c := range cases {
 		task := mustCreate(t, svc, wd, CreateInput{Title: "t", Priority: c.in})
@@ -207,7 +219,7 @@ func TestList_Tree(t *testing.T) {
 	if len(res.Tree) != 2 {
 		t.Fatalf("顶层应为 [B, A]（priority DESC），got %d 个：%v", len(res.Tree), names(res.Tree))
 	}
-	if res.Tree[0].Task.ID != b.ID || res.Tree[1].Task.ID != a.ID {
+	if res.Tree[0].ID != b.ID || res.Tree[1].ID != a.ID {
 		t.Errorf("顶层顺序错误（priority DESC）：%v", names(res.Tree))
 	}
 	// A 的 children 应为 {A1, A2}（集合断言，同秒同优先级时按 id ASC，顺序不强制）。
@@ -215,7 +227,7 @@ func TestList_Tree(t *testing.T) {
 	if len(children) != 2 {
 		t.Fatalf("A.children 应为 2 个，got %d", len(children))
 	}
-	childIDs := map[string]bool{children[0].Task.ID: true, children[1].Task.ID: true}
+	childIDs := map[string]bool{children[0].ID: true, children[1].ID: true}
 	if !childIDs[a1.ID] || !childIDs[a2.ID] {
 		t.Errorf("A.children 集合错误：%v", names(children))
 	}
@@ -229,7 +241,7 @@ func TestList_Sort(t *testing.T) {
 
 	res, _ := svc.List(context.Background(), wd, ListFilter{})
 	// priority DESC：高(5) > 中(3) > 低(1)。
-	got := []string{res.Tree[0].Task.ID, res.Tree[1].Task.ID, res.Tree[2].Task.ID}
+	got := []string{res.Tree[0].ID, res.Tree[1].ID, res.Tree[2].ID}
 	want := []string{high.ID, mid.ID, low.ID}
 	for i := range want {
 		if got[i] != want[i] {
@@ -261,7 +273,7 @@ func TestList_ExcludesArchivedByDefault(t *testing.T) {
 	}
 	// 显式 filter[status]=archived 只返回归档任务。
 	resArch, _ := svc.List(context.Background(), wd, ListFilter{Status: StatusArchived})
-	if len(resArch.Tree) != 1 || resArch.Tree[0].Task.ID != arch.ID {
+	if len(resArch.Tree) != 1 || resArch.Tree[0].ID != arch.ID {
 		t.Errorf("filter[status]=archived 应只返回归档任务，got %v", names(resArch.Tree))
 	}
 }
@@ -273,12 +285,12 @@ func TestList_FilterStatusAndQ(t *testing.T) {
 
 	// 状态过滤。
 	res, _ := svc.List(context.Background(), wd, ListFilter{Status: "doing"})
-	if len(res.Tree) != 1 || res.Tree[0].Task.Title != "待办乙" {
+	if len(res.Tree) != 1 || res.Tree[0].Title != "待办乙" {
 		t.Errorf("status=doing 过滤错误：%v", names(res.Tree))
 	}
 	// q 搜索 description。
 	resQ, _ := svc.List(context.Background(), wd, ListFilter{Q: "登录"})
-	if len(resQ.Tree) != 1 || resQ.Tree[0].Task.Title != "待办甲" {
+	if len(resQ.Tree) != 1 || resQ.Tree[0].Title != "待办甲" {
 		t.Errorf("q 搜索错误：%v", names(resQ.Tree))
 	}
 	// q 搜索无匹配。
@@ -299,10 +311,10 @@ func TestList_AncestorRetention(t *testing.T) {
 	if len(res.Tree) != 1 {
 		t.Fatalf("祖先保留：应只有父容器在顶层，got %v", names(res.Tree))
 	}
-	if res.Tree[0].Task.ID != parent.ID {
-		t.Errorf("容器应为父任务，got %v", res.Tree[0].Task.Title)
+	if res.Tree[0].ID != parent.ID {
+		t.Errorf("容器应为父任务，got %v", res.Tree[0].Title)
 	}
-	if len(res.Tree[0].Children) != 1 || res.Tree[0].Children[0].Task.Title != "匹配子任务A" {
+	if len(res.Tree[0].Children) != 1 || res.Tree[0].Children[0].Title != "匹配子任务A" {
 		t.Errorf("children 应仅含匹配者，got %v", names(res.Tree[0].Children))
 	}
 }
@@ -360,11 +372,11 @@ func TestList_ProjectIsolation(t *testing.T) {
 
 	// 各自 List 只看到各自数据（一项目一库文件隔离）。
 	resA, _ := svc.List(context.Background(), wdA, ListFilter{})
-	if len(resA.Tree) != 1 || resA.Tree[0].Task.Title != "A 项目任务" {
+	if len(resA.Tree) != 1 || resA.Tree[0].Title != "A 项目任务" {
 		t.Errorf("A 项目应只见自身任务：%v", names(resA.Tree))
 	}
 	resB, _ := svcB.List(context.Background(), wdB, ListFilter{})
-	if len(resB.Tree) != 1 || resB.Tree[0].Task.Title != "B 项目任务" {
+	if len(resB.Tree) != 1 || resB.Tree[0].Title != "B 项目任务" {
 		t.Errorf("B 项目应只见自身任务：%v", names(resB.Tree))
 	}
 }

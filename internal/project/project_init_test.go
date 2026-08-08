@@ -4,9 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"testing"
-
 	"tangoforge/internal/db"
+	"testing"
 )
 
 // TestInit_OnlyInitializesMeta（QA P4-1 Q6：project_init 语义）。

@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-
-	"github.com/go-chi/chi/v5"
-
 	"tangoforge/internal/auth"
 	"tangoforge/internal/task"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // handleTaskList 任务树 / 扁平分页（GET /api/tasks?filter[status]=&q=&page=&size=）。

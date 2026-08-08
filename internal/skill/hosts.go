@@ -178,7 +178,7 @@ func (s *Service) Install(ctx context.Context, workdir, hostKey string, names []
 }
 
 // Uninstall 从目标宿主移除指定技能包（QA-S6，前端二次确认后调用）。
-func (s *Service) Uninstall(ctx context.Context, workdir, hostKey string, names []string) ([]InstallResult, error) {
+func (s *Service) Uninstall(_ context.Context, workdir, hostKey string, names []string) ([]InstallResult, error) {
 	host, ok := HostByKey(hostKey)
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownHost, hostKey)
@@ -217,8 +217,10 @@ func (s *Service) Status(ctx context.Context, workdir string) ([]HostStatus, err
 	}
 	out := make([]HostStatus, 0, len(Hosts))
 	for _, host := range Hosts {
-		hs := HostStatus{Key: host.Key, Label: host.Label, Scope: host.Scope,
-			Installed: make([]InstalledSkill, 0, len(packages))}
+		hs := HostStatus{
+			Key: host.Key, Label: host.Label, Scope: host.Scope,
+			Installed: make([]InstalledSkill, 0, len(packages)),
+		}
 		for _, pkg := range packages {
 			installed := InstalledSkill{Name: pkg.Name, State: StateMissing}
 			if ver, ok := readInstalledVersion(host, workdir, s.homeDir, pkg.Name); ok {

@@ -1,10 +1,14 @@
-# golangci-lint 配置（CI 与本地 make lint 共用）
-# 安装：go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# golangci-lint 配置（v2 格式，CI golangci-lint-action 使用）
+# 本地：go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+# 注意：v2 需 go >= 1.25 支持（本项目 go.mod 1.25.5）
+version: "2"
+
 run:
   timeout: 5m
   tests: true
 
 linters:
+  default: none
   enable:
     - govet
     - staticcheck
@@ -12,10 +16,16 @@ linters:
     - ineffassign
     - unused
     - misspell
-    - gofumpt
     - revive
+  exclusions:
+    paths:
+      - node_modules
+    rules:
+      # 公共类型命名 stutter（TaskRepo/TaskTreeNode）为既有 API 命名约定，不强制改名
+      - linters:
+          - revive
+        text: "exported: type name will be used as .*stutters"
 
-issues:
-  exclude-use-default: false
-  max-issues-per-linter: 0
-  max-same-issues: 0
+formatters:
+  enable:
+    - gofumpt

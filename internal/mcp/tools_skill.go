@@ -2,12 +2,11 @@ package mcp
 
 import (
 	"context"
-
-	"github.com/mark3labs/mcp-go/mcp"
-
 	"tangoforge/internal/guide"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // toolSkillInfo 查询 Skill 技能包详情（skill_info，TF-033 语义迁移：全局技能库而非项目目录）。
@@ -19,7 +18,7 @@ var toolSkillInfo = mcp.NewTool("skill_info",
 
 // handleSkillInfo skill_info 处理器（skill.read）。
 func (s *Server) handleSkillInfo(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return s.exec(ctx, "skill.read", req.GetArguments(), func(ctx context.Context, workdir string, args map[string]any) (any, error) {
+	return s.exec(ctx, "skill.read", req.GetArguments(), func(ctx context.Context, _ string, args map[string]any) (any, error) {
 		name := strArg(args, "name", "")
 		if name == "" {
 			return nil, task.NewInvalid("缺少必填参数 name")

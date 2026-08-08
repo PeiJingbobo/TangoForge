@@ -143,7 +143,7 @@ func (s *Service) Info(ctx context.Context, name string) (Package, error) {
 
 // WriteUserPackage 将自定义 SKILL.md 写入全局技能库 {home}/.taskboard-app/skills/<name>/SKILL.md。
 // 校验 frontmatter（name 必须存在且与参数一致）；返回写入后的包。
-func (s *Service) WriteUserPackage(ctx context.Context, name, content string) (Package, error) {
+func (s *Service) WriteUserPackage(_ context.Context, name, content string) (Package, error) {
 	pkg, ok := parseSKILLMD(content)
 	if !ok {
 		return Package{}, fmt.Errorf("%w: frontmatter 缺失或 name 为空", ErrInvalidPackage)
@@ -165,7 +165,7 @@ func (s *Service) WriteUserPackage(ctx context.Context, name, content string) (P
 }
 
 // DefaultTemplate 返回全局默认模板内容；不存在时返回内置模板（_template 兜底）。
-func (s *Service) DefaultTemplate(ctx context.Context) (string, error) {
+func (s *Service) DefaultTemplate(_ context.Context) (string, error) {
 	path := s.TemplatePath()
 	if data, err := os.ReadFile(path); err == nil {
 		return string(data), nil
@@ -180,7 +180,7 @@ func (s *Service) DefaultTemplate(ctx context.Context) (string, error) {
 
 // WriteTemplate 将自定义默认模板写入 {home}/.taskboard-app/skills/_template/SKILL.md。
 // 模板允许占位符（name/description 等），不做 frontmatter 强校验（区别于普通包）。
-func (s *Service) WriteTemplate(ctx context.Context, content string) error {
+func (s *Service) WriteTemplate(_ context.Context, content string) error {
 	dir := filepath.Join(s.GlobalSkillsDir(), TemplateDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("skill: mkdir template: %w", err)

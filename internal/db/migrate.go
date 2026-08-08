@@ -246,7 +246,7 @@ var ProjectMigrations = []Migration{
 				var id string
 				var n int64
 				if err := rows.Scan(&id, &n); err != nil {
-					rows.Close()
+					_ = rows.Close()
 					return err
 				}
 				ids = append(ids, id)

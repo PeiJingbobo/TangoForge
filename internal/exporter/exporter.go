@@ -21,12 +21,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/task"
+	"text/template"
+	"time"
 )
 
 // 业务错误码（docs/TASK-SEMANTICS.md §18.4）。

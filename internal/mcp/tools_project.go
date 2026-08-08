@@ -35,7 +35,7 @@ var toolProjectCreate = mcp.NewTool("project_create",
 )
 
 // handleProjectList project_list 处理器（全局，无权限/无 project 参数）。
-func (s *Server) handleProjectList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Server) handleProjectList(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	list, err := s.deps.Projects.List(ctx)
 	if err != nil {
 		return toolError(err)

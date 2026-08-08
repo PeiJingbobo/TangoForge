@@ -16,10 +16,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"time"
 )
 
 // ErrNotFound 表示目标项目注册记录不存在。
@@ -318,12 +317,12 @@ func (s *Service) Check(ctx context.Context, workdir string) (CheckResult, error
 	}
 
 	res := CheckResult{}
-	if p, ok, err := s.findByWorkdir(ctx, clean); err != nil {
+	p, ok, err := s.findByWorkdir(ctx, clean)
+	if err != nil {
 		return res, err
-	} else {
-		res.Registered = ok
-		res.Onboarded = ok && !p.Hidden
 	}
+	res.Registered = ok
+	res.Onboarded = ok && !p.Hidden
 
 	metaDir := filepath.Join(clean, ".taskboard")
 	if _, err := os.Stat(metaDir); errors.Is(err, os.ErrNotExist) {

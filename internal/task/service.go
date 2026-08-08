@@ -10,12 +10,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"tangoforge/internal/config"
+	"tangoforge/internal/db"
 	"time"
 
 	"github.com/google/uuid"
-
-	"tangoforge/internal/config"
-	"tangoforge/internal/db"
 )
 
 // Service 任务域业务服务（三端共享入口：HTTP / MCP / CLI，docs/TECHNICAL.md §2.3）。

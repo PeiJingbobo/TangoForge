@@ -7,10 +7,9 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/task"
+	"testing"
 )
 
 // mockLLMResponse 返回固定内容的 mock OpenAI 服务。

@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/audit"
 	"tangoforge/internal/config"
+	"testing"
 )
 
 // projectConfigGet 以 UI 身份 GET /api/project-config 并返回 data 原始 JSON。
@@ -20,7 +19,7 @@ func projectConfigGet(t *testing.T, srv *Server, project string) string {
 
 func TestProjectConfigGet_DefaultsAfterImport(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	body := projectConfigGet(t, srv, dir)
@@ -35,7 +34,7 @@ func TestProjectConfigGet_DefaultsAfterImport(t *testing.T) {
 
 func TestProjectConfigGet_AgentDeniedByDefault(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	// agent 默认无 state_machine.read → 403。
@@ -48,7 +47,7 @@ func TestProjectConfigGet_AgentDeniedByDefault(t *testing.T) {
 
 func TestProjectConfigPut_NonUIForbidden(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	body := `{"StateMachine":{"States":[{"Key":"todo","Label":"待办","Color":"#999"}],"Transitions":[]},"Export":{"TemplatePath":""}}`
@@ -61,7 +60,7 @@ func TestProjectConfigPut_NonUIForbidden(t *testing.T) {
 
 func TestProjectConfigPut_SuccessPersist(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	body := `{"StateMachine":{"States":[
@@ -98,7 +97,7 @@ func TestProjectConfigPut_SuccessPersist(t *testing.T) {
 
 func TestProjectConfigPut_InvalidTransition(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	// to 引用不存在的状态 → 编辑校验失败 400 TASK_INVALID，不落盘。
@@ -120,7 +119,7 @@ func TestProjectConfigPut_InvalidTransition(t *testing.T) {
 
 func TestProjectConfigPut_StatusInUse(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	// 建一个 todo 任务 → 删除 todo 状态 → 422 STATUS_IN_USE。
@@ -136,7 +135,7 @@ func TestProjectConfigPut_StatusInUse(t *testing.T) {
 
 func TestProjectConfigPut_PreservesUnknownSections(t *testing.T) {
 	srv := newAPIServer(t, nil)
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 	dir := importProjectViaAPI(t, srv)
 
 	// 预写未知节到 config.yaml（默认配置 + 追加未知节，模拟未来扩展）。

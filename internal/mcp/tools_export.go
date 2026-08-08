@@ -2,10 +2,9 @@ package mcp
 
 import (
 	"context"
+	"tangoforge/internal/exporter"
 
 	"github.com/mark3labs/mcp-go/mcp"
-
-	"tangoforge/internal/exporter"
 )
 
 // toolExportMarkdown 导出 Markdown（默认/LLM 模板 + overwrite/copy）。

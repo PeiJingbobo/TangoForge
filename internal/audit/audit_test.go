@@ -5,11 +5,10 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"testing"
-	"time"
-
 	"tangoforge/internal/db"
 	"tangoforge/internal/project"
+	"testing"
+	"time"
 )
 
 // newStore 构造审计存储（日志丢弃）。
@@ -127,10 +126,14 @@ func TestQuery_FilterAndPagination(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	for i := 0; i < 5; i++ {
-		store.Write(t.Context(), dir, Entry{Actor: "human", ActorClass: "agent",
-			Action: "task.created", Target: "t", Result: ResultOK})
-		store.Write(t.Context(), dir, Entry{Actor: "bot", ActorClass: "agent",
-			Action: "task.updated", Target: "t", Result: ResultOK})
+		store.Write(t.Context(), dir, Entry{
+			Actor: "human", ActorClass: "agent",
+			Action: "task.created", Target: "t", Result: ResultOK,
+		})
+		store.Write(t.Context(), dir, Entry{
+			Actor: "bot", ActorClass: "agent",
+			Action: "task.updated", Target: "t", Result: ResultOK,
+		})
 	}
 	waitFor(t, "10 records", func() bool {
 		res, err := store.Query(t.Context(), dir, Filter{})

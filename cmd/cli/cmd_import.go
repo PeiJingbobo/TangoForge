@@ -29,7 +29,7 @@ func hasFlagPrefix(s string) bool {
 // runImport import 子命令：preview / drafts / confirm / discard。
 func runImport(args []string, g cliGlobal) error {
 	if len(args) < 1 {
-		return fmt.Errorf("用法: tangoforge import <preview|drafts|confirm|discard> ...")
+		return fmt.Errorf("用法: tangoforge import <preview|drafts|confirm|discard>")
 	}
 	c := newCLIClient(g)
 	switch args[0] {
@@ -108,7 +108,7 @@ func runImport(args []string, g cliGlobal) error {
 		if err != nil {
 			return err
 		}
-		printOutput(g, resp, func(data json.RawMessage) string { return "草稿已丢弃" })
+		printOutput(g, resp, func(_ json.RawMessage) string { return "草稿已丢弃" })
 		return nil
 	}
 	return fmt.Errorf("未知 import 子命令: %s", args[0])

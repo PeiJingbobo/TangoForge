@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.22', '1.23']
+        go: ['1.25', '1.26']
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +48,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          # v1 线（latest 解析至 v1.64.8，go1.24 构建）不支持 go1.25 目标；
+          # 显式 v2.12.2（go1.25/1.26 支持，.golangci.yml 已迁移 v2 格式）
+          version: v2.12.2
           args: --timeout=5m
 
       - name: 单元测试（CGO_ENABLED=0 约束校验，docs/TECHNICAL.md §3.1）
@@ -68,7 +70,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
           cache: true
 
       - name: make build-all

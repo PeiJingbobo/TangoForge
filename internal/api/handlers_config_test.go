@@ -9,9 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/config"
+	"testing"
 )
 
 // uiConfigRequest 构造 UI 身份请求（回环 + X-UI-Token）。

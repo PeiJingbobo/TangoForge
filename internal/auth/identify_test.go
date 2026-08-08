@@ -3,9 +3,8 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
-	"testing"
-
 	"tangoforge/internal/config"
+	"testing"
 )
 
 // newCfg 构造带指定凭据的全局配置。

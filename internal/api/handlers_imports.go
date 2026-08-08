@@ -3,10 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"tangoforge/internal/parser"
 
 	"github.com/go-chi/chi/v5"
-
-	"tangoforge/internal/parser"
 )
 
 // handleImport POST /api/import（import.run，TF-018）：提交 Markdown 解析 → 生成草稿。

@@ -6,13 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"tangoforge/internal/audit"
+	"tangoforge/internal/config"
 	"testing"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
-
-	"tangoforge/internal/audit"
-	"tangoforge/internal/config"
 )
 
 // mcpPost 向 /mcp 发送 JSON-RPC 请求（回环来源）。

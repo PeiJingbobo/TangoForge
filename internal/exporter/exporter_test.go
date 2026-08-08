@@ -10,14 +10,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"testing"
-	"text/template"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/task"
+	"testing"
+	"text/template"
+	"time"
 )
 
 // newEnv 初始化临时项目（meta.db + 默认 config），返回 workdir 与任务服务。
@@ -45,7 +44,7 @@ func mockLLM(t *testing.T, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"choices":[{"message":{"content":%s}}]}`, strconv.Quote(body))))
+		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"content":%s}}]}`, strconv.Quote(body))
 	}))
 	t.Cleanup(srv.Close)
 	return srv

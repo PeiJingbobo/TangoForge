@@ -11,10 +11,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"tangoforge/internal/config"
 	"testing"
 	"time"
-
-	"tangoforge/internal/config"
 )
 
 // mockServer 可注入响应序列的 LLM mock 服务，并记录请求（供断言协议细节）。

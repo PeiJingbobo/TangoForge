@@ -20,16 +20,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
-
 	"tangoforge/internal/auth"
 	"tangoforge/internal/exporter"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // Deps MCP 工具执行所需的业务依赖（由调用方组装注入：
@@ -142,8 +141,8 @@ func toolError(err error) (*mcp.CallToolResult, error) {
 //  3. 权限校验（PermissionStore.Require，denied → 审计 + 错误）；
 //  4. 业务函数执行（fn 返回 data 或 error）。
 func (s *Server) exec(ctx context.Context, action string, args map[string]any,
-	fn func(ctx context.Context, workdir string, args map[string]any) (any, error)) (*mcp.CallToolResult, error) {
-
+	fn func(ctx context.Context, workdir string, args map[string]any) (any, error),
+) (*mcp.CallToolResult, error) {
 	actor := actorFromSession(ctx)
 	ctx = auth.WithActor(ctx, auth.FromMCP(actor))
 

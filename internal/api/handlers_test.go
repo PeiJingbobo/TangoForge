@@ -12,12 +12,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"testing"
-	"time"
-
 	"tangoforge/internal/audit"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"testing"
+	"time"
 )
 
 // newAPIServer 构造完整 API Server（真实 NewServer 自组装依赖）。
@@ -441,7 +440,7 @@ func TestAPI_ErrorCodeMappings(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	_ = json.Unmarshal([]byte(rec.Body.String()), &ta)
+	_ = json.Unmarshal(rec.Body.Bytes(), &ta)
 	createB, _ := json.Marshal(map[string]any{"title": "B", "depends_on": []string{ta.Data.ID}})
 	rec = uiReq(t, srv, http.MethodPost, "/api/tasks", dir, string(createB))
 	var tb struct {
@@ -449,7 +448,7 @@ func TestAPI_ErrorCodeMappings(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"data"`
 	}
-	_ = json.Unmarshal([]byte(rec.Body.String()), &tb)
+	_ = json.Unmarshal(rec.Body.Bytes(), &tb)
 	// A 依赖 B → 环。
 	updateA, _ := json.Marshal(map[string]any{"depends_on": []string{tb.Data.ID}})
 	rec = uiReq(t, srv, http.MethodPatch, "/api/tasks/"+ta.Data.ID, dir, string(updateA))

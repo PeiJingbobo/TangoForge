@@ -19,9 +19,6 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-
-	"github.com/go-chi/chi/v5"
-
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
@@ -31,6 +28,8 @@ import (
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Server 守护进程 HTTP 服务：持有可热切换的全局配置、全局注册表库连接与业务依赖。

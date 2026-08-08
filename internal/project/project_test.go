@@ -7,11 +7,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"testing"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"testing"
+	"time"
 )
 
 func newService(t *testing.T) *Service {

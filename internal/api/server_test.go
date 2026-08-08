@@ -12,11 +12,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"testing"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"testing"
+	"time"
 )
 
 // newTestServer 构造测试 Server（注册表用内存库，日志丢弃；skill 用临时 homeDir）。

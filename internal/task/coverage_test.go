@@ -4,11 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"testing"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"testing"
+	"time"
 )
 
 // TF-009 覆盖率收口——错误分支注入测试（QA Q9-A 策略，不引入新依赖）：

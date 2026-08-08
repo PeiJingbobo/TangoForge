@@ -11,11 +11,6 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"testing"
-	"time"
-
-	"github.com/mark3labs/mcp-go/mcp"
-
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
@@ -25,6 +20,10 @@ import (
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
 	"tangoforge/internal/task"
+	"testing"
+	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // newTestDeps 构造 MCP 测试依赖：临时项目（.taskboard + 默认权限）+ 业务服务全接线。

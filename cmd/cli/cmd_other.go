@@ -34,7 +34,7 @@ func runGraph(args []string, g cliGlobal) error {
 // runStateMachine state-machine 子命令：get / update。
 func runStateMachine(args []string, g cliGlobal) error {
 	if len(args) < 1 {
-		return fmt.Errorf("用法: tangoforge state-machine <get|update> ...")
+		return fmt.Errorf("用法: tangoforge state-machine <get|update>")
 	}
 	c := newCLIClient(g)
 	switch args[0] {
