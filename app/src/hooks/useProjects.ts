@@ -49,3 +49,32 @@ export function useRenameProject() {
     },
   })
 }
+
+/** 目录导入前置检查（TF-041 引导 Step 0）：{registered, has_meta, meta_valid, meta_reason} */
+export function useProjectCheck() {
+  return useMutation({
+    mutationFn: (workdir: string) =>
+      apiRequest<ProjectCheckResult>('/api/projects/check', {
+        method: 'POST',
+        body: { workdir },
+      }),
+  })
+}
+
+export interface ProjectCheckResult {
+  registered: boolean
+  has_meta: boolean
+  meta_valid: boolean
+  meta_reason?: string
+}
+
+/** 清空历史元数据（TF-041 引导：元数据过旧/损坏时重置；仅 UI） */
+export function useResetProjectMetadata() {
+  return useMutation({
+    mutationFn: (workdir: string) =>
+      apiRequest<{ reset: boolean }>('/api/projects/import/reset', {
+        method: 'POST',
+        body: { workdir },
+      }),
+  })
+}

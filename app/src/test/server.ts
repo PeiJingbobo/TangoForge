@@ -34,6 +34,14 @@ export const server = setupServer(
     }),
   ),
 
+  // TF-041 引导：目录检查（默认未注册、无元数据）。
+  http.post(`${DAEMON_BASE_URL}/api/projects/check`, () =>
+    HttpResponse.json({
+      code: 0,
+      data: { registered: false, has_meta: false, meta_valid: true },
+    }),
+  ),
+
   http.get(`${DAEMON_BASE_URL}/api/tasks`, () =>
     HttpResponse.json({
       code: 0,

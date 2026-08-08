@@ -3,10 +3,13 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -480,4 +483,93 @@ func waitAudit(t *testing.T, srv *Server, workdir string, cond func(*auditQueryR
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("audit condition not met within 1s")
+}
+
+// TF-041：POST /api/projects/check 返回目录前置状态（未注册/无元数据/有元数据合法/非法）。
+func TestProjectCheck(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+
+	// 全新目录：未注册、无元数据。
+	dir := t.TempDir()
+	body, _ := json.Marshal(map[string]string{"workdir": dir})
+	rec := uiReq(t, srv, http.MethodPost, "/api/projects/check", "", string(body))
+	out := mustCode(t, rec, http.StatusOK, "check fresh")
+	var check struct {
+		Data struct {
+			Registered bool   `json:"registered"`
+			HasMeta    bool   `json:"has_meta"`
+			MetaValid  bool   `json:"meta_valid"`
+			MetaReason string `json:"meta_reason"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &check); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, out)
+	}
+	if check.Data.Registered || check.Data.HasMeta {
+		t.Fatalf("fresh dir: %+v", check.Data)
+	}
+
+	// 导入后：已注册 + 有元数据 + 合法。
+	dir2 := importProjectViaAPI(t, srv)
+	body, _ = json.Marshal(map[string]string{"workdir": dir2})
+	rec = uiReq(t, srv, http.MethodPost, "/api/projects/check", "", string(body))
+	out = mustCode(t, rec, http.StatusOK, "check imported")
+	if err := json.Unmarshal([]byte(out), &check); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, out)
+	}
+	if !check.Data.Registered || !check.Data.HasMeta || !check.Data.MetaValid {
+		t.Fatalf("imported dir: %+v", check.Data)
+	}
+
+	// 手动造非法元数据：仅 .taskboard/ 目录无 config.yaml → 非法。
+	dir3 := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir3, ".taskboard"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body, _ = json.Marshal(map[string]string{"workdir": dir3})
+	rec = uiReq(t, srv, http.MethodPost, "/api/projects/check", "", string(body))
+	out = mustCode(t, rec, http.StatusOK, "check bad meta")
+	if err := json.Unmarshal([]byte(out), &check); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, out)
+	}
+	if !check.Data.HasMeta || check.Data.MetaValid {
+		t.Fatalf("bad meta dir: %+v", check.Data)
+	}
+}
+
+// TF-041：POST /api/projects/import/reset 清空历史元数据（仅 UI；未注册目录可清）。
+func TestProjectResetMetadata(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".taskboard"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	metaPath := filepath.Join(dir, ".taskboard")
+	if _, err := os.Stat(metaPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Agent 调用 → 403（仅 UI）。
+	body, _ := json.Marshal(map[string]string{"workdir": dir})
+	rec := agentReq(t, srv, http.MethodPost, "/api/projects/import/reset", "", string(body))
+	mustCode(t, rec, http.StatusForbidden, "reset agent forbidden")
+
+	// UI 调用 → 清空。
+	rec = uiReq(t, srv, http.MethodPost, "/api/projects/import/reset", "", string(body))
+	mustCode(t, rec, http.StatusOK, "reset ui")
+	if _, err := os.Stat(metaPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf(".taskboard 应被删除: %v", err)
+	}
+
+	// 已注册项目禁止重置。
+	dir2 := importProjectViaAPI(t, srv)
+	body, _ = json.Marshal(map[string]string{"workdir": dir2})
+	rec = uiReq(t, srv, http.MethodPost, "/api/projects/import/reset", "", string(body))
+	out := mustCode(t, rec, http.StatusBadRequest, "reset registered forbidden")
+	if apiCode(t, out) != "PROJECT_INVALID" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
 }

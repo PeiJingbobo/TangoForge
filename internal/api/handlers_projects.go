@@ -52,6 +52,44 @@ func (s *Server) handleProjectImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": p})
 }
 
+// handleProjectCheck 检查目录导入前置状态（POST /api/projects/check，TF-041 引导 Step 0）：
+// {registered, has_meta, meta_valid, meta_reason}。豁免 X-Project（目录可能未注册）。
+func (s *Server) handleProjectCheck(w http.ResponseWriter, r *http.Request) {
+	var req projectImportReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "请求体必须是 JSON {workdir: <绝对路径>}", "")
+		return
+	}
+	res, err := s.projects.Check(r.Context(), req.Workdir)
+	if err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": res})
+}
+
+// handleProjectResetMetadata 清空历史元数据（POST /api/projects/import/reset，TF-041 引导）：
+// 删除 {workdir}/.taskboard/（仅限未注册目录；元数据版本过旧/损坏时用户确认后重置）。
+// 仅 UI（删除元数据是破坏性操作）。
+func (s *Server) handleProjectResetMetadata(w http.ResponseWriter, r *http.Request) {
+	actor := auth.ActorFrom(r.Context())
+	if actor.Class != auth.ClassUI {
+		writeError(w, http.StatusForbidden, "PERMISSION_DENIED",
+			"重置元数据仅允许 UI 操作（回环 + X-UI-Token）", actor.Class)
+		return
+	}
+	var req projectImportReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "请求体必须是 JSON {workdir: <绝对路径>}", "")
+		return
+	}
+	if err := s.projects.ResetMetadata(r.Context(), req.Workdir); err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"reset": true}})
+}
+
 // handleProjectRemove 移除项目注册记录（DELETE /api/projects/:id）。
 //
 // 仅 UI（回环 + X-UI-Token，识别层保证）；Agent / 远程一律 403（QA 默认项 3：

@@ -2,10 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
+	"tangoforge/internal/llm"
 )
 
 // 全局配置端点（GET/PUT /api/config）——首选项页数据源（TF-029 布局改造新增）。
@@ -160,4 +163,99 @@ type llmPutView struct {
 	Retries     *int    `json:"retries"`
 	MaxTokens   *int    `json:"max_tokens"`
 	Concurrency *int    `json:"concurrency"`
+}
+
+// handleConfigTestLLM 测试大模型连接（POST /api/config/test，TF-041 引导 Step 1）。
+//
+// 语义：
+//   - 仅 UI（配置含密钥）；豁免 X-Project（全局配置）；
+//   - body 为**暂存** LLM 配置（未保存，引导流程先测后存）：
+//     {base_url, api_key, model, api_kind}（api_key 为空 → 沿用已保存配置，
+//     因为 GET 返回掩码不可逆，UI 留空表示不修改）；
+//   - 用该配置构造临时 llm.Client 发一个最小请求（"ping"），成功 → {ok:true}；
+//     失败 → 422 LLM_TEST_FAILED + 人类可读原因（不含密钥）。
+func (s *Server) handleConfigTestLLM(w http.ResponseWriter, r *http.Request) {
+	actor := auth.ActorFrom(r.Context())
+	if actor.Class != auth.ClassUI {
+		writeError(w, http.StatusForbidden, "PERMISSION_DENIED",
+			"测试大模型连接仅允许 UI 操作（回环 + X-UI-Token）", actor.Class)
+		return
+	}
+	var req struct {
+		BaseURL *string `json:"base_url"`
+		APIKey  *string `json:"api_key"`
+		Model   *string `json:"model"`
+		APIKind *string `json:"api_kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "请求体 JSON 解析失败", err.Error())
+		return
+	}
+	// 构造暂存配置：缺省字段沿用当前保存值。
+	cur := s.currentConfig()
+	cfg := cur.LLM
+	if req.BaseURL != nil {
+		cfg.BaseURL = strings.TrimSpace(*req.BaseURL)
+	}
+	if req.APIKey != nil && *req.APIKey != "" {
+		cfg.APIKey = *req.APIKey
+	}
+	if req.Model != nil {
+		cfg.Model = strings.TrimSpace(*req.Model)
+	}
+	if req.APIKind != nil {
+		cfg.APIKind = strings.TrimSpace(*req.APIKind)
+	}
+
+	// 最小连通性测试：单条极短请求。
+	client, err := llm.New(llm.FromConfig(cfg), s.logger)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "LLM_TEST_FAILED",
+			"大模型未完整配置（base_url / api_key / model）", err.Error())
+		return
+	}
+	_, err = client.Complete(r.Context(), llm.Request{System: "ping", User: "reply with ok"})
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "LLM_TEST_FAILED",
+			"连接失败: "+llmErrorText(err), "")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"ok": true}})
+}
+
+// llmErrorText 将 LLM 错误转为简洁人类可读文本（不含密钥）。
+func llmErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	// 常见 LLM 错误码 → 中文提示。
+	var code string
+	if errors.Is(err, llm.ErrNotConfigured) {
+		code = "LLM_NOT_CONFIGURED"
+	} else if errors.Is(err, llm.ErrTimeout) {
+		code = "LLM_TIMEOUT"
+	} else if errors.Is(err, llm.ErrAPIStatus) {
+		code = "LLM_API_ERROR"
+	} else if errors.Is(err, llm.ErrInvalidResponse) {
+		code = "LLM_INVALID_RESPONSE"
+	} else if errors.Is(err, llm.ErrTruncated) {
+		code = "LLM_TRUNCATED"
+	}
+	if code == "" {
+		return err.Error()
+	}
+	switch code {
+	case "LLM_NOT_CONFIGURED":
+		return "未配置（base_url / api_key / model 缺失）"
+	case "LLM_TIMEOUT":
+		return "请求超时（检查 base_url 与网络）"
+	case "LLM_API_ERROR":
+		return "API 返回错误（检查 api_key / base_url / api_kind）"
+	case "LLM_INVALID_RESPONSE":
+		return "响应格式异常（检查 api_kind 兼容类型）"
+	case "LLM_TRUNCATED":
+		return "响应被截断"
+	default:
+		return err.Error()
+	}
 }

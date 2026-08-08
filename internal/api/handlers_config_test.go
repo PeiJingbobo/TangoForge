@@ -213,3 +213,35 @@ func TestConfigPut_UpdateAPIKey(t *testing.T) {
 	}
 	_ = os.Remove(path)
 }
+
+// TF-041：POST /api/config/test 用暂存 LLM 配置测试连接（成功 → ok）。
+func TestConfigTestLLM_OK(t *testing.T) {
+	llmSrv := mockLLMResponse(t, "ok")
+	srv := newAPIServer(t, func(cfg *config.GlobalConfig) {
+		cfg.LLM = config.LLMConfig{BaseURL: llmSrv.URL, Model: "mock", APIKind: "openai", TimeoutSec: 5, Retries: 0}
+	})
+	defer func() { _ = srv.Close() }()
+
+	body, _ := json.Marshal(map[string]string{
+		"base_url": llmSrv.URL, "model": "mock", "api_kind": "openai",
+	})
+	rec := uiReq(t, srv, http.MethodPost, "/api/config/test", "", string(body))
+	out := mustCode(t, rec, http.StatusOK, "config test ok")
+	if !strings.Contains(out, `"ok":true`) {
+		t.Fatalf("响应: %s", out)
+	}
+}
+
+// TF-041：POST /api/config/test 未配置 → 422 LLM_TEST_FAILED。
+func TestConfigTestLLM_NotConfigured(t *testing.T) {
+	srv := newAPIServer(t, func(cfg *config.GlobalConfig) {
+		cfg.LLM = config.LLMConfig{} // 空配置
+	})
+	defer func() { _ = srv.Close() }()
+
+	rec := uiReq(t, srv, http.MethodPost, "/api/config/test", "", `{"base_url":"","model":""}`)
+	out := mustCode(t, rec, http.StatusUnprocessableEntity, "config test not configured")
+	if apiCode(t, out) != "LLM_TEST_FAILED" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
+}

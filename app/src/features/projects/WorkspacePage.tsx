@@ -7,12 +7,15 @@ import { useProjectStore } from '@/stores/project'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { OnboardingWizard } from '@/features/onboarding/OnboardingWizard'
+import { getOnboardingState, isOnboardingCompleted } from '@/features/onboarding/state'
 import type { Project } from '@/types/models'
 
 /**
- * 项目概览（TF-029：公共一级「项目概览」）：
+ * 项目概览（TF-029 / TF-041 引导）：
  * 欢迎引导 + 导入入口 + 最近项目（点击激活进入看板）。
- * 项目列表主体在左侧全局导航（AppLayout）。
+ * 选择目录后进入「项目导入引导流程」（OnboardingWizard，6 步走马灯）；
+ * 中途关闭 → 步骤持久化，下次同一目录续走；完成后直接进入项目。
  */
 export function WorkspacePage() {
   const { data: projects } = useProjects()
@@ -22,18 +25,26 @@ export function WorkspacePage() {
 
   const [manualPath, setManualPath] = useState('')
   const [busy, setBusy] = useState(false)
+  const [wizardDir, setWizardDir] = useState<string | null>(null)
 
   const openProject = (p: Project) => {
     setProject(p.workdir)
     navigate(`/project/${encodeURIComponent(p.workdir)}/kanban`)
   }
 
-  const importDir = async (workdir: string) => {
+  /**
+   * 选择/输入目录后的入口：已完成引导或已注册项目 → 直接打开；
+   * 否则打开引导流程（未完成时从上次步骤续走）。
+   */
+  const handleDir = async (workdir: string) => {
     setBusy(true)
     try {
       const p = await importProject.mutateAsync({ workdir })
-      toast.success(`项目「${p.name}」已就绪`, { description: p.workdir })
-      openProject(p)
+      if (isOnboardingCompleted(workdir)) {
+        openProject(p)
+      } else {
+        setWizardDir(workdir) // 打开引导（续走或从头）
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '导入失败')
     } finally {
@@ -47,7 +58,16 @@ export function WorkspacePage() {
       return
     }
     const dir = await window.tangoforge.dialog.selectDirectory()
-    if (dir) await importDir(dir)
+    if (dir) await handleDir(dir)
+  }
+
+  // 最近项目点击：未完成引导 → 续走；已完成 → 直接进入。
+  const openProjectOrContinue = (p: Project) => {
+    if (!isOnboardingCompleted(p.workdir) && getOnboardingState(p.workdir)) {
+      setWizardDir(p.workdir)
+      return
+    }
+    openProject(p)
   }
 
   return (
@@ -69,9 +89,9 @@ export function WorkspacePage() {
         <Separator className="mb-5" />
         <h2 className="text-h3 text-foreground">导入工作目录</h2>
         <p className="mt-1 text-body text-muted-foreground">
-          选择项目工作目录，进入项目初始化流程
+          选择项目工作目录，进入项目引导流程
           <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-xs">.taskboard/</code>
-          自动创建并识别项目。
+          自动创建并识别项目（LLM / 导入 / 权限 / Skill 一键配置）。
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={() => void pickDirectory()} disabled={busy}>
@@ -83,7 +103,7 @@ export function WorkspacePage() {
             className="flex flex-1 gap-2"
             onSubmit={(e) => {
               e.preventDefault()
-              if (manualPath.trim()) void importDir(manualPath.trim())
+              if (manualPath.trim()) void handleDir(manualPath.trim())
             }}
           >
             <Input
@@ -113,29 +133,52 @@ export function WorkspacePage() {
           <Separator className="mb-5" />
           <h2 className="text-h3 text-foreground">最近项目</h2>
           <div className="mt-3 flex flex-col gap-2">
-            {projects.map((p) => (
-              <div
-                key={p.id}
-                className="flex cursor-pointer items-center justify-between rounded-xl border border-divider px-4 py-3 transition-colors hover:border-primary-300"
-                role="button"
-                tabIndex={0}
-                onClick={() => openProject(p)}
-                onKeyDown={(e) => e.key === 'Enter' && openProject(p)}
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold">{p.name}</div>
-                  <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                    {p.workdir}
+            {projects.map((p) => {
+              const pending = !isOnboardingCompleted(p.workdir) && !!getOnboardingState(p.workdir)
+              return (
+                <div
+                  key={p.id}
+                  className="flex cursor-pointer items-center justify-between rounded-xl border border-divider px-4 py-3 transition-colors hover:border-primary-300"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openProjectOrContinue(p)}
+                  onKeyDown={(e) => e.key === 'Enter' && openProjectOrContinue(p)}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      {p.name}
+                      {pending && (
+                        <span className="rounded-full bg-warning-soft px-2 py-px text-[10px] font-medium text-warning-ink">
+                          引导未完成
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                      {p.workdir}
+                    </div>
                   </div>
+                  <Button variant="ghost" size="sm">
+                    {pending ? '继续引导' : '打开'}
+                  </Button>
                 </div>
-                <Button variant="ghost" size="sm">
-                  打开
-                </Button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
+
+      {/* 引导流程 */}
+      <OnboardingWizard
+        open={!!wizardDir}
+        onOpenChange={(v) => {
+          if (!v) setWizardDir(null)
+        }}
+        workdir={wizardDir ?? ''}
+        onComplete={(wd) => {
+          const p = projects?.find((x) => x.workdir === wd)
+          if (p) openProject(p)
+        }}
+      />
     </div>
   )
 }

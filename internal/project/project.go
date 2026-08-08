@@ -276,6 +276,100 @@ func (s *Service) Touch(ctx context.Context, workdir string) error {
 	return nil
 }
 
+// CheckResult 目录导入前检查结果（TF-041 引导流程 Step 0）。
+type CheckResult struct {
+	// Registered 目录是否已注册为项目。
+	Registered bool `json:"registered"`
+	// HasMeta 是否存在 {workdir}/.taskboard/ 历史遗留元数据。
+	HasMeta bool `json:"has_meta"`
+	// MetaValid 元数据是否合法（config.yaml 可解析且状态机非空）。
+	// 非法 = 版本过旧/损坏 → 引导提示清空重来。
+	MetaValid bool `json:"meta_valid"`
+	// MetaReason 非法原因（人类可读，供 UI 展示）。
+	MetaReason string `json:"meta_reason,omitempty"`
+}
+
+// Check 检查目录是否可导入（TF-041）：已注册 / 历史元数据 / 元数据合法性。
+// 目录不存在/非目录/非绝对路径 → ErrInvalidWorkdir。
+func (s *Service) Check(ctx context.Context, workdir string) (CheckResult, error) {
+	clean := filepath.Clean(workdir)
+	if !filepath.IsAbs(clean) {
+		return CheckResult{}, fmt.Errorf("%w: %s 不是绝对路径", ErrInvalidWorkdir, workdir)
+	}
+	info, err := os.Stat(clean)
+	if err != nil {
+		return CheckResult{}, fmt.Errorf("%w: %s 不存在或不可访问", ErrInvalidWorkdir, workdir)
+	}
+	if !info.IsDir() {
+		return CheckResult{}, fmt.Errorf("%w: %s 不是目录", ErrInvalidWorkdir, workdir)
+	}
+
+	res := CheckResult{}
+	if _, ok, err := s.findByWorkdir(ctx, clean); err != nil {
+		return res, err
+	} else {
+		res.Registered = ok
+	}
+
+	metaDir := filepath.Join(clean, ".taskboard")
+	if _, err := os.Stat(metaDir); errors.Is(err, os.ErrNotExist) {
+		return res, nil // 无历史元数据 → 正常初始化
+	} else if err != nil {
+		return res, fmt.Errorf("project: stat %s: %w", metaDir, err)
+	}
+	res.HasMeta = true
+
+	// 元数据合法性：config.yaml 可解析 + 状态机非空 + meta.db 存在。
+	cfgPath := config.ProjectConfigPath(clean)
+	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
+		res.MetaValid = false
+		res.MetaReason = "config.yaml 缺失（元数据版本过旧或损坏）"
+		return res, nil
+	}
+	cfg, err := config.LoadProjectFile(cfgPath)
+	if err != nil {
+		res.MetaValid = false
+		res.MetaReason = fmt.Sprintf("config.yaml 解析失败: %v", err)
+		return res, nil
+	}
+	if len(cfg.StateMachine.States) == 0 {
+		res.MetaValid = false
+		res.MetaReason = "状态机为空（元数据版本过旧或损坏）"
+		return res, nil
+	}
+	// meta.db 存在性（核心业务库）。
+	if _, err := os.Stat(db.MetaDBPath(clean)); err != nil {
+		res.MetaValid = false
+		res.MetaReason = "meta.db 缺失（元数据损坏）"
+		return res, nil
+	}
+	res.MetaValid = true
+	return res, nil
+}
+
+// ResetMetadata 清空 {workdir}/.taskboard/ 历史元数据（TF-041 引导流程：
+// 元数据版本过旧/损坏时用户确认后重置）。仅删除元数据目录，
+// 不触碰用户工作目录其他内容；目录不存在视为成功（幂等）。
+func (s *Service) ResetMetadata(ctx context.Context, workdir string) error {
+	clean := filepath.Clean(workdir)
+	if !filepath.IsAbs(clean) {
+		return fmt.Errorf("%w: %s 不是绝对路径", ErrInvalidWorkdir, workdir)
+	}
+	// 已注册的项目不允许直接重置元数据（会破坏数据）——先移除注册再清。
+	// 引导流程中调用前已校验未注册（Check.Registered=false），此处防御。
+	if _, ok, err := s.findByWorkdir(ctx, clean); err != nil {
+		return err
+	} else if ok {
+		return fmt.Errorf("%w: %s 已注册为项目，禁止重置元数据", ErrInvalidWorkdir, workdir)
+	}
+	metaDir := filepath.Join(clean, ".taskboard")
+	if err := os.RemoveAll(metaDir); err != nil {
+		return fmt.Errorf("project: reset metadata %s: %w", metaDir, err)
+	}
+	s.logger.Info("project metadata reset", "workdir", clean)
+	return nil
+}
+
 // findByWorkdir 按工作目录查注册记录。
 func (s *Service) findByWorkdir(ctx context.Context, workdir string) (Project, bool, error) {
 	var p Project

@@ -248,6 +248,9 @@ func (s *Server) Handler() http.Handler {
 			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
 			r.Get("/", s.handleProjectList)
 			r.Post("/import", s.handleProjectImport)
+			// TF-041 引导流程：目录前置检查 / 清空历史元数据（均豁免 X-Project）。
+			r.Post("/check", s.handleProjectCheck)
+			r.Post("/import/reset", s.handleProjectResetMetadata)
 			r.Patch("/{id}", s.handleProjectRename) // TF-035 重命名（仅 UI）
 			r.Delete("/{id}", s.handleProjectRemove)
 		})
@@ -257,6 +260,8 @@ func (s *Server) Handler() http.Handler {
 			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
 			r.Get("/", s.handleConfigGet)
 			r.Put("/", s.handleConfigPut)
+			// TF-041 引导：LLM 连接测试（暂存配置，仅 UI）。
+			r.Post("/test", s.handleConfigTestLLM)
 		})
 
 		// 全局 Skill 模板组（QA-S4）：豁免 X-Project（模板存于全局技能库，与项目无关）；

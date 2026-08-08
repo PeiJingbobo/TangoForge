@@ -50,12 +50,15 @@ describe('WorkspacePage（项目概览）', () => {
     expect(useProjectStore.getState().project).toBe('/data/projects/tangoforge')
   })
 
-  it('手动输入路径导入 → setProject + 跳转', async () => {
+  it('手动输入路径导入（未完成引导）→ 打开引导流程对话框', async () => {
     const user = userEvent.setup()
     render(<WorkspacePage />, { wrapper })
     const input = screen.getByPlaceholderText('/Users/you/projects/backlog')
     await user.type(input, '/data/projects/demo')
     await user.click(screen.getByRole('button', { name: '导入该路径' }))
-    await waitFor(() => expect(useProjectStore.getState().project).toBe('/data/projects/demo'))
+    // 新目录未完成引导 → 弹引导对话框（Step 1/6 + 工作目录面板）。
+    await waitFor(() => expect(screen.getByText(/Step 1\/6/)).toBeInTheDocument())
+    expect(screen.getByText('工作目录')).toBeInTheDocument()
+    expect(screen.getByText('上一步')).toBeInTheDocument()
   })
 })

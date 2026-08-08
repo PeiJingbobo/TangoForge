@@ -50,3 +50,19 @@ export function useUpdateConfig() {
 export function isConfigInvalid(err: unknown): boolean {
   return err instanceof ApiError && err.code === 'CONFIG_INVALID'
 }
+
+/**
+ * LLM 连接测试（TF-041 引导 Step 1）：POST /api/config/test（仅 UI）。
+ * 用暂存配置测试连通性（未保存），成功后引导再 PUT /api/config 落盘。
+ */
+export function useTestLLM() {
+  return useMutation({
+    mutationFn: (cfg: { base_url?: string; api_key?: string; model?: string; api_kind?: string }) =>
+      apiRequest<{ ok: boolean }>('/api/config/test', { method: 'POST', body: cfg }),
+  })
+}
+
+/** 测试失败错误识别（422 LLM_TEST_FAILED） */
+export function isLLMTestFailed(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'LLM_TEST_FAILED'
+}
