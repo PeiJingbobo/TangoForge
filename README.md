@@ -51,9 +51,15 @@ TangoForge 将项目任务池、状态机、导入导出与 **Agent 协作** 打
 ### 安装依赖与构建
 
 ```bash
-# 后端
-go build -o bin/tangoforge ./cmd/cli
-go build -o bin/tangoforge-daemon ./cmd/daemon
+# 后端（显式指定平台；Windows 产物带 .exe）
+# macOS（arm64）
+GOOS=darwin GOARCH=arm64 go build -o bin/tangoforge ./cmd/cli
+GOOS=darwin GOARCH=arm64 go build -o bin/tangoforge-daemon ./cmd/daemon
+
+# Windows（amd64，PowerShell 语法）
+$env:GOOS="windows"; $env:GOARCH="amd64"
+go build -o bin\tangoforge.exe ./cmd/cli
+go build -o bin\tangoforge-daemon.exe ./cmd/daemon
 
 # 前端
 cd app && pnpm install
