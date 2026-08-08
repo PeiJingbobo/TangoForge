@@ -56,6 +56,22 @@ describe('TreeNav（树形导航）', () => {
     expect(screen.getByRole('button', { name: '任务 独立任务 B' })).toBeInTheDocument()
   })
 
+  it('搜索：按任务编号匹配（TF-042）', async () => {
+    const user = userEvent.setup()
+    const tree = [{ ...mk('b', '独立任务 B'), number: 'T005' }]
+    render(<TreeNav tree={tree} onSelect={() => {}} />)
+    await user.type(screen.getByRole('textbox', { name: '搜索任务树' }), 'T005')
+    expect(screen.getByRole('button', { name: '任务 独立任务 B' })).toBeInTheDocument()
+  })
+
+  it('搜索：按任务内容匹配（TF-042）', async () => {
+    const user = userEvent.setup()
+    const tree = [{ ...mk('b', '独立任务 B'), description: '包含鉴权流程说明' }]
+    render(<TreeNav tree={tree} onSelect={() => {}} />)
+    await user.type(screen.getByRole('textbox', { name: '搜索任务树' }), '鉴权')
+    expect(screen.getByRole('button', { name: '任务 独立任务 B' })).toBeInTheDocument()
+  })
+
   it('点击任务触发 onSelect', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()

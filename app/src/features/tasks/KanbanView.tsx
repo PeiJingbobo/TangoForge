@@ -27,6 +27,7 @@ import { useEventInvalidator } from '@/hooks/useEvents'
 import { useKanbanMutations } from '@/hooks/useKanban'
 import { useProjectId } from '@/hooks/useProject'
 import { useTaskDrawerStore } from '@/stores/task-drawer'
+import { matchesTaskQuery } from '@/lib/task-search'
 import type { Task } from '@/types/task'
 import { cn } from '@/lib/utils'
 
@@ -55,12 +56,8 @@ export function KanbanView() {
     () =>
       allTasks.filter((t) => {
         if (t.status === 'archived') return false
-        if (query) {
-          const q = query.toLowerCase()
-          if (!t.title.toLowerCase().includes(q) && !t.description?.toLowerCase().includes(q)) {
-            return false
-          }
-        }
+        // 同时匹配编号 / 标题 / 内容（TF-042）
+        if (!matchesTaskQuery(t, query)) return false
         if (tagFilter && !t.tags.includes(tagFilter)) return false
         return true
       }),
@@ -134,7 +131,7 @@ export function KanbanView() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索任务…"
+              placeholder="搜索编号 / 标题 / 内容…"
               aria-label="搜索任务"
               className="h-9 w-52 rounded-full pl-9 text-sm"
             />

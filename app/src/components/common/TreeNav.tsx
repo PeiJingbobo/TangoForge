@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { matchesTaskQuery } from '@/lib/task-search'
 import type { TaskTreeNode } from '@/types/task'
 import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 
@@ -19,8 +20,8 @@ export function TreeNav({ tree, currentId, onSelect }: TreeNavProps) {
   const [query, setQuery] = useState('')
 
   const matches = (node: TaskTreeNode): boolean => {
-    if (!query) return true
-    return node.title.toLowerCase().includes(query.toLowerCase())
+    // 同时匹配编号 / 标题 / 内容（TF-042）
+    return matchesTaskQuery(node, query)
   }
 
   const filterTree = (nodes: TaskTreeNode[]): TaskTreeNode[] => {
@@ -105,7 +106,7 @@ export function TreeNav({ tree, currentId, onSelect }: TreeNavProps) {
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="搜索任务…"
+        placeholder="搜索编号 / 标题 / 内容…"
         aria-label="搜索任务树"
         className="mb-3 w-full shrink-0 rounded-full border border-input bg-card px-3.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary-400 focus:ring-[3px] focus:ring-primary-100"
       />

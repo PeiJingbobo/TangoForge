@@ -9,6 +9,7 @@ import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
 import { useProjectId } from '@/hooks/useProject'
 import { useTaskDrawerStore } from '@/stores/task-drawer'
+import { matchesTaskQuery } from '@/lib/task-search'
 import type { Task, TaskTreeNode } from '@/types/task'
 
 function TaskRow({ task, onClick }: { task: Task; onClick: (id: string) => void }) {
@@ -61,18 +62,18 @@ function ViewSearch({
 /** 时间线视图：按创建时间倒序（行式，非卡片）；搜索框固定 + 列表内部滚动。 */
 export function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: string) => void }) {
   const [query, setQuery] = useState('')
-  const q = query.trim().toLowerCase()
   const sorted = useMemo(
     () => [...tasks].sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [tasks],
   )
-  const visible = q ? sorted.filter((t) => t.title.toLowerCase().includes(q)) : sorted
+  // 同时匹配编号 / 标题 / 内容（TF-042）
+  const visible = useMemo(() => sorted.filter((t) => matchesTaskQuery(t, query)), [sorted, query])
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewSearch
         value={query}
         onChange={setQuery}
-        placeholder="搜索时间线任务…"
+        placeholder="搜索编号 / 标题 / 内容…"
         label="搜索时间线任务"
       />
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
@@ -81,7 +82,7 @@ export function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: st
         ))}
         {visible.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            {q ? '无匹配任务' : '没有任务'}
+            {query.trim() ? '无匹配任务' : '没有任务'}
           </p>
         )}
       </div>
@@ -100,14 +101,14 @@ export function StatusView({
   onOpen: (id: string) => void
 }) {
   const [query, setQuery] = useState('')
-  const q = query.trim().toLowerCase()
-  const filtered = q ? tasks.filter((t) => t.title.toLowerCase().includes(q)) : tasks
+  // 同时匹配编号 / 标题 / 内容（TF-042）
+  const filtered = useMemo(() => tasks.filter((t) => matchesTaskQuery(t, query)), [tasks, query])
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewSearch
         value={query}
         onChange={setQuery}
-        placeholder="搜索状态分类任务…"
+        placeholder="搜索编号 / 标题 / 内容…"
         label="搜索状态分类任务"
       />
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
@@ -132,7 +133,7 @@ export function StatusView({
           })}
           {filtered.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              {q ? '无匹配任务' : '没有任务'}
+              {query.trim() ? '无匹配任务' : '没有任务'}
             </p>
           )}
         </div>
