@@ -63,6 +63,10 @@ func (s *service) ImportTasks(ctx context.Context, workdir, sourceFile string, t
 	}
 
 	repo := newSQLRepo(conn)
+	// 简短编号（TF-040）：沿用文档编号；空/冲突 → 自动分配 T{n}（事务外读快照，WAL 铁律）。
+	if err := ensureTaskNumbers(ctx, repo, tasks); err != nil {
+		return ImportResult{}, err
+	}
 	// 依赖存在性：本批 + 库内（archived 允许，与 §9 一致）。
 	for i := range tasks {
 		t := &tasks[i]

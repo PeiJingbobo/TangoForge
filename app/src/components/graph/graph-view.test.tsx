@@ -15,6 +15,7 @@ function mkNode(id: string, status: string) {
     project_id: 1,
     parent_id: null,
     title: `任务 ${id}`,
+    number: '',
     description: '',
     status,
     priority: 0,

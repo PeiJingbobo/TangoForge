@@ -38,6 +38,7 @@
 ## 3. 创建（Create）语义
 
 - `title` 必填：去空白后为空 → `TASK_INVALID`。
+- `number`（TF-040 简短任务编号）：缺省自动分配 `T{n:03d}`（T001、T002…，取库内最大 T 序号 +1，含归档）；显式指定（如 `P0`/`T01`）须库内唯一（含归档），重复 → `TASK_INVALID`。编号创建后不可修改（Update 不含该字段）。
 - `status`：缺省默认 `todo`；显式传入则校验**存在于项目状态机 states**（读取项目 `config.yaml`，缺失回退默认四态），不存在 → `STATUS_NOT_FOUND`。`archived` 不可作为创建状态（系统保留态）。
 - `parent_id`：非空时校验存在且同项目 → `PARENT_NOT_FOUND`；父任务为 `archived` 时允许挂载（TF-007 归档父任务时会级联置空子任务 `parent_id`）。
 - `depends_on`：允许写入，不校验（见 §2）。

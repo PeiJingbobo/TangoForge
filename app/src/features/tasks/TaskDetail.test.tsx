@@ -18,6 +18,7 @@ const TASK_A: Task = {
   project_id: 1,
   parent_id: null,
   title: '前端 token 接入',
+  number: 'T01',
   description: '描述内容',
   status: 'todo',
   priority: 4,

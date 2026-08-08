@@ -8,6 +8,7 @@ function mk(id: string, status: string, children: TaskTreeNode[] = []): TaskTree
     project_id: 1,
     parent_id: null,
     title: id,
+    number: '',
     description: '',
     status,
     priority: 0,

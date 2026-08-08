@@ -205,6 +205,89 @@ var ProjectMigrations = []Migration{
 			return err
 		},
 	},
+	{
+		// v4（TF-040）：任务简短编号 number（如 T01）。加列 → 按 created_at 顺序回填
+		// 存量任务 → 唯一索引（编号必须唯一，创建/导入自动分配）。
+		Version: 4,
+		Name:    "add_task_number",
+		Up: func(ctx context.Context, tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx,
+				`ALTER TABLE tasks ADD COLUMN number TEXT NOT NULL DEFAULT ''`); err != nil {
+				return err
+			}
+			// 存量任务回填：按创建顺序分配 T01..Tn（NULL 或空号）。
+			rows, err := tx.QueryContext(ctx,
+				`SELECT id, ROW_NUMBER() OVER (ORDER BY created_at, id) FROM tasks`)
+			if err != nil {
+				return err
+			}
+			var ids []string
+			var seq []int64
+			for rows.Next() {
+				var id string
+				var n int64
+				if err := rows.Scan(&id, &n); err != nil {
+					rows.Close()
+					return err
+				}
+				ids = append(ids, id)
+				seq = append(seq, n)
+			}
+			if err := rows.Close(); err != nil {
+				return err
+			}
+			for i, id := range ids {
+				num := fmt.Sprintf("T%03d", seq[i])
+				if _, err := tx.ExecContext(ctx,
+					`UPDATE tasks SET number = ? WHERE id = ?`, num, id); err != nil {
+					return err
+				}
+			}
+			_, err = tx.ExecContext(ctx,
+				`CREATE UNIQUE INDEX idx_tasks_number ON tasks(number)`)
+			return err
+		},
+		Down: func(ctx context.Context, tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, `DROP INDEX IF EXISTS idx_tasks_number`); err != nil {
+				return err
+			}
+			// SQLite 旧版不支持 DROP COLUMN；重建表回退到 v3 结构。
+			stmts := []string{
+				`CREATE TABLE tasks_v3 (
+					id            TEXT PRIMARY KEY,
+					project_id    INTEGER NOT NULL,
+					parent_id     TEXT REFERENCES tasks(id),
+					title         TEXT NOT NULL,
+					description   TEXT NOT NULL DEFAULT '',
+					status        TEXT NOT NULL,
+					priority      INTEGER NOT NULL DEFAULT 0,
+					tags          TEXT NOT NULL DEFAULT '[]',
+					assignee      TEXT NOT NULL DEFAULT '',
+					depends_on    TEXT NOT NULL DEFAULT '[]',
+					archived_from TEXT,
+					source_file   TEXT,
+					source_section TEXT,
+					created_at    TEXT NOT NULL,
+					updated_at    TEXT NOT NULL
+				)`,
+				`INSERT INTO tasks_v3 (id, project_id, parent_id, title, description, status, priority,
+					tags, assignee, depends_on, archived_from, source_file, source_section, created_at, updated_at)
+					SELECT id, project_id, parent_id, title, description, status, priority,
+					tags, assignee, depends_on, archived_from, source_file, source_section, created_at, updated_at
+					FROM tasks`,
+				`DROP TABLE tasks`,
+				`ALTER TABLE tasks_v3 RENAME TO tasks`,
+				`CREATE INDEX idx_tasks_project ON tasks(project_id)`,
+				`CREATE INDEX idx_tasks_status ON tasks(project_id, status)`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.Exec(stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // Migrate 将数据库向上迁移至迁移集合中的最新版本。

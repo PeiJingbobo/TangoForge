@@ -90,6 +90,8 @@ export interface ImportConfirmResult {
 export interface ParsedTask {
   /** 草稿内临时唯一编号（LLM 生成；依赖 depends_on 引用该 id，与标题解耦） */
   id: string
+  /** 简短任务编号（TF-040）：文档自带编号（如 P0），无则空 → 入库自动分配 */
+  number?: string
   title: string
   description: string
   status: string

@@ -47,13 +47,13 @@ func newSQLRepo(db *sql.DB) TaskRepo { return &sqlRepo{q: db} }
 // newSQLRepoTx 构造绑定事务的 repo（归档/物理删除等原子操作使用）。
 func newSQLRepoTx(tx *sql.Tx) TaskRepo { return &sqlRepo{q: tx} }
 
-const taskColumns = `id, project_id, parent_id, title, description, status, priority,
+const taskColumns = `id, project_id, parent_id, title, number, description, status, priority,
 	tags, assignee, depends_on, archived_from, source_file, source_section, created_at, updated_at`
 
 func (r *sqlRepo) Create(ctx context.Context, t *Task) error {
 	_, err := r.q.ExecContext(ctx, `INSERT INTO tasks (`+taskColumns+`) VALUES
-		(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		t.ID, t.ProjectID, nullStr(t.ParentID), t.Title, t.Description, t.Status,
+		(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.ID, t.ProjectID, nullStr(t.ParentID), t.Title, t.Number, t.Description, t.Status,
 		t.Priority, jsonArr(t.Tags), t.Assignee, jsonArr(t.DependsOn),
 		nullStr(&t.ArchivedFrom), nullStr(&t.SourceFile), nullStr(&t.SourceSection),
 		formatTime(t.CreatedAt), formatTime(t.UpdatedAt))
@@ -137,9 +137,9 @@ func scanTask(s rowScanner) (*Task, error) {
 	var t Task
 	var parent, archivedFrom, sourceFile, sourceSection sql.NullString
 	var tagsStr, dependsStr, created, updated string
-	if err := s.Scan(&t.ID, &t.ProjectID, &parent, &t.Title, &t.Description, &t.Status,
-		&t.Priority, &tagsStr, &t.Assignee, &dependsStr, &archivedFrom, &sourceFile,
-		&sourceSection, &created, &updated); err != nil {
+	if err := s.Scan(&t.ID, &t.ProjectID, &parent, &t.Title, &t.Number, &t.Description,
+		&t.Status, &t.Priority, &tagsStr, &t.Assignee, &dependsStr, &archivedFrom,
+		&sourceFile, &sourceSection, &created, &updated); err != nil {
 		return nil, err
 	}
 	if parent.Valid {

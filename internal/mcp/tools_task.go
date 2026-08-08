@@ -27,6 +27,7 @@ var toolTaskCreate = mcp.NewTool("task_create",
 		"status 缺省 todo（须为项目状态机 key）；priority 支持 0-5 整数或别名（lowest/low/normal/high/highest 等）。"),
 	mcp.WithString("project", mcp.Required(), mcp.Description("项目工作目录绝对路径")),
 	mcp.WithString("title", mcp.Required(), mcp.Description("任务标题（必填）")),
+	mcp.WithString("number", mcp.Description("简短编号（如 T01/P0；缺省自动分配）")),
 	mcp.WithString("description", mcp.Description("任务描述")),
 	mcp.WithString("status", mcp.Description("状态机 key（缺省 todo）")),
 	mcp.WithAny("priority", mcp.Description("优先级：0-5 整数或字符串别名")),
@@ -102,6 +103,7 @@ func (s *Server) handleTaskCreate(ctx context.Context, req mcp.CallToolRequest) 
 	return s.exec(ctx, "task.create", req.GetArguments(), func(ctx context.Context, workdir string, args map[string]any) (any, error) {
 		in := task.CreateInput{
 			Title:       strArg(args, "title", ""),
+			Number:      strArg(args, "number", ""), // TF-040：空 = 自动分配
 			Description: strArg(args, "description", ""),
 			Assignee:    strArg(args, "assignee", ""),
 			Tags:        strArrayArg(args, "tags"),

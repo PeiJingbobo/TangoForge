@@ -74,6 +74,7 @@ type Options struct {
 type CreateInput struct {
 	ParentID    *string  `json:"parent_id"` // nil = 顶层任务
 	Title       string   `json:"title"`     // 必填，去空白后非空
+	Number      string   `json:"number"`    // 简短编号（TF-040）：空 = 自动分配 T{n}；指定须库内唯一
 	Description string   `json:"description"`
 	Status      *string  `json:"status"`   // nil = 默认 todo
 	Priority    any      `json:"priority"` // int 0-5 | 字符串别名（§3 归一化）
@@ -212,12 +213,24 @@ func (s *service) Create(ctx context.Context, workdir string, in CreateInput) (T
 		return Task{}, err
 	}
 
+	// 简短编号（TF-040）：未指定 → 自动分配；指定 → 校验库内唯一。
+	number := strings.TrimSpace(in.Number)
+	if number == "" {
+		number, err = nextTaskNumber(ctx, repo)
+		if err != nil {
+			return Task{}, err
+		}
+	} else if !s.numberAvailable(ctx, repo, number) {
+		return Task{}, NewInvalid("任务编号 %q 已存在", number)
+	}
+
 	now := time.Now()
 	t := Task{
 		ID:          id,
 		ProjectID:   1, // docs/TASK-SEMANTICS.md §1：项目库内固定写 1（文档性冗余）
 		ParentID:    in.ParentID,
 		Title:       title,
+		Number:      number,
 		Description: in.Description,
 		Status:      status,
 		Priority:    priority,

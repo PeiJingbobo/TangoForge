@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { TreeNav } from '@/components/common/TreeNav'
+import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTasks } from '@/hooks/useTasks'
@@ -19,6 +20,7 @@ function TaskRow({ task, onClick }: { task: Task; onClick: (id: string) => void 
       onKeyDown={(e) => e.key === 'Enter' && onClick(task.id)}
       className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-divider px-3.5 py-2.5 transition-colors hover:border-primary-300"
     >
+      <TaskNumberBadge number={task.number} />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{task.title}</span>
       {task.tags.slice(0, 2).map((t) => (
         <Badge key={t} variant="outline" className="hidden text-[10.5px] sm:inline-flex">

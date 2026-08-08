@@ -144,8 +144,8 @@ func TestMigrate_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current version: %v", err)
 	}
-	if v1 != v2 || v2 != 3 {
-		t.Errorf("version should stay 3 after idempotent migrate, got %d -> %d", v1, v2)
+	if v1 != v2 || v2 != 4 {
+		t.Errorf("version should stay 4 after idempotent migrate, got %d -> %d", v1, v2)
 	}
 }
 

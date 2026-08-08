@@ -19,6 +19,8 @@ export interface Task {
   /** 父任务 ID；null = 顶层任务 */
   parent_id: string | null
   title: string
+  /** 简短唯一编号（TF-040，如 T01；创建/导入自动分配，文档编号可沿用） */
+  number: string
   description: string
   /** 项目状态机 key（todo/doing/done/archived…） */
   status: string
@@ -50,6 +52,8 @@ export interface CreateTaskInput {
   parent_id?: string | null
   /** 必填，去空白后非空 */
   title: string
+  /** 简短编号（TF-040）；缺省 = 后端自动分配 T{n} */
+  number?: string
   description?: string
   /** 缺省 = todo；必须存在于项目状态机 */
   status?: string

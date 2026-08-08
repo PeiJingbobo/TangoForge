@@ -59,7 +59,8 @@ export function GraphView({ data, states, onSelect, className }: GraphViewProps)
         }))
       : nodes.map((n) => ({
           id: n.id,
-          label: n.title,
+          // TF-040：节点标签带简短编号前缀（可读）
+          label: n.number ? `${n.number} ${n.title}` : n.title,
           color: colorMap[n.status] ?? '#9aa0a6',
           isCluster: false,
         }))

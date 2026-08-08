@@ -196,3 +196,86 @@ func TestImportTasks_EmptyList(t *testing.T) {
 		t.Fatalf("空列表应报错: %v", err)
 	}
 }
+
+// TF-040：Create 自动分配编号（T01/T02 递增）；指定编号沿用；重复编号拒绝。
+func TestCreate_TaskNumber(t *testing.T) {
+	svc, wd, _ := importEnv(t)
+	ctx := context.Background()
+
+	a, err := svc.Create(ctx, wd, CreateInput{Title: "A"})
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	if a.Number != "T001" {
+		t.Fatalf("第一个任务编号 = %q, want T001", a.Number)
+	}
+	b, err := svc.Create(ctx, wd, CreateInput{Title: "B"})
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+	if b.Number != "T002" {
+		t.Fatalf("第二个任务编号 = %q, want T002", b.Number)
+	}
+	// 指定编号沿用。
+	c, err := svc.Create(ctx, wd, CreateInput{Title: "C", Number: "P0"})
+	if err != nil {
+		t.Fatalf("create C: %v", err)
+	}
+	if c.Number != "P0" {
+		t.Fatalf("指定编号 = %q, want P0", c.Number)
+	}
+	// 重复指定 → 拒绝。
+	if _, err := svc.Create(ctx, wd, CreateInput{Title: "D", Number: "P0"}); err == nil {
+		t.Fatalf("重复编号应被拒绝")
+	}
+	// 自动分配从库内最大序号推进（P0 不参与 T 序号，继续 T003）。
+	d, err := svc.Create(ctx, wd, CreateInput{Title: "D"})
+	if err != nil {
+		t.Fatalf("create D: %v", err)
+	}
+	if d.Number != "T003" {
+		t.Fatalf("编号 = %q, want T003", d.Number)
+	}
+}
+
+// TF-040：ImportTasks 沿用文档编号；空/冲突 → 自动分配。
+func TestImportTasks_TaskNumber(t *testing.T) {
+	svc, wd, _ := importEnv(t)
+	ctx := context.Background()
+
+	// 批内：沿用 P0/P1；空号自动分配 T001/T002。
+	_, err := svc.ImportTasks(ctx, wd, "/doc1.md", []Task{
+		{ID: "u1", Title: "A", Status: "todo", Number: "P0"},
+		{ID: "u2", Title: "B", Status: "todo", Number: ""},
+		{ID: "u3", Title: "C", Status: "todo", Number: "P1"},
+		{ID: "u4", Title: "D", Status: "todo", Number: ""},
+	})
+	if err != nil {
+		t.Fatalf("import1: %v", err)
+	}
+	a, _ := svc.Get(ctx, wd, "u1")
+	b, _ := svc.Get(ctx, wd, "u2")
+	d, _ := svc.Get(ctx, wd, "u4")
+	if a.Number != "P0" || d.Number != "T002" {
+		t.Fatalf("沿用/分配: A=%q D=%q (want P0/T002)", a.Number, d.Number)
+	}
+	if b.Number != "T001" {
+		t.Fatalf("B 编号 = %q, want T001", b.Number)
+	}
+	// 第二次导入：文档编号与库内冲突 → 自动分配；新空号从库内最大推进。
+	_, err = svc.ImportTasks(ctx, wd, "/doc2.md", []Task{
+		{ID: "v1", Title: "E", Status: "todo", Number: "P0"}, // 与库内 P0 冲突
+		{ID: "v2", Title: "F", Status: "todo", Number: "P9"},
+	})
+	if err != nil {
+		t.Fatalf("import2: %v", err)
+	}
+	e, _ := svc.Get(ctx, wd, "v1")
+	f, _ := svc.Get(ctx, wd, "v2")
+	if e.Number == "P0" {
+		t.Fatalf("冲突编号应自动重编, got %q", e.Number)
+	}
+	if f.Number != "P9" {
+		t.Fatalf("F 编号 = %q, want P9", f.Number)
+	}
+}

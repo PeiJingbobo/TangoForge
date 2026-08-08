@@ -338,6 +338,7 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 	for _, f := range flattened {
 		t := task.Task{
 			ID:            f.ID,
+			Number:        f.Number,
 			Title:         f.Title,
 			Description:   f.Description,
 			Status:        f.Status,
@@ -567,6 +568,7 @@ func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask, counter 
 		}
 		out = append(out, ParsedTask{
 			ID:          id,
+			Number:      strings.TrimSpace(rt.Number),
 			Title:       title,
 			Description: rt.Description,
 			Status:      status,
@@ -631,6 +633,7 @@ func flattenTasks(tasks []ParsedTask, prefix string) ([]flattenResult, error) {
 		out = append(out, flattenResult{
 			RefID:       t.ID,
 			ID:          uuid.NewString(),
+			Number:      strings.TrimSpace(t.Number),
 			Title:       t.Title,
 			Description: t.Description,
 			Status:      t.Status,

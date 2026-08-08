@@ -13,6 +13,7 @@ function mk(id: string, status: string): Task {
     project_id: 1,
     parent_id: null,
     title: id,
+    number: '',
     description: '',
     status,
     priority: 0,

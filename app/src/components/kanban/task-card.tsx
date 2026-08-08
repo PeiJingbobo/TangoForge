@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task } from '@/types/task'
 import { cn } from '@/lib/utils'
+import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 
 /**
  * 优先级色带（docs/UI-VISION 语义色；红高灰低）：
@@ -98,6 +99,7 @@ export const TaskCard = memo(function TaskCard({ task, onOpen, overlay = false }
         )}
       />
       <div className="line-clamp-2 text-sm font-semibold leading-snug tracking-[-0.005em]">
+        <TaskNumberBadge number={task.number} className="mr-1.5 translate-y-[-1px]" />
         {task.title}
       </div>
       {task.tags.length > 0 && (

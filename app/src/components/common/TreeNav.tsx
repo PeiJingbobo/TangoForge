@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TaskTreeNode } from '@/types/task'
+import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 
 /**
  * 树形任务导航（TF-026）：折叠/展开、缩进、搜索过滤、当前任务高亮。
@@ -81,7 +82,10 @@ export function TreeNav({ tree, currentId, onSelect }: TreeNavProps) {
           ) : (
             <span className="w-4 shrink-0" />
           )}
-          <span className="truncate">{node.title}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <TaskNumberBadge number={node.number} />
+            <span className="truncate">{node.title}</span>
+          </span>
           {hasChildren && (
             <span className="ml-auto text-caption text-muted-foreground">
               {node.children.length}

@@ -26,6 +26,7 @@ type Task struct {
 	ProjectID     int64     `json:"project_id" db:"project_id"`         // 所属项目
 	ParentID      *string   `json:"parent_id" db:"parent_id"`           // 父任务 ID（nil = 顶层任务）
 	Title         string    `json:"title" db:"title"`                   //
+	Number        string    `json:"number" db:"number"`                 // 简短唯一编号（TF-040，如 T01；创建/导入自动分配，文档编号可沿用）
 	Description   string    `json:"description" db:"description"`       //
 	Status        string    `json:"status" db:"status"`                 // 项目状态机 key（默认 todo/doing/done/archived）
 	Priority      int       `json:"priority" db:"priority"`             // 0-5，0=最低

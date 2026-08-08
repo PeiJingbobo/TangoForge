@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 import { cn } from '@/lib/utils'
 import type { StateMachineState } from '@/types/models'
 import type { Task, UpdateTaskInput } from '@/types/task'
@@ -116,7 +117,10 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
     <div>
       {/* 标题（只读纯文本 / 点击行内编辑） */}
       {readOnly ? (
-        <h1 className="text-h1 text-foreground">{title}</h1>
+        <h1 className="flex items-center gap-2 text-h1 text-foreground">
+          <TaskNumberBadge number={task.number} className="translate-y-[-2px] text-sm" />
+          {title}
+        </h1>
       ) : editingTitle ? (
         <div className="flex items-center gap-2">
           <Input
@@ -142,8 +146,9 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
           className="group flex w-full items-start gap-2 text-left"
           aria-label="编辑标题"
         >
-          <h1 className="min-w-0 flex-1 text-h1 text-foreground break-words group-hover:text-primary-600">
-            {title}
+          <h1 className="flex min-w-0 flex-1 items-center gap-2 text-h1 text-foreground break-words group-hover:text-primary-600">
+            <TaskNumberBadge number={task.number} className="translate-y-[-2px] text-sm" />
+            <span className="min-w-0 break-words">{title}</span>
           </h1>
           <span className="mt-2 hidden shrink-0 items-center gap-1 text-caption text-muted-foreground group-hover:flex">
             <Pencil className="size-3" /> 点击编辑标题

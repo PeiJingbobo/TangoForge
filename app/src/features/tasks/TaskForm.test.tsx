@@ -19,6 +19,7 @@ function mk(id: string, over: Partial<Task> = {}): Task {
     project_id: 1,
     parent_id: null,
     title: `任务 ${id}`,
+    number: '',
     description: '描述内容',
     status: 'todo',
     priority: 0,

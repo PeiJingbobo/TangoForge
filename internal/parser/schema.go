@@ -28,6 +28,7 @@ type ParsedTask struct {
 	// ID 草稿内临时唯一编号（LLM 生成，如 T1/T2；缺失/重复由 normalize 自动补齐修正）。
 	// 草稿依赖 depends_on 通过该 ID 引用，与任务标题解耦（后续修改任务标题不影响依赖关系）。
 	ID          string       `json:"id"`
+	Number      string       `json:"number"` // 简短任务编号（TF-040）：文档自带编号（如 P0），无则空 → 入库自动分配
 	Title       string       `json:"title"`
 	Description string       `json:"description"`
 	Status      string       `json:"status"`   // 已映射为项目状态机 key（§17.2）
@@ -44,7 +45,8 @@ type rawParseOutput struct {
 }
 
 type rawTask struct {
-	ID          string    `json:"id"` // 临时唯一编号（LLM 生成，如 T1/T2；可选，缺失自动补）
+	ID          string    `json:"id"`     // 临时唯一编号（LLM 生成，如 T1/T2；可选，缺失自动补）
+	Number      string    `json:"number"` // 简短任务编号（TF-040）：文档自带编号（如标题前 P0），无则空
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Status      any       `json:"status"` // 状态机 key 或 label
@@ -68,7 +70,8 @@ func buildSystemPrompt() string {
 5. priority 输出 0-5 整数或字符串别名（lowest/low/normal/high/highest/critical/urgent）。
 6. 每个任务必须输出一个唯一的 id（建议 T1、T2、T3… 形式，简短、全局唯一；子任务也在同一编号体系内递增）。
 7. depends_on 输出被依赖任务的【id】（必须引用本文档中已经定义过的任务 id），不要输出任务标题或文档序号。
-8. 保持任务顺序与文档一致。`
+8. number 输出文档中任务自带的简短编号（如标题前缀 "P0"、"T01"）；文档没有编号则输出空字符串 ""。
+9. 保持任务顺序与文档一致。`
 }
 
 // buildJSONSchema 构造 JSON Schema 描述（追加进 user 提示，约束 LLM 输出）。
@@ -84,6 +87,7 @@ func buildJSONSchema() string {
         "required": ["title", "status"],
         "properties": {
           "id": {"type": "string", "description": "临时唯一编号（如 T1/T2，仅草稿内依赖引用）"},
+          "number": {"type": "string", "description": "简短任务编号：文档自带编号（如 P0/T01），无则空字符串"},
           "title": {"type": "string"},
           "description": {"type": "string"},
           "status": {"type": "string"},
@@ -154,6 +158,7 @@ func mapStatus(sm config.StateMachine, raw any) (string, bool) {
 type flattenResult struct {
 	RefID       string   `json:"ref_id"` // 草稿内临时唯一 ID（LLM 编号，依赖解析主索引）
 	ID          string   `json:"id"`
+	Number      string   `json:"number"` // 简短任务编号（TF-040）：文档编号或空 → 入库自动分配
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Status      string   `json:"status"`
