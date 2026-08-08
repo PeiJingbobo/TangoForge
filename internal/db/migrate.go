@@ -37,6 +37,8 @@ const schemaMigrationsDDL = `CREATE TABLE IF NOT EXISTS schema_migrations (
 //
 // v1：projects 表（项目注册表，仅记录「项目名称 + 工作目录」，不含业务数据；
 // 移除记录绝不删除磁盘 .taskboard/ 数据）。
+// v2（TF-043）：projects 加 hidden 列——导入默认隐藏（引导完成前不在列表展示），
+// 走完导入引导（欢迎页）后置 0 可见；AI 入口（MCP project_import/create）注册即可见。
 var GlobalMigrations = []Migration{
 	{
 		Version: 1,
@@ -53,6 +55,23 @@ var GlobalMigrations = []Migration{
 		},
 		Down: func(_ context.Context, tx *sql.Tx) error {
 			_, err := tx.Exec(`DROP TABLE IF EXISTS projects`)
+			return err
+		},
+	},
+	{
+		Version: 2,
+		Name:    "add_projects_hidden",
+		Up: func(_ context.Context, tx *sql.Tx) error {
+			// 存量项目视为已完成引导（可见）；新导入默认 hidden=1（引导中暂时隐藏）。
+			_, err := tx.Exec(`ALTER TABLE projects ADD COLUMN hidden INTEGER NOT NULL DEFAULT 1`)
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(`UPDATE projects SET hidden = 0`)
+			return err
+		},
+		Down: func(_ context.Context, tx *sql.Tx) error {
+			_, err := tx.Exec(`ALTER TABLE projects DROP COLUMN hidden`)
 			return err
 		},
 	},

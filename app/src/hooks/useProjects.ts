@@ -50,7 +50,8 @@ export function useRenameProject() {
   })
 }
 
-/** 目录导入前置检查（TF-041 引导 Step 0）：{registered, has_meta, meta_valid, meta_reason} */
+/** 目录导入前置检查（TF-041 引导 Step 0；TF-043 加 onboarded）：
+ *  {registered, onboarded, has_meta, meta_valid, meta_reason} */
 export function useProjectCheck() {
   return useMutation({
     mutationFn: (workdir: string) =>
@@ -63,9 +64,26 @@ export function useProjectCheck() {
 
 export interface ProjectCheckResult {
   registered: boolean
+  /** 引导是否已完成（TF-043：已注册且 hidden=0）——完成后选择目录可直接进入 */
+  onboarded: boolean
   has_meta: boolean
   meta_valid: boolean
   meta_reason?: string
+}
+
+/** 标记项目引导完成（TF-043：暂时隐藏 → 列表可见；仅 UI） */
+export function useCompleteOnboarding() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (workdir: string) =>
+      apiRequest<Project>('/api/projects/complete', {
+        method: 'POST',
+        body: { workdir },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.projects })
+    },
+  })
 }
 
 /** 清空历史元数据（TF-041 引导：元数据过旧/损坏时重置；仅 UI） */

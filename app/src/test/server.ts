@@ -38,7 +38,7 @@ export const server = setupServer(
   http.post(`${DAEMON_BASE_URL}/api/projects/check`, () =>
     HttpResponse.json({
       code: 0,
-      data: { registered: false, has_meta: false, meta_valid: true },
+      data: { registered: false, onboarded: false, has_meta: false, meta_valid: true },
     }),
   ),
 

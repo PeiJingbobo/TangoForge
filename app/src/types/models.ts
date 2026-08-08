@@ -14,6 +14,8 @@ export interface Project {
   workdir: string
   created_at: string
   last_opened_at: string | null
+  /** 暂时隐藏（TF-043）：引导未完成的项目不在列表展示 */
+  hidden?: boolean
 }
 
 export interface ProjectImportRequest {

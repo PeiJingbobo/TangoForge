@@ -58,13 +58,16 @@ var DefaultGrantedActions = map[string]bool{
 	"permission.read": true,
 }
 
-// Project 项目注册表记录（projects 表，仅「名称 + 工作目录」）。
+// Project 项目注册表记录（projects 表，仅「名称 + 工作目录 + 可见性」）。
 type Project struct {
 	ID           int64   `json:"id" db:"id"`
 	Name         string  `json:"name" db:"name"`
 	Workdir      string  `json:"workdir" db:"workdir"`
 	CreatedAt    string  `json:"created_at" db:"created_at"` // RFC3339 本地时区
 	LastOpenedAt *string `json:"last_opened_at" db:"last_opened_at"`
+	// Hidden 暂时隐藏（TF-043）：UI 导入默认隐藏（引导完成前不在列表展示）；
+	// 引导完成（CompleteOnboarding）后置 0。AI 入口（ImportExisting/Create）直接可见。
+	Hidden bool `json:"hidden" db:"hidden"`
 }
 
 // Service 项目注册表业务服务。
@@ -119,18 +122,18 @@ func (s *Service) Import(ctx context.Context, workdir string) (Project, error) {
 		return Project{}, fmt.Errorf("project: stat %s: %w", metaDir, err)
 	}
 
-	// 注册。
+	// 注册（TF-043：UI 导入默认 hidden=1 暂时隐藏，走完引导后可见）。
 	name := filepath.Base(clean)
 	now := time.Now().Format(time.RFC3339)
 	res, err := s.registry.ExecContext(ctx,
-		`INSERT INTO projects (name, workdir, created_at) VALUES (?, ?, ?)`,
+		`INSERT INTO projects (name, workdir, created_at, hidden) VALUES (?, ?, ?, 1)`,
 		name, clean, now)
 	if err != nil {
 		return Project{}, fmt.Errorf("project: register %s: %w", clean, err)
 	}
 	id, _ := res.LastInsertId()
-	s.logger.Info("project imported", "id", id, "name", name, "workdir", clean)
-	return Project{ID: id, Name: name, Workdir: clean, CreatedAt: now}, nil
+	s.logger.Info("project imported", "id", id, "name", name, "workdir", clean, "hidden", true)
+	return Project{ID: id, Name: name, Workdir: clean, CreatedAt: now, Hidden: true}, nil
 }
 
 // Init 仅初始化 {workdir}/.taskboard/ 元数据（QA P4-1 Q6：MCP project_init 语义），
@@ -177,8 +180,9 @@ func (s *Service) ImportExisting(ctx context.Context, workdir string) (Project, 
 	}
 	name := filepath.Base(clean)
 	now := time.Now().Format(time.RFC3339)
+	// TF-043：AI 入口（MCP project_import/create）无引导流程，注册即可见（hidden=0）。
 	res, err := s.registry.ExecContext(ctx,
-		`INSERT INTO projects (name, workdir, created_at) VALUES (?, ?, ?)`,
+		`INSERT INTO projects (name, workdir, created_at, hidden) VALUES (?, ?, ?, 0)`,
 		name, clean, now)
 	if err != nil {
 		return Project{}, fmt.Errorf("project: register %s: %w", clean, err)
@@ -196,10 +200,12 @@ func (s *Service) Create(ctx context.Context, workdir string) (Project, error) {
 	return s.ImportExisting(ctx, workdir)
 }
 
-// List 返回全部项目，按最近打开时间倒序（从未打开者排最后）。
+// List 返回全部可见项目（hidden=0，TF-043：引导未完成的项目暂时隐藏），
+// 按最近打开时间倒序（从未打开者排最后）。
 func (s *Service) List(ctx context.Context) ([]Project, error) {
 	rows, err := s.registry.QueryContext(ctx,
-		`SELECT id, name, workdir, created_at, last_opened_at FROM projects
+		`SELECT id, name, workdir, created_at, last_opened_at, hidden FROM projects
+		 WHERE hidden = 0
 		 ORDER BY last_opened_at IS NULL, last_opened_at DESC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("project: list: %w", err)
@@ -210,12 +216,14 @@ func (s *Service) List(ctx context.Context) ([]Project, error) {
 	for rows.Next() {
 		var p Project
 		var last sql.NullString
-		if err := rows.Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last); err != nil {
+		var hidden int
+		if err := rows.Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last, &hidden); err != nil {
 			return nil, fmt.Errorf("project: scan: %w", err)
 		}
 		if last.Valid {
 			p.LastOpenedAt = &last.String
 		}
+		p.Hidden = hidden != 0
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -252,15 +260,17 @@ func (s *Service) Rename(ctx context.Context, id int64, name string) (Project, e
 	}
 	// 返回更新后的记录（供响应回显）。
 	row := s.registry.QueryRowContext(ctx,
-		`SELECT id, name, workdir, created_at, last_opened_at FROM projects WHERE id = ?`, id)
+		`SELECT id, name, workdir, created_at, last_opened_at, hidden FROM projects WHERE id = ?`, id)
 	var p Project
 	var last sql.NullString
-	if err := row.Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last); err != nil {
+	var hidden int
+	if err := row.Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last, &hidden); err != nil {
 		return Project{}, fmt.Errorf("project: rename refetch %d: %w", id, err)
 	}
 	if last.Valid {
 		p.LastOpenedAt = &last.String
 	}
+	p.Hidden = hidden != 0
 	s.logger.Info("project renamed", "id", id, "name", name)
 	return p, nil
 }
@@ -276,10 +286,13 @@ func (s *Service) Touch(ctx context.Context, workdir string) error {
 	return nil
 }
 
-// CheckResult 目录导入前检查结果（TF-041 引导流程 Step 0）。
+// CheckResult 目录导入前检查结果（TF-041 引导流程 Step 0；TF-043 加 onboarded）。
 type CheckResult struct {
 	// Registered 目录是否已注册为项目。
 	Registered bool `json:"registered"`
+	// Onboarded 引导是否已完成（hidden=0；TF-043：已完成引导的项目列表可见、
+	// 选择目录可直接进入；未完成 → 打开引导续走）。
+	Onboarded bool `json:"onboarded"`
 	// HasMeta 是否存在 {workdir}/.taskboard/ 历史遗留元数据。
 	HasMeta bool `json:"has_meta"`
 	// MetaValid 元数据是否合法（config.yaml 可解析且状态机非空）。
@@ -289,7 +302,7 @@ type CheckResult struct {
 	MetaReason string `json:"meta_reason,omitempty"`
 }
 
-// Check 检查目录是否可导入（TF-041）：已注册 / 历史元数据 / 元数据合法性。
+// Check 检查目录是否可导入（TF-041）：已注册 / 引导完成 / 历史元数据 / 元数据合法性。
 // 目录不存在/非目录/非绝对路径 → ErrInvalidWorkdir。
 func (s *Service) Check(ctx context.Context, workdir string) (CheckResult, error) {
 	clean := filepath.Clean(workdir)
@@ -305,10 +318,11 @@ func (s *Service) Check(ctx context.Context, workdir string) (CheckResult, error
 	}
 
 	res := CheckResult{}
-	if _, ok, err := s.findByWorkdir(ctx, clean); err != nil {
+	if p, ok, err := s.findByWorkdir(ctx, clean); err != nil {
 		return res, err
 	} else {
 		res.Registered = ok
+		res.Onboarded = ok && !p.Hidden
 	}
 
 	metaDir := filepath.Join(clean, ".taskboard")
@@ -374,9 +388,10 @@ func (s *Service) ResetMetadata(ctx context.Context, workdir string) error {
 func (s *Service) findByWorkdir(ctx context.Context, workdir string) (Project, bool, error) {
 	var p Project
 	var last sql.NullString
+	var hidden int
 	err := s.registry.QueryRowContext(ctx,
-		`SELECT id, name, workdir, created_at, last_opened_at FROM projects WHERE workdir = ?`,
-		workdir).Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last)
+		`SELECT id, name, workdir, created_at, last_opened_at, hidden FROM projects WHERE workdir = ?`,
+		workdir).Scan(&p.ID, &p.Name, &p.Workdir, &p.CreatedAt, &last, &hidden)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, false, nil
 	}
@@ -386,7 +401,31 @@ func (s *Service) findByWorkdir(ctx context.Context, workdir string) (Project, b
 	if last.Valid {
 		p.LastOpenedAt = &last.String
 	}
+	p.Hidden = hidden != 0
 	return p, true, nil
+}
+
+// CompleteOnboarding 标记项目引导完成（TF-043）：hidden 1 → 0，
+// 项目从「暂时隐藏」变为列表可见。幂等：未注册目录返回 ErrNotFound；
+// 已可见项目直接返回当前记录。
+func (s *Service) CompleteOnboarding(ctx context.Context, workdir string) (Project, error) {
+	clean := filepath.Clean(workdir)
+	existing, ok, err := s.findByWorkdir(ctx, clean)
+	if err != nil {
+		return Project{}, err
+	}
+	if !ok {
+		return Project{}, fmt.Errorf("%w: %s 未注册", ErrNotFound, clean)
+	}
+	if existing.Hidden {
+		if _, err := s.registry.ExecContext(ctx,
+			`UPDATE projects SET hidden = 0 WHERE workdir = ?`, clean); err != nil {
+			return Project{}, fmt.Errorf("project: complete onboarding %s: %w", clean, err)
+		}
+		existing.Hidden = false
+		s.logger.Info("project onboarding completed", "id", existing.ID, "workdir", clean)
+	}
+	return existing, nil
 }
 
 // initProjectDir 初始化 {workdir}/.taskboard/（QA Q11）：

@@ -98,6 +98,9 @@ func importProjectViaAPI(t *testing.T, srv *Server) string {
 	body, _ := json.Marshal(map[string]string{"workdir": dir})
 	rec := uiReq(t, srv, http.MethodPost, "/api/projects/import", "", string(body))
 	mustCode(t, rec, http.StatusOK, "import project")
+	// TF-043：UI 导入默认暂时隐藏（引导中）；测试统一模拟走完引导 → 可见。
+	rec = uiReq(t, srv, http.MethodPost, "/api/projects/complete", "", string(body))
+	mustCode(t, rec, http.StatusOK, "complete onboarding")
 	return dir
 }
 

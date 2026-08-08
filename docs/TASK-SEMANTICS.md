@@ -16,6 +16,7 @@
 - **项目隔离由"一项目一库文件"天然保证**：不同工作目录对应不同 `meta.db`，跨项目数据互不可见。
 - 因此：**删除全局注册表记录（`projects` 表）不影响 `.taskboard/` 目录数据**；重新导入同一目录时，TF-004 的 Import 幂等逻辑会按已有元数据直接复用，目录内容保持原样。
 - 传输层（TF-003 中间件）的 `X-Project` 校验仍按全局注册表执行（已验收行为），业务层校验独立按元数据执行；两层语义不一致时以元数据为准的宽松方向收敛（后续 TF 可评估中间件对齐）。
+- **可见性（TF-043 暂时隐藏）**：`projects` 表新增 `hidden` 列——**UI 导入（`POST /api/projects/import`）默认 `hidden=1`（引导完成前不在 `GET /api/projects` 列表展示）**；走完导入引导（欢迎页「进入项目」→ `POST /api/projects/complete`，仅 UI）置 0 可见；AI 入口（MCP `project_import`/`project_create`，无引导流程）注册即可见（`hidden=0`）。`GET /api/projects` 只返回 `hidden=0`；`POST /api/projects/check` 返回 `onboarded`（= 已注册且未隐藏）供前端判定"直接进入 / 打开引导"。
 
 ## 2. Task 字段语义
 

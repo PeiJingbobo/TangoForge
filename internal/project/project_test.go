@@ -212,6 +212,12 @@ func TestList_OrderByLastOpened(t *testing.T) {
 	if _, err := svc.Import(context.Background(), d3); err != nil {
 		t.Fatalf("import d3: %v", err)
 	}
+	// TF-043：UI 导入默认隐藏，走完引导（CompleteOnboarding）后列表可见。
+	for _, d := range []string{d1, d2, d3} {
+		if _, err := svc.CompleteOnboarding(context.Background(), d); err != nil {
+			t.Fatalf("complete %s: %v", d, err)
+		}
+	}
 
 	// 打开 d2（Touch），d2 应排最前；d1/d3 从未打开按创建先后。
 	if err := svc.Touch(context.Background(), p2.Workdir); err != nil {
@@ -268,6 +274,10 @@ func TestRename_UpdatesNameKeepsWorkdir(t *testing.T) {
 	p, err := svc.Import(context.Background(), workdir)
 	if err != nil {
 		t.Fatalf("import: %v", err)
+	}
+	// TF-043：完成引导后列表可见。
+	if _, err := svc.CompleteOnboarding(context.Background(), workdir); err != nil {
+		t.Fatalf("complete: %v", err)
 	}
 
 	renamed, err := svc.Rename(context.Background(), p.ID, "  新项目名  ")
@@ -358,5 +368,69 @@ func TestTouch_UpdatesTimestamp(t *testing.T) {
 	// Touch 未注册目录不报错（静默）。
 	if err := svc.Touch(context.Background(), filepath.Join(t.TempDir(), "ghost")); err != nil {
 		t.Errorf("touch unregistered should not error: %v", err)
+	}
+}
+
+// TestHidden_ImportVsAIEntry（TF-043）：UI 导入默认隐藏，AI 入口（ImportExisting）可见；
+// List 只返回可见项目；CompleteOnboarding 幂等置可见；Check.Onboarded 跟随。
+func TestHidden_ImportVsAIEntry(t *testing.T) {
+	svc := newService(t)
+
+	// UI 导入（Import）→ hidden=1：不在列表。
+	uiDir := t.TempDir()
+	p, err := svc.Import(context.Background(), uiDir)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if !p.Hidden {
+		t.Fatalf("UI 导入应默认隐藏, got %+v", p)
+	}
+	if list, _ := svc.List(context.Background()); len(list) != 0 {
+		t.Fatalf("隐藏项目不应出现在列表: %+v", list)
+	}
+	// Check：registered=true, onboarded=false。
+	ck, err := svc.Check(context.Background(), uiDir)
+	if err != nil || !ck.Registered || ck.Onboarded {
+		t.Fatalf("check: %+v err=%v", ck, err)
+	}
+
+	// AI 入口（ImportExisting）→ hidden=0：直接可见。
+	aiDir := t.TempDir()
+	if err := svc.Init(context.Background(), aiDir); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	ap, err := svc.ImportExisting(context.Background(), aiDir)
+	if err != nil {
+		t.Fatalf("import existing: %v", err)
+	}
+	if ap.Hidden {
+		t.Fatalf("AI 入口导入应直接可见, got %+v", ap)
+	}
+	if list, _ := svc.List(context.Background()); len(list) != 1 || list[0].Workdir != filepath.Clean(aiDir) {
+		t.Fatalf("AI 项目应可见: %+v", list)
+	}
+
+	// CompleteOnboarding：UI 项目置可见（幂等，二次调用不报错）。
+	done, err := svc.CompleteOnboarding(context.Background(), uiDir)
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	if done.Hidden {
+		t.Fatalf("完成引导后应可见: %+v", done)
+	}
+	if list, _ := svc.List(context.Background()); len(list) != 2 {
+		t.Fatalf("完成后两个项目都应可见: %+v", list)
+	}
+	if _, err := svc.CompleteOnboarding(context.Background(), uiDir); err != nil {
+		t.Fatalf("complete 应幂等: %v", err)
+	}
+	ck2, _ := svc.Check(context.Background(), uiDir)
+	if !ck2.Onboarded {
+		t.Fatalf("check 应反映 onboarded: %+v", ck2)
+	}
+
+	// 未注册目录 complete → ErrNotFound。
+	if _, err := svc.CompleteOnboarding(context.Background(), t.TempDir()); err == nil {
+		t.Fatal("未注册目录 complete 应报错")
 	}
 }

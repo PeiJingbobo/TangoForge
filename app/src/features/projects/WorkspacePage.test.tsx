@@ -61,4 +61,37 @@ describe('WorkspacePage（项目概览）', () => {
     expect(screen.getByText('工作目录')).toBeInTheDocument()
     expect(screen.getByText('上一步')).toBeInTheDocument()
   })
+
+  it('已注册且引导完成（onboarded）→ 直接进入项目，不弹引导（TF-043）', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/projects/check`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: { registered: true, onboarded: true, has_meta: true, meta_valid: true },
+        }),
+      ),
+      http.get(`${DAEMON_BASE_URL}/api/projects`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: [
+            {
+              id: 1,
+              name: 'demo',
+              workdir: '/data/projects/demo',
+              created_at: '2026-08-08T10:00:00+08:00',
+              last_opened_at: null,
+              hidden: false,
+            },
+          ],
+        }),
+      ),
+    )
+    render(<WorkspacePage />, { wrapper })
+    const input = screen.getByPlaceholderText('/Users/you/projects/backlog')
+    await user.type(input, '/data/projects/demo')
+    await user.click(screen.getByRole('button', { name: '导入该路径' }))
+    await waitFor(() => expect(useProjectStore.getState().project).toBe('/data/projects/demo'))
+    expect(screen.queryByText(/Step 1\/6/)).not.toBeInTheDocument()
+  })
 })

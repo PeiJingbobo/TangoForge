@@ -90,6 +90,32 @@ func (s *Server) handleProjectResetMetadata(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"reset": true}})
 }
 
+// handleProjectComplete 标记项目引导完成（POST /api/projects/complete，TF-043）：
+// hidden 1 → 0，项目从「暂时隐藏」变为列表可见。仅 UI（引导流程为 UI 交互）。
+func (s *Server) handleProjectComplete(w http.ResponseWriter, r *http.Request) {
+	actor := auth.ActorFrom(r.Context())
+	if actor.Class != auth.ClassUI {
+		writeError(w, http.StatusForbidden, "PERMISSION_DENIED",
+			"标记引导完成仅允许 UI 操作（回环 + X-UI-Token）", actor.Class)
+		return
+	}
+	var req projectImportReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "请求体必须是 JSON {workdir: <绝对路径>}", "")
+		return
+	}
+	p, err := s.projects.CompleteOnboarding(r.Context(), req.Workdir)
+	if err != nil {
+		if errors.Is(err, project.ErrNotFound) {
+			writeError(w, http.StatusUnprocessableEntity, "TASK_INVALID", err.Error(), "")
+			return
+		}
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": p})
+}
+
 // handleProjectRemove 移除项目注册记录（DELETE /api/projects/:id）。
 //
 // 仅 UI（回环 + X-UI-Token，识别层保证）；Agent / 远程一律 403（QA 默认项 3：

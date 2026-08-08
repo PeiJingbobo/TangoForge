@@ -251,6 +251,8 @@ func (s *Server) Handler() http.Handler {
 			// TF-041 引导流程：目录前置检查 / 清空历史元数据（均豁免 X-Project）。
 			r.Post("/check", s.handleProjectCheck)
 			r.Post("/import/reset", s.handleProjectResetMetadata)
+			// TF-043 引导完成（hidden→可见，仅 UI）。
+			r.Post("/complete", s.handleProjectComplete)
 			r.Patch("/{id}", s.handleProjectRename) // TF-035 重命名（仅 UI）
 			r.Delete("/{id}", s.handleProjectRemove)
 		})
