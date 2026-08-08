@@ -57,7 +57,6 @@ export function AuditPage() {
               onClick={() => setAction(action === a ? null : a)}
             >
               {AUDIT_ACTION_LABELS[a]}
-              <span className="font-mono text-[10px] opacity-70">{a}</span>
             </Badge>
           ))}
         </div>
@@ -95,10 +94,7 @@ export function AuditPage() {
                         {new Date(e.ts).toLocaleString()}
                       </td>
                       <td className="px-4 py-2.5">
-                        <div className="text-sm">{auditActionLabel(e.action)}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">
-                          {e.action}
-                        </div>
+                        <span className="text-sm">{auditActionLabel(e.action)}</span>
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{e.actor}</td>
                       <td className="px-4 py-2.5">
