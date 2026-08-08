@@ -38,16 +38,17 @@ export function ImportExportPage() {
   ]
 
   return (
-    <div>
-      <div className="mb-5">
+    // 标题 + Tab 固定，内容区（导出记录 / 导入草稿）内部滚动（TF-042）
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0">
         <h1 className="text-h2 text-foreground">导入导出</h1>
         <p className="mt-1 text-caption text-muted-foreground">
           导出按模板渲染回写 Markdown，或从 Markdown 导入任务（草稿审阅后确认）。
         </p>
       </div>
 
-      {/* Tab 分区（导出在前） */}
-      <div className="mb-5 flex items-center gap-1 border-b border-divider">
+      {/* Tab 分区（导出在前，固定） */}
+      <div className="mt-5 flex shrink-0 items-center gap-1 border-b border-divider">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -67,31 +68,34 @@ export function ImportExportPage() {
         ))}
       </div>
 
-      {section === 'export' ? (
-        <ExportPanel />
-      ) : (
-        <div>
-          <div className="mb-4">
-            <Button variant="outline" onClick={() => setImportOpen(true)} aria-label="打开导入">
-              <FileUp className="size-4" />
-              导入 Markdown
-            </Button>
-          </div>
-          <DraftsPanel onReview={setReviewing} />
+      {/* 内容区（仅此处内部滚动） */}
+      <div className="min-h-0 flex-1 overflow-y-auto pt-5 pr-1">
+        {section === 'export' ? (
+          <ExportPanel />
+        ) : (
+          <div>
+            <div className="mb-4">
+              <Button variant="outline" onClick={() => setImportOpen(true)} aria-label="打开导入">
+                <FileUp className="size-4" />
+                导入 Markdown
+              </Button>
+            </div>
+            <DraftsPanel onReview={setReviewing} />
 
-          <Dialog open={importOpen} onOpenChange={setImportOpen}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>从 Markdown 导入</DialogTitle>
-                <DialogDescription>
-                  解析结果先进入草稿，审阅确认后按文件全量覆盖入库。
-                </DialogDescription>
-              </DialogHeader>
-              <ImportDialog onOpenChange={setImportOpen} />
-            </DialogContent>
-          </Dialog>
-        </div>
-      )}
+            <Dialog open={importOpen} onOpenChange={setImportOpen}>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>从 Markdown 导入</DialogTitle>
+                  <DialogDescription>
+                    解析结果先进入草稿，审阅确认后按文件全量覆盖入库。
+                  </DialogDescription>
+                </DialogHeader>
+                <ImportDialog onOpenChange={setImportOpen} />
+              </DialogContent>
+            </Dialog>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

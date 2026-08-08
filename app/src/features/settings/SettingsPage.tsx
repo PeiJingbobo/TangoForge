@@ -41,30 +41,33 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">全局设置</p>
-      <h1 className="text-h2 text-foreground">首选项</h1>
-      <p className="mt-1 text-caption text-muted-foreground">
-        设置实时保存（无确定按钮）；保存前校验配置项值，无效则提示并回滚。
-      </p>
+    // 标题 + Tab 固定，仅各 tab 内容区内部滚动（TF-042）
+    <div className="mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
+      <div className="shrink-0">
+        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">全局设置</p>
+        <h1 className="text-h2 text-foreground">首选项</h1>
+        <p className="mt-1 text-caption text-muted-foreground">
+          设置实时保存（无确定按钮）；保存前校验配置项值，无效则提示并回滚。
+        </p>
+      </div>
 
-      <Tabs defaultValue="llm" className="mt-6">
-        <TabsList>
+      <Tabs defaultValue="llm" className="mt-5 flex min-h-0 flex-1 flex-col">
+        <TabsList className="w-fit shrink-0">
           <TabsTrigger value="llm">LLM</TabsTrigger>
           <TabsTrigger value="appearance">外观</TabsTrigger>
           <TabsTrigger value="daemon">守护进程</TabsTrigger>
           <TabsTrigger value="skill">Skill 模板</TabsTrigger>
         </TabsList>
-        <TabsContent value="llm" className="pt-6">
+        <TabsContent value="llm" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <LLMSection />
         </TabsContent>
-        <TabsContent value="appearance" className="pt-6">
+        <TabsContent value="appearance" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <AppearanceSection />
         </TabsContent>
-        <TabsContent value="daemon" className="pt-6">
+        <TabsContent value="daemon" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <DaemonSection />
         </TabsContent>
-        <TabsContent value="skill" className="pt-6">
+        <TabsContent value="skill" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <SkillTemplateSection />
         </TabsContent>
       </Tabs>

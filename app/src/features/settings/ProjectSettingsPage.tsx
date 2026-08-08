@@ -467,129 +467,139 @@ export function ProjectSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl pb-24">
-      <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">项目设置</p>
-      <h1 className="text-h2 text-foreground">设置</h1>
-      <p className="mt-1 text-caption text-muted-foreground">
-        编辑项目 config.yaml（状态机 / 导出模板）。保存时校验配置与状态占用，失败不落盘。
-      </p>
-
-      {/* ---------- 状态机 ---------- */}
-      <section className="mt-6 rounded-2xl border border-border bg-surface p-5">
-        <div className="flex items-baseline justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">状态机</h2>
-            <p className="mt-0.5 text-caption text-muted-foreground">
-              有任务占用的状态不可删除/重命名（保存时后端校验）；拖拽手柄可排序。
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0 text-muted-foreground"
-            onClick={resetStateMachine}
-          >
-            <RotateCcw className="size-3.5" />
-            恢复默认
-          </Button>
-        </div>
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
-            <div className="mt-4 space-y-2">
-              {states.map((s, i) => (
-                <StateRow
-                  key={rowIds[i] ?? i}
-                  rowId={rowIds[i] ?? String(i)}
-                  index={i}
-                  state={s}
-                  targets={targets[i] ?? []}
-                  allStates={states}
-                  onPatchField={patchState}
-                  onRemove={removeState}
-                  onToggleTarget={toggleTarget}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-        <Button variant="outline" size="sm" className="mt-2" onClick={addState}>
-          <Plus className="size-3.5" />
-          添加状态
-        </Button>
-      </section>
-
-      {/* ---------- 导出 ---------- */}
-      <section className="mt-4 rounded-2xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-foreground">导出配置</h2>
-        <p className="mt-0.5 text-caption text-muted-foreground">
-          自定义 Markdown 导出模板路径（相对项目目录）；留空 = 使用内置默认模板。
+    // 标题固定顶部、操作栏固定底部，仅表单主体内部滚动（TF-042）
+    <div className="mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
+      <div className="shrink-0">
+        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">项目设置</p>
+        <h1 className="text-h2 text-foreground">设置</h1>
+        <p className="mt-1 text-caption text-muted-foreground">
+          编辑项目 config.yaml（状态机 / 导出模板）。保存时校验配置与状态占用，失败不落盘。
         </p>
-        <div className="mt-3 flex items-center gap-2">
-          <Input
-            value={current.Export.TemplatePath}
-            onChange={(e) =>
-              commit({ ...current, Export: { TemplatePath: e.target.value } }, targets)
-            }
-            placeholder="如 .taskboard/generated-template.tmpl"
-            className="flex-1 font-mono text-sm"
-            aria-label="导出模板路径"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0 text-muted-foreground"
-            onClick={() => commit({ ...current, Export: { TemplatePath: '' } }, targets)}
-          >
-            <RotateCcw className="size-3.5" />
-            恢复默认
-          </Button>
-        </div>
-      </section>
+      </div>
 
-      {/* ---------- 高级（YAML 原文） ---------- */}
-      <section className="mt-4 rounded-2xl border border-border bg-surface p-5">
-        <div className="flex items-baseline justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">高级：config.yaml 原文</h2>
-            <p className="mt-0.5 text-caption text-muted-foreground">
-              直接编辑 YAML（与磁盘格式一致）。手动修改后保存以本区为准；未来新增字段可在此兜底。
-            </p>
+      {/* 表单主体（仅此处内部滚动） */}
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {/* ---------- 状态机 ---------- */}
+        <section className="mt-6 rounded-2xl border border-border bg-surface p-5">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">状态机</h2>
+              <p className="mt-0.5 text-caption text-muted-foreground">
+                有任务占用的状态不可删除/重命名（保存时后端校验）；拖拽手柄可排序。
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted-foreground"
+              onClick={resetStateMachine}
+            >
+              <RotateCcw className="size-3.5" />
+              恢复默认
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0 text-muted-foreground"
-            onClick={() => {
-              setYamlText(toYamlText(normalizeDto(draft ?? data, targets)))
-              setYamlDirty(false)
-            }}
-          >
-            <Undo2 className="size-3.5" />
-            从表单生成
-          </Button>
-        </div>
-        <textarea
-          value={yamlText}
-          onChange={(e) => {
-            setYamlText(e.target.value)
-            setYamlDirty(true)
-          }}
-          spellCheck={false}
-          className="mt-3 h-56 w-full resize-y rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40"
-          aria-label="config.yaml 原文"
-        />
-        {yamlDirty && (
-          <p className="mt-1.5 text-caption text-warning-ink">
-            YAML 区已手动修改，保存时将以其内容为准（流转规则将按状态行的「流转到」重新生成）。
-          </p>
-        )}
-      </section>
 
-      {/* ---------- sticky 操作栏 ---------- */}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={rowIds} strategy={verticalListSortingStrategy}>
+              <div className="mt-4 space-y-2">
+                {states.map((s, i) => (
+                  <StateRow
+                    key={rowIds[i] ?? i}
+                    rowId={rowIds[i] ?? String(i)}
+                    index={i}
+                    state={s}
+                    targets={targets[i] ?? []}
+                    allStates={states}
+                    onPatchField={patchState}
+                    onRemove={removeState}
+                    onToggleTarget={toggleTarget}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          <Button variant="outline" size="sm" className="mt-2" onClick={addState}>
+            <Plus className="size-3.5" />
+            添加状态
+          </Button>
+        </section>
+
+        {/* ---------- 导出 ---------- */}
+        <section className="mt-4 rounded-2xl border border-border bg-surface p-5">
+          <h2 className="text-sm font-semibold text-foreground">导出配置</h2>
+          <p className="mt-0.5 text-caption text-muted-foreground">
+            自定义 Markdown 导出模板路径（相对项目目录）；留空 = 使用内置默认模板。
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              value={current.Export.TemplatePath}
+              onChange={(e) =>
+                commit({ ...current, Export: { TemplatePath: e.target.value } }, targets)
+              }
+              placeholder="如 .taskboard/generated-template.tmpl"
+              className="flex-1 font-mono text-sm"
+              aria-label="导出模板路径"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted-foreground"
+              onClick={() => commit({ ...current, Export: { TemplatePath: '' } }, targets)}
+            >
+              <RotateCcw className="size-3.5" />
+              恢复默认
+            </Button>
+          </div>
+        </section>
+
+        {/* ---------- 高级（YAML 原文） ---------- */}
+        <section className="mt-4 rounded-2xl border border-border bg-surface p-5">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">高级：config.yaml 原文</h2>
+              <p className="mt-0.5 text-caption text-muted-foreground">
+                直接编辑 YAML（与磁盘格式一致）。手动修改后保存以本区为准；未来新增字段可在此兜底。
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted-foreground"
+              onClick={() => {
+                setYamlText(toYamlText(normalizeDto(draft ?? data, targets)))
+                setYamlDirty(false)
+              }}
+            >
+              <Undo2 className="size-3.5" />
+              从表单生成
+            </Button>
+          </div>
+          <textarea
+            value={yamlText}
+            onChange={(e) => {
+              setYamlText(e.target.value)
+              setYamlDirty(true)
+            }}
+            spellCheck={false}
+            className="mt-3 h-56 w-full resize-y rounded-xl border border-border bg-background p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40"
+            aria-label="config.yaml 原文"
+          />
+          {yamlDirty && (
+            <p className="mt-1.5 text-caption text-warning-ink">
+              YAML 区已手动修改，保存时将以其内容为准（流转规则将按状态行的「流转到」重新生成）。
+            </p>
+          )}
+        </section>
+      </div>
+
+      {/* ---------- 底部操作栏（固定，不随主体滚动） ---------- */}
       <div
         className={cn(
-          'sticky bottom-0 z-30 -mx-1 mt-6 flex items-center justify-end gap-2 rounded-2xl border bg-background/85 px-3 py-2.5 backdrop-blur-md',
+          'mt-4 flex shrink-0 items-center justify-end gap-2 rounded-2xl border bg-background/85 px-3 py-2.5 backdrop-blur-md',
           dirty || yamlDirty ? 'border-primary-300' : 'border-border',
         )}
       >

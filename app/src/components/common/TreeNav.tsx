@@ -100,15 +100,16 @@ export function TreeNav({ tree, currentId, onSelect }: TreeNavProps) {
   }
 
   return (
-    <div>
+    // 搜索框固定顶部，仅树形列表内部滚动（TF-042）
+    <div className="flex h-full min-h-0 flex-col">
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="搜索任务…"
         aria-label="搜索任务树"
-        className="mb-3 w-full rounded-full border border-input bg-card px-3.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary-400 focus:ring-[3px] focus:ring-primary-100"
+        className="mb-3 w-full shrink-0 rounded-full border border-input bg-card px-3.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary-400 focus:ring-[3px] focus:ring-primary-100"
       />
-      <div className="space-y-0.5">
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
         {visible.length === 0 && (
           <p className="px-2 py-4 text-center text-sm text-muted-foreground">
             {query ? '无匹配任务' : '没有任务'}
