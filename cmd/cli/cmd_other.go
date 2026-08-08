@@ -131,7 +131,7 @@ func runSkills(args []string, g cliGlobal) error {
 func runGuideCommand(args []string) {
 	g, _ := extractGlobal(args)
 	c := newCLIClient(g)
-	if err := c.ensureDaemon(); err != nil {
+	if err := c.ensureDaemon(g.NoLift); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
 		os.Exit(1)
 	}

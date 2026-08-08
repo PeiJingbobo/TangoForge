@@ -28,11 +28,13 @@ type cliClient struct {
 	http   *http.Client
 }
 
-// cliGlobal 全局参数（--server / --actor / --json）。
+// cliGlobal 全局参数（--server / --actor / --json / --no-lift）。
 type cliGlobal struct {
 	Server string
 	Actor  string
 	JSON   bool
+	// NoLift 禁用自动拉起（QA 2026-08-08 Q5：每次启动自动探活+拉起，--no-lift 可禁用）。
+	NoLift bool
 }
 
 func newCLIClient(g cliGlobal) *cliClient {
@@ -107,21 +109,30 @@ func (c *cliClient) call(method, path string, project string, body any) (*apiRes
 	return &out, nil
 }
 
-// ensureDaemon 确保守护进程运行：/ping 成功即返回；失败尝试自动拉起（QA P4-1 Q15-A）。
-func (c *cliClient) ensureDaemon() error {
+// ensureDaemon 确保守护进程运行：/ping 成功即返回；失败尝试自动拉起（QA 2026-08-08 Q5/Q7）：
+//   - 默认每次启动自动探活+拉起（静默，detached 常驻）；--no-lift 禁用自动拉起；
+//   - 拉起失败/找不到二进制 → 返回「命令无法完成」类提示（不输出 daemon 日志）。
+func (c *cliClient) ensureDaemon(noLift bool) error {
 	if c.ping() {
 		return nil
 	}
+	if noLift {
+		return errors.New("命令无法完成：守护进程未运行（--no-lift 已禁用自动拉起）")
+	}
 	daemon := findDaemonBinary()
 	if daemon == "" {
-		return errors.New("守护进程未运行且未找到 daemon 二进制，请先手动启动：tangoforge-daemon（或参考 docs/TECHNICAL.md §1.3）")
+		return errors.New("命令无法完成：守护进程未运行且未找到 daemon 二进制，请先启动 App 或运行 tangoforge-daemon")
 	}
 	cmd := exec.Command(daemon)
+	// 完全静默：daemon 日志不接 CLI 输出（QA Q7）。
 	cmd.Stdout = nil
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = nil
+	// detached：CLI 退出后 daemon 常驻（与 App 拉起行为一致）。
+	setDaemonDetached(cmd)
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("拉起守护进程失败: %w", err)
+		return fmt.Errorf("命令无法完成：拉起守护进程失败: %w", err)
 	}
+	_ = cmd.Process.Release()
 	// 轮询 /ping（≤5s）。
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -130,7 +141,7 @@ func (c *cliClient) ensureDaemon() error {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return errors.New("守护进程启动超时（5s），请检查日志")
+	return errors.New("命令无法完成：守护进程启动超时（5s），请检查 App 是否正常")
 }
 
 // ping 健康检查。
@@ -143,8 +154,14 @@ func (c *cliClient) ping() bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// findDaemonBinary 查找 daemon 二进制：优先同目录（tangoforge-daemon），其次 PATH。
+// findDaemonBinary 查找 daemon 二进制（QA 2026-08-08 Q6）：
+// 优先级 TANGOFORGE_DAEMON env > CLI 同目录 > PATH。
 func findDaemonBinary() string {
+	if env := os.Getenv("TANGOFORGE_DAEMON"); env != "" {
+		if info, err := os.Stat(env); err == nil && !info.IsDir() {
+			return env
+		}
+	}
 	exe, err := os.Executable()
 	if err == nil {
 		dir := filepath.Dir(exe)

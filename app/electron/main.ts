@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
+import { registerCliIpc } from './cli-register'
 import { registerConfigIpc, registerDaemonIpc } from './daemon'
 
 // 单实例锁（Electron 官方最佳实践）：防止多窗口/多实例并存时
@@ -99,6 +100,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   registerDaemonIpc()
   registerConfigIpc()
+  registerCliIpc()
   registerWindowIpc()
 
   // App 启动时探活/拉起内嵌守护进程（docs/TECHNICAL.md §4.4）；不阻塞窗口创建。

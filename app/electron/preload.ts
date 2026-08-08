@@ -61,6 +61,18 @@ const api = {
       return () => ipcRenderer.removeListener('window:maximized-change', handler)
     },
   },
+  /** CLI 全局注册管理（全局设置页「CLI 板块」）：状态检测 / 注册 / 卸载 */
+  cli: {
+    status: (): Promise<{
+      registered: boolean
+      path: string | null
+      ours: boolean
+      cliPath: string
+    }> => ipcRenderer.invoke('cli:status'),
+    register: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('cli:register'),
+    unregister: (): Promise<{ ok: boolean; message: string }> =>
+      ipcRenderer.invoke('cli:unregister'),
+  },
 }
 
 contextBridge.exposeInMainWorld('tangoforge', api)

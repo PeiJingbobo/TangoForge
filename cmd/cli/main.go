@@ -53,7 +53,7 @@ func main() {
 func runCLI(cmd string, args []string) {
 	g, rest := extractGlobal(args)
 	c := newCLIClient(g)
-	if err := c.ensureDaemon(); err != nil {
+	if err := c.ensureDaemon(g.NoLift); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
 		os.Exit(1)
 	}
@@ -99,6 +99,8 @@ func extractGlobal(args []string) (cliGlobal, []string) {
 			i++
 		case a == "--json":
 			g.JSON = true
+		case a == "--no-lift":
+			g.NoLift = true
 		case strings.HasPrefix(a, "--server="):
 			g.Server = strings.TrimPrefix(a, "--server=")
 		case strings.HasPrefix(a, "--actor="):
@@ -127,6 +129,6 @@ func usage() {
   tangoforge audit [export]
   tangoforge guide
 
-全局参数: --server <addr>（默认 127.0.0.1:19810） --actor <name>（默认 human） --json
-任务类子命令必须携带 --project <工作目录>；详细用法见 docs/TECHNICAL.md §3.4 与 docs/TASK-SEMANTICS.md。`)
+全局参数: --server <addr>（默认 127.0.0.1:19810） --actor <name>（默认 human） --json --no-lift
+任务类子命令必须携带 --project <工作目录>；守护进程未运行且未找到二进制时命令无法完成；详细用法见 docs/TECHNICAL.md §3.4 与 docs/TASK-SEMANTICS.md。`)
 }
