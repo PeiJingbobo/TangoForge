@@ -33,17 +33,20 @@ export function WorkspacePage() {
   }
 
   /**
-   * 选择/输入目录后的入口：已完成引导或已注册项目 → 直接打开；
-   * 否则打开引导流程（未完成时从上次步骤续走）。
+   * 选择/输入目录后的入口：
+   * - 已完成引导的项目 → 直接注册并打开；
+   * - 未完成/全新目录 → 打开引导流程（WorkdirStep 内部完成检查/清空/注册，可续走）。
+   * 不再预注册（TF-041 修复：预注册会使引导 Step0 的 check 恒为已注册，元数据检查失效，
+   * 且注册交给 WorkdirStep 统一处理）。
    */
   const handleDir = async (workdir: string) => {
     setBusy(true)
     try {
-      const p = await importProject.mutateAsync({ workdir })
       if (isOnboardingCompleted(workdir)) {
+        const p = await importProject.mutateAsync({ workdir })
         openProject(p)
       } else {
-        setWizardDir(workdir) // 打开引导（续走或从头）
+        setWizardDir(workdir)
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '导入失败')

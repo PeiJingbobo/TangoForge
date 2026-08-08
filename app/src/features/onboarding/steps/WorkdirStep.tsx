@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, CheckCircle2, FolderCheck, Loader2, RefreshCw } from 'lucide-react'
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  FolderCheck,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useProjectCheck, useResetProjectMetadata, useImportProject } from '@/hooks/useProjects'
 
@@ -8,6 +15,7 @@ import { useProjectCheck, useResetProjectMetadata, useImportProject } from '@/ho
  * 引导 Step 0：确认工作目录（TF-041）。
  * 流程：检查已导入 / 历史元数据合法性 → 非法提示清空 → 初始化并注册项目。
  * 注册成功后 onReady(true)——后续步骤（导入/权限/Skill）依赖项目上下文。
+ * 检查/注册失败 → 显示错误 + 重试按钮（不静默卡住）。
  */
 export function WorkdirStep({
   workdir,
@@ -21,12 +29,15 @@ export function WorkdirStep({
   const importProject = useImportProject()
   const [askReset, setAskReset] = useState(false)
   const [imported, setImported] = useState(false)
-  const ranRef = useRef(false)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
-  // 目录变化时执行检查（仅一次）。
+  // workdir 或重试计数变化时执行检查。
   useEffect(() => {
-    if (!workdir || ranRef.current) return
-    ranRef.current = true
+    if (!workdir) return
+    setError(null)
+    setAskReset(false)
+    setImported(false)
     check.mutate(workdir, {
       onSuccess: (res) => {
         if (res.registered) {
@@ -39,10 +50,12 @@ export function WorkdirStep({
           doImport() // 无元数据 / 元数据合法 → 直接注册（初始化或复用）
         }
       },
-      onError: (e) => toast.error(e instanceof Error ? e.message : '目录检查失败'),
+      onError: (e) => {
+        setError(e instanceof Error ? e.message : '目录检查失败')
+      },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workdir])
+  }, [workdir, attempt])
 
   const doImport = () => {
     importProject.mutate(
@@ -52,7 +65,7 @@ export function WorkdirStep({
           setImported(true)
           onReady(true)
         },
-        onError: (e) => toast.error(e instanceof Error ? e.message : '项目初始化失败'),
+        onError: (e) => setError(e instanceof Error ? e.message : '项目初始化失败'),
       },
     )
   }
@@ -64,9 +77,11 @@ export function WorkdirStep({
         setAskReset(false)
         doImport()
       },
-      onError: (e) => toast.error(e instanceof Error ? e.message : '清空失败'),
+      onError: (e) => setError(e instanceof Error ? e.message : '清空失败'),
     })
   }
+
+  const busy = check.isPending || importProject.isPending || reset.isPending
 
   return (
     <div className="space-y-4">
@@ -82,14 +97,33 @@ export function WorkdirStep({
       </div>
 
       {/* 检查中 */}
-      {(check.isPending || importProject.isPending) && (
+      {busy && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" /> 正在检查并初始化目录…
         </div>
       )}
 
+      {/* 失败 → 错误 + 重试（修复静默卡住） */}
+      {error && !busy && (
+        <div className="flex items-start gap-2 rounded-xl border border-destructive-soft bg-destructive-soft/60 p-4">
+          <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive-ink" />
+          <div className="flex-1 text-sm">
+            <div className="font-semibold">目录检查失败</div>
+            <div className="mt-1 text-muted-foreground">{error}</div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => setAttempt((a) => a + 1)}
+            >
+              <RefreshCw className="size-3.5" /> 重试
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* 已导入 */}
-      {imported && !check.isPending && (
+      {imported && !busy && (
         <div className="flex items-start gap-2 rounded-xl border border-success-soft bg-success-soft/60 p-4">
           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
           <div className="text-sm">
@@ -104,7 +138,7 @@ export function WorkdirStep({
       )}
 
       {/* 元数据非法 → 询问清空 */}
-      {askReset && (
+      {askReset && !busy && (
         <div className="flex items-start gap-2 rounded-xl border border-warning-soft bg-warning-soft/60 p-4">
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning-ink" />
           <div className="flex-1 text-sm">
