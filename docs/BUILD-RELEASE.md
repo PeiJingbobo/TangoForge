@@ -51,8 +51,12 @@ export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-b
 # ② 编译 + 打包（产物输出到本机 ~/tangoforge-release，避开共享盘）
 cd ~/HD-DATA/Coding/TangoForge/app
 corepack pnpm build && \
-  electron-builder --mac -c.directories.output=$HOME/tangoforge-release
+  corepack pnpm exec electron-builder --mac -c.directories.output=$HOME/tangoforge-release
 ```
+
+> 必须用 `corepack pnpm exec electron-builder`（或 `pnpm dist:mac`）调用——本项目依赖 hoisted 于
+> 共享盘根目录 `node_modules/.bin/`，**zsh 直接敲 `electron-builder` 会报 command not found**；
+> `pnpm exec` 会自动把依赖的 `.bin` 加入 PATH。
 
 产物（`~/tangoforge-release/`）：
 
@@ -87,6 +91,7 @@ corepack pnpm exec electron-builder --win -c.directories.output=$env:TEMP\tangof
 
 | 症状 | 原因 | 处理 |
 |---|---|---|
+| `zsh: command not found: electron-builder` | 依赖 hoisted 在共享盘根 `node_modules/.bin`，shell PATH 不含 | 用 `corepack pnpm exec electron-builder ...` 或 `pnpm dist:mac` |
 | 打包长时间无输出，`lsof` 显示连接 `github.com:https ESTABLISHED` | 辅助工具从 GitHub 直连下载被墙 | 设置 `ELECTRON_BUILDER_BINARIES_MIRROR`（§1）后重跑 |
 | `Electron version "^43.3.0" is a range` 直接退出 | electron-builder 要求精确版本 | `package.json` 固定 `"electron": "43.3.0"` |
 | 共享盘上打包极慢/卡住 | SMB 大文件 + 小文件写入慢 | 输出目录指向本机（`-c.directories.output=`） |
