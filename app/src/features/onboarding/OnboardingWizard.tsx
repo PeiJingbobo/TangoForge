@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   ChevronLeft,
@@ -40,7 +40,11 @@ export interface OnboardingWizardProps {
   onOpenChange: (open: boolean) => void
   /** 目标目录（绝对路径）；切换目录时重置为步骤 0 并重新检查 */
   workdir: string
+  /** 点「进入项目」触发：关闭引导并进入项目（父组件跳转） */
   onComplete: (workdir: string) => void
+  /** 进入欢迎页即触发（TF-043 需求 2：「走完引导」= 到达欢迎页）：
+   *  父组件借此标记项目完成（后端 hidden→可见 + 刷新列表），不关闭引导。 */
+  onWelcome?: (workdir: string) => void
 }
 
 export const ONBOARDING_STEPS = [
@@ -57,9 +61,12 @@ export function OnboardingWizard({
   onOpenChange,
   workdir,
   onComplete,
+  onWelcome,
 }: OnboardingWizardProps) {
   const [step, setStep] = useState(0)
   const [ready, setReady] = useState<boolean[]>(() => Array(ONBOARDING_STEP_COUNT).fill(false))
+  // 防止同一目录重复触发 onWelcome（每目录仅一次）。
+  const welcomedRef = useRef<string | null>(null)
 
   // 打开时：恢复该目录上次引导步骤（未完成续走）。
   useEffect(() => {
@@ -73,6 +80,16 @@ export function OnboardingWizard({
   useEffect(() => {
     if (open && workdir) setOnboardingState(workdir, { step })
   }, [open, step, workdir])
+
+  // TF-043 需求 2：进入欢迎页（最后一步）即视为「走完引导」→ 通知父组件标记完成
+  // （后端 hidden→可见、刷新列表）；不关闭引导，点「进入项目」才跳转。
+  const isWelcome = step === ONBOARDING_STEP_COUNT - 1
+  useEffect(() => {
+    if (!open || !workdir || !isWelcome || !onWelcome) return
+    if (welcomedRef.current === workdir) return
+    welcomedRef.current = workdir
+    onWelcome(workdir)
+  }, [open, workdir, isWelcome, onWelcome])
 
   const setReadyAt = (idx: number, ok: boolean) => {
     setReady((prev) => {
@@ -168,7 +185,11 @@ export function OnboardingWizard({
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <PartyPopper className="size-12 text-primary-500" />
               <p className="text-sm text-muted-foreground">
-                项目「{workdir.split('/').filter(Boolean).pop()}」已完成全部引导设置，准备就绪。
+                项目「{workdir.split('/').filter(Boolean).pop()}
+                」已完成全部引导设置，已加入项目列表。
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                点击下方「进入项目」开始使用 TangoForge。
               </p>
             </div>
           )}

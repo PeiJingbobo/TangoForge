@@ -76,15 +76,17 @@ export function PermissionsStep({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-xl border border-divider bg-muted/50 p-3">
+    // 说明 + 操作按钮固定，仅权限列表内部滚动（TF-043）
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-start gap-2 rounded-xl border border-divider bg-muted/50 p-3">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary-600" />
         <p className="text-xs text-muted-foreground">
           控制 AI 代理（Agent）可访问的项目能力。默认仅只读；勾选后授予写操作。
         </p>
       </div>
 
-      <ul className="flex flex-col gap-1.5">
+      {/* 权限列表（仅此处内部滚动） */}
+      <ul className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
         {FOCUS_KEYS.map((key) => (
           <li
             key={key}
@@ -100,7 +102,8 @@ export function PermissionsStep({
         ))}
       </ul>
 
-      <div className="flex items-center justify-between border-t border-divider pt-4">
+      {/* 操作按钮（固定底部） */}
+      <div className="mt-3 flex shrink-0 items-center justify-between border-t border-divider pt-3">
         <Button variant="ghost" size="sm" onClick={skip}>
           保留默认并继续
         </Button>

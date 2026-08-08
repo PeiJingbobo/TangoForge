@@ -77,15 +77,28 @@ export function WorkspacePage() {
   // 列表仅含可见项目（已完成引导）→ 点击直接进入。
   const openProjectOrContinue = (p: Project) => openProject(p)
 
-  /** 引导完成（欢迎页「进入项目」）：后端标记可见 → 刷新列表 → 进入项目。 */
-  const handleComplete = async (wd: string) => {
+  /** 进入欢迎页即「走完引导」（TF-043 需求 2）：后端标记可见 + 刷新列表；不关闭引导。 */
+  const handleWelcome = async (wd: string) => {
     try {
-      const p = await completeOnboarding.mutateAsync(wd)
-      setWizardDir(null)
-      openProject(p)
+      await completeOnboarding.mutateAsync(wd)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '引导完成标记失败')
     }
+  }
+
+  /** 点「进入项目」：关闭引导并进入项目（此时项目已在列表）。 */
+  const handleComplete = (wd: string) => {
+    const p = projects?.find((x) => x.workdir === wd)
+    openProject(
+      p ?? {
+        id: 0,
+        name: wd.split('/').filter(Boolean).pop() ?? wd,
+        workdir: wd,
+        created_at: '',
+        last_opened_at: null,
+        hidden: false,
+      },
+    )
   }
 
   return (
@@ -182,6 +195,7 @@ export function WorkspacePage() {
           if (!v) setWizardDir(null)
         }}
         workdir={wizardDir ?? ''}
+        onWelcome={(wd) => void handleWelcome(wd)}
         onComplete={(wd) => void handleComplete(wd)}
       />
     </div>
