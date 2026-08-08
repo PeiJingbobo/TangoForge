@@ -8,6 +8,7 @@ import (
 	"tangoforge/internal/audit"
 	"tangoforge/internal/config"
 	"testing"
+	"time"
 )
 
 // projectConfigGet 以 UI 身份 GET /api/project-config 并返回 data 原始 JSON。
@@ -85,13 +86,21 @@ func TestProjectConfigPut_SuccessPersist(t *testing.T) {
 		t.Errorf("template_path = %q", cfg.Export.TemplatePath)
 	}
 
-	// 审计记录存在。
-	recs, err := srv.audit.Query(context.Background(), dir, audit.Filter{Action: "project_config.updated"})
-	if err != nil {
-		t.Fatalf("audit query: %v", err)
-	}
-	if len(recs.Items) == 0 {
-		t.Error("缺少 project_config.updated 审计记录")
+	// 审计记录存在（异步写入 → 轮询等待，避免慢环境时序竞争）。
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		recs, err := srv.audit.Query(context.Background(), dir, audit.Filter{Action: "project_config.updated"})
+		if err != nil {
+			t.Fatalf("audit query: %v", err)
+		}
+		if len(recs.Items) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Error("缺少 project_config.updated 审计记录")
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

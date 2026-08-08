@@ -62,7 +62,13 @@ jobs:
         run: ./scripts/check_coverage.sh
 
       - name: 集成测试（临时 Daemon + 真实 HTTP 客户端）
-        run: CGO_ENABLED=0 go test -tags=integration ./test/integration/...
+        # test/integration 目前为占位目录（仅 README）；有 Go 测试文件时才运行
+        run: |
+          if ls test/integration/*.go >/dev/null 2>&1; then
+            CGO_ENABLED=0 go test -tags=integration ./test/integration/...
+          else
+            echo "test/integration 无 Go 测试（占位），跳过"
+          fi
 
   cross-build:
     name: 交叉编译 6 产物（CGO_ENABLED=0）
