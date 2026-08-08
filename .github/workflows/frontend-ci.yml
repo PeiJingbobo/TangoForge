@@ -15,8 +15,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        # 不指定 version：以根 package.json 的 packageManager（pnpm@9.15.0）为准，
+        # 避免与 version 冲突（Multiple versions of pnpm specified）
 
       - uses: actions/setup-node@v4
         with:

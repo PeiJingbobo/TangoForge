@@ -46,10 +46,10 @@ jobs:
         run: go vet ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          # v1 线（latest 解析至 v1.64.8，go1.24 构建）不支持 go1.25 目标；
-          # 显式 v2.12.2（go1.25/1.26 支持，.golangci.yml 已迁移 v2 格式）
+          # v2 需 action v7（v6 仅支持 v1）；显式 v2.12.2（go1.25/1.26 支持，
+          # .golangci.yml 已迁移 v2 格式）
           version: v2.12.2
           args: --timeout=5m
 
