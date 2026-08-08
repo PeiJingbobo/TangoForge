@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router'
+import TangoForgeLockup from '@/assets/TangoForge-lockup-transparent.png'
 import {
   Boxes,
   FolderKanban,
@@ -71,12 +72,14 @@ export function AppLayout() {
       <div className="flex min-h-0 flex-1">
         {/* 左侧全局导航栏 */}
         <aside className="sticky top-0 flex h-full w-60 shrink-0 flex-col border-r border-divider bg-card">
-          {/* 品牌 + 顶部一级菜单 */}
-          <div className="flex items-center gap-2.5 px-4 pb-3 pt-4">
-            <span className="grid size-7 place-items-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground">
-              T
-            </span>
-            <span className="text-base font-bold tracking-tight">TangoForge</span>
+          {/* 品牌（应用 lockup 图） */}
+          <div className="px-4 pb-3 pt-4">
+            <img
+              src={TangoForgeLockup}
+              alt="TangoForge"
+              className="h-8 w-auto select-none"
+              draggable={false}
+            />
           </div>
           <nav className="px-2.5 pb-2">
             <NavLink
