@@ -114,6 +114,8 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  // 守护进程常驻后台：App 退出不关闭守护进程（docs/REQUIREMENTS.md N6）。
-  if (process.platform !== 'darwin') app.quit()
+  // 全部可见窗口关闭 → 完全退出 UI 进程（各平台一致，含 macOS；QA 2026-08-08）。
+  // 守护进程（tangoforge-daemon）独立 detached 常驻，退出 UI 不关闭
+  // （docs/REQUIREMENTS.md N6；需要时用 scripts/stop-daemon 手动停止）。
+  app.quit()
 })
