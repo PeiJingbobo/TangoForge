@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAudit } from '@/hooks/useAudit'
+import { AUDIT_ACTION_LABELS, auditActionLabel } from '@/types/models'
 import type { AuditEntry } from '@/types/models'
 
 /**
@@ -38,7 +39,7 @@ export function AuditPage() {
         </div>
       </div>
 
-      {/* 过滤器（固定） */}
+      {/* 过滤器（固定；TF-042 中文 label + 英文 key） */}
       <div className="mt-4 shrink-0">
         <div className="flex flex-wrap gap-1.5">
           <Badge
@@ -48,21 +49,15 @@ export function AuditPage() {
           >
             全部
           </Badge>
-          {[
-            'task.created',
-            'task.updated',
-            'task.archived',
-            'task.restored',
-            'import.confirmed',
-            'config.updated',
-          ].map((a) => (
+          {Object.keys(AUDIT_ACTION_LABELS).map((a) => (
             <Badge
               key={a}
               variant={action === a ? 'default' : 'outline'}
-              className="cursor-pointer px-3 py-1 font-mono"
+              className="cursor-pointer px-3 py-1"
               onClick={() => setAction(action === a ? null : a)}
             >
-              {a}
+              {AUDIT_ACTION_LABELS[a]}
+              <span className="font-mono text-[10px] opacity-70">{a}</span>
             </Badge>
           ))}
         </div>
@@ -100,9 +95,10 @@ export function AuditPage() {
                         {new Date(e.ts).toLocaleString()}
                       </td>
                       <td className="px-4 py-2.5">
-                        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                        <div className="text-sm">{auditActionLabel(e.action)}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">
                           {e.action}
-                        </code>
+                        </div>
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{e.actor}</td>
                       <td className="px-4 py-2.5">

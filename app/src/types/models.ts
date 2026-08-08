@@ -181,6 +181,37 @@ export const ACTION_DOMAIN_LABELS: Record<string, string> = {
   permission: '权限',
 }
 
+/* ---------- audit（审计 action 中文化，TF-042） ---------- */
+
+/** 审计动作中文 label（与后端审计 action 全集对应；未知 action 原样回退） */
+export const AUDIT_ACTION_LABELS: Record<string, string> = {
+  'task.created': '创建任务',
+  'task.updated': '更新任务',
+  'task.status_changed': '状态流转',
+  'task.archived': '归档任务',
+  'task.restored': '还原任务',
+  'task.deleted': '删除任务',
+  'import.draft_ready': '草稿解析',
+  'import.draft_confirmed': '导入确认',
+  'import.draft_discarded': '丢弃草稿',
+  'import.failed': '导入失败',
+  'state_machine.changed': '状态机修改',
+  'config.updated': '全局配置更新',
+  'project_config.updated': '项目配置更新',
+  'permission.changed': '权限变更',
+  'project.imported': '项目导入',
+  'project.renamed': '项目重命名',
+  'skill.installed': '技能安装',
+  'skill.updated': '技能更新',
+  'skill.uninstalled': '技能卸载',
+  'skill.package_written': '技能包写入',
+  'skill.template_written': '技能模板写入',
+  'export.complete': '导出完成',
+}
+
+/** 审计动作 → 中文 label（未知 action 原样返回，不丢失信息） */
+export const auditActionLabel = (action: string): string => AUDIT_ACTION_LABELS[action] ?? action
+
 /* ---------- skills（TF-033 重设计：技能包模型 + 宿主安装） ---------- */
 
 /** 技能包（SKILL.md，内置 embed + 全局技能库 ~/.taskboard-app/skills/） */
