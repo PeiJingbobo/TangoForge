@@ -8,7 +8,8 @@ import { SKILL_HOSTS, DEFAULT_SKILL_HOST } from '@/features/skills/hosts'
 /**
  * 引导 Step 4：为工作目录安装 Skill（TF-041 简化版）。
  * 宿主选择与项目 Skills 配置页共用 SKILL_HOSTS（TF-042：全部目录型 .xxx/skills，
- * 无单文件 .md 宿主），按项目级/用户级分组展示全部目标宿主；默认 .claude/skills。
+ * 无单文件 .md 宿主），按项目级/用户级分组展示全部目标宿主，支持**多选**批量安装；
+ * 默认选中 .claude/skills。
  */
 export function SkillStep({
   workdir,
@@ -19,7 +20,7 @@ export function SkillStep({
 }) {
   const { data: packages, isLoading } = useSkillPackages(workdir)
   const install = useSkillInstall(workdir)
-  const [host, setHost] = useState(DEFAULT_SKILL_HOST)
+  const [hosts, setHosts] = useState<Set<string>>(new Set([DEFAULT_SKILL_HOST]))
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [done, setDone] = useState(false)
 
@@ -33,6 +34,16 @@ export function SkillStep({
     }
   }, [packages])
 
+  const toggleHost = (key: string) => {
+    setHosts((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+    setDone(false)
+  }
+
   const toggle = (name: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -43,28 +54,34 @@ export function SkillStep({
     setDone(false)
   }
 
-  const doInstall = () => {
-    if (selected.size === 0) {
+  /** 安装到全部选中宿主（每个宿主一次 POST，合并结果）。 */
+  const doInstall = async () => {
+    if (selected.size === 0 || hosts.size === 0) {
       onReady(true)
       return
     }
-    install.mutate(
-      { host, packages: [...selected] },
-      {
-        onSuccess: (results) => {
-          const ok = results.filter((r) => r.ok).length
-          const fail = results.filter((r) => !r.ok)
-          if (fail.length > 0) {
-            toast.error(`${fail.length} 个包安装失败: ${fail[0].error ?? ''}`)
-          } else {
-            toast.success(`已安装 ${ok} 个技能包到 ${host}`)
-          }
-          setDone(true)
-          onReady(true)
-        },
-        onError: (e) => toast.error(e instanceof Error ? e.message : '安装失败'),
-      },
-    )
+    let okCount = 0
+    let failCount = 0
+    let errMsg = ''
+    for (const h of hosts) {
+      try {
+        const results = await install.mutateAsync({ host: h, packages: [...selected] })
+        okCount += results.filter((r) => r.ok).length
+        const fails = results.filter((r) => !r.ok)
+        failCount += fails.length
+        if (fails.length > 0 && errMsg === '') errMsg = fails[0].error ?? ''
+      } catch (e) {
+        failCount++
+        if (errMsg === '') errMsg = e instanceof Error ? e.message : '安装失败'
+      }
+    }
+    if (failCount > 0) {
+      toast.error(`${failCount} 个包安装失败: ${errMsg}`)
+    } else {
+      toast.success(`已安装 ${okCount} 个技能包到 ${hosts.size} 个宿主`)
+    }
+    setDone(true)
+    onReady(true)
   }
 
   if (isLoading) {
@@ -75,17 +92,17 @@ export function SkillStep({
     )
   }
 
-  const HostGroup = ({ title, hosts }: { title: string; hosts: typeof SKILL_HOSTS }) => (
+  const HostGroup = ({ title, items }: { title: string; items: typeof SKILL_HOSTS }) => (
     <div>
       <div className="mb-1.5 text-label text-muted-foreground">{title}</div>
       <div className="flex flex-wrap gap-2">
-        {hosts.map((h) => (
+        {items.map((h) => (
           <button
             key={h.key}
             type="button"
-            onClick={() => setHost(h.key)}
+            onClick={() => toggleHost(h.key)}
             className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-              host === h.key
+              hosts.has(h.key)
                 ? 'border-primary-400 bg-primary-50 text-primary-700'
                 : 'border-divider text-muted-foreground hover:border-primary-300'
             }`}
@@ -109,8 +126,8 @@ export function SkillStep({
       </div>
 
       {/* 宿主选择（全部目标宿主，按作用域分组） */}
-      <HostGroup title="目标宿主 · 项目级" hosts={projectHosts} />
-      <HostGroup title="目标宿主 · 用户级（全局）" hosts={userHosts} />
+      <HostGroup title="目标宿主 · 项目级" items={projectHosts} />
+      <HostGroup title="目标宿主 · 用户级（全局）" items={userHosts} />
 
       {/* 技能包勾选 */}
       {packages && packages.length > 0 ? (
@@ -153,13 +170,17 @@ export function SkillStep({
         <Button variant="ghost" size="sm" onClick={() => onReady(true)}>
           跳过此步
         </Button>
-        <Button size="sm" onClick={doInstall} disabled={install.isPending || done}>
+        <Button size="sm" onClick={() => void doInstall()} disabled={install.isPending || done}>
           {install.isPending ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <CheckCircle2 className="size-3.5" />
           )}
-          {done ? '已安装' : selected.size === 0 ? '不安装并继续' : `安装到 ${host}`}
+          {done
+            ? '已安装'
+            : selected.size === 0 || hosts.size === 0
+              ? '不安装并继续'
+              : `安装到 ${hosts.size} 个宿主`}
         </Button>
       </div>
     </div>

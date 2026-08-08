@@ -145,12 +145,12 @@ describe('SkillsPanel', () => {
     expect(screen.getAllByText('未安装').length).toBeGreaterThan(0)
   })
 
-  it('安装向导：选宿主 + 勾选包 → 批量安装（POST install）', async () => {
+  it('安装向导：多选宿主 + 勾选包 → 批量安装到每个宿主（POST install × N）', async () => {
     const user = userEvent.setup()
-    let installBody: unknown = null
+    const installBodies: unknown[] = []
     server.use(
       http.post(`${DAEMON_BASE_URL}/api/skills/install`, async ({ request }) => {
-        installBody = await request.json()
+        installBodies.push(await request.json())
         return HttpResponse.json({
           code: 0,
           data: [
@@ -167,14 +167,17 @@ describe('SkillsPanel', () => {
     )
     render(<SkillsPanel />, { wrapper })
     await waitFor(() => expect(screen.getAllByText('taskboard-basic').length).toBeGreaterThan(0))
-    // 安装向导区选宿主（首个 .claude/skills Badge）。
+    // 安装向导区多选两个宿主（.claude/skills + .cursor/skills Badge）。
     await user.click(screen.getAllByRole('button', { name: /\.claude\/skills/ })[0])
+    await user.click(screen.getAllByRole('button', { name: /\.cursor\/skills/ })[0])
     // 安装向导区勾选技能包（首个 taskboard-basic Badge）。
     await user.click(screen.getAllByRole('button', { name: /taskboard-basic/ })[0])
-    await user.click(screen.getByRole('button', { name: /安装到 \.claude\/skills/ }))
-    await waitFor(() =>
-      expect(installBody).toEqual({ host: '.claude/skills', packages: ['taskboard-basic'] }),
-    )
+    await user.click(screen.getByRole('button', { name: /安装到 2 个宿主/ }))
+    await waitFor(() => expect(installBodies.length).toBe(2))
+    expect(installBodies).toEqual([
+      { host: '.claude/skills', packages: ['taskboard-basic'] },
+      { host: '.cursor/skills', packages: ['taskboard-basic'] },
+    ])
   })
 
   it('卸载需二次确认（Dialog）', async () => {

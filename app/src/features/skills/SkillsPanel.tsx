@@ -63,7 +63,7 @@ export function SkillsPanel() {
   const install = useSkillInstall()
   const uninstall = useSkillUninstall()
 
-  const [selectedHost, setSelectedHost] = useState<string>('')
+  const [selectedHosts, setSelectedHosts] = useState<Set<string>>(new Set())
   const [selectedPkgs, setSelectedPkgs] = useState<Set<string>>(new Set())
   const [confirmHost, setConfirmHost] = useState<string | null>(null)
   const [confirmPkgs, setConfirmPkgs] = useState<string[]>([])
@@ -81,6 +81,15 @@ export function SkillsPanel() {
 
   if (loadingPackages || loadingStatus) return <Skeleton className="h-64 w-full" />
 
+  const toggleHost = (key: string) => {
+    setSelectedHosts((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const togglePkg = (name: string) => {
     setSelectedPkgs((prev) => {
       const next = new Set(prev)
@@ -90,20 +99,35 @@ export function SkillsPanel() {
     })
   }
 
-  const doInstall = (host: string, pkgs: string[]) => {
-    install.mutate(
-      { host, packages: pkgs },
-      {
-        onSuccess: (results) => {
-          const failed = results.filter((r) => !r.ok)
-          const ok = results.filter((r) => r.ok)
-          if (ok.length > 0) toast.success(`已安装到 ${host}：${ok.map((r) => r.name).join('、')}`)
-          for (const f of failed) toast.error(`${f.name} 安装失败：${f.error}`)
-          setSelectedPkgs(new Set())
-        },
-        onError: (e) => toast.error(e instanceof Error ? e.message : '安装失败'),
-      },
+  /** 批量安装到多个宿主：每个宿主一次 POST（后端为单宿主语义），合并结果统一提示。 */
+  const doInstall = async (hosts: string[], pkgs: string[]) => {
+    const perHost = await Promise.all(
+      hosts.map(async (h) => {
+        try {
+          return await install.mutateAsync({ host: h, packages: pkgs })
+        } catch (e) {
+          return [
+            {
+              name: '',
+              host: h,
+              action: 'install',
+              ok: false,
+              error: e instanceof Error ? e.message : '安装失败',
+            },
+          ]
+        }
+      }),
     )
+    const results = perHost.flat()
+    const failed = results.filter((r) => !r.ok)
+    const ok = results.filter((r) => r.ok)
+    if (ok.length > 0) {
+      toast.success(
+        `已安装到 ${hosts.length} 个宿主：${ok.map((r) => `${r.host}/${r.name}`).join('、')}`,
+      )
+    }
+    for (const f of failed) toast.error(`${f.host} ${f.name || ''} 安装失败：${f.error}`)
+    setSelectedPkgs(new Set())
   }
 
   const doUninstall = (host: string, pkgs: string[]) => {
@@ -142,9 +166,9 @@ export function SkillsPanel() {
                 <Badge
                   key={h.key}
                   role="button"
-                  variant={selectedHost === h.key ? 'default' : 'outline'}
+                  variant={selectedHosts.has(h.key) ? 'default' : 'outline'}
                   className="cursor-pointer gap-1 px-3 py-1.5"
-                  onClick={() => setSelectedHost(h.key)}
+                  onClick={() => toggleHost(h.key)}
                 >
                   {h.label}
                   <span
@@ -166,9 +190,9 @@ export function SkillsPanel() {
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {packages.map((p) => {
-                  const installed = selectedHost
-                    ? stateMap.get(selectedHost)?.get(p.name)
-                    : undefined
+                  // 多宿主选中时取第一个选中宿主的状态作提示（安装后状态矩阵自动刷新）。
+                  const probeHost = [...selectedHosts][0]
+                  const installed = probeHost ? stateMap.get(probeHost)?.get(p.name) : undefined
                   return (
                     <Badge
                       key={p.name}
@@ -193,16 +217,20 @@ export function SkillsPanel() {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              disabled={!selectedHost || selectedPkgs.size === 0 || install.isPending}
-              onClick={() => doInstall(selectedHost, [...selectedPkgs])}
+              disabled={selectedHosts.size === 0 || selectedPkgs.size === 0 || install.isPending}
+              onClick={() => void doInstall([...selectedHosts], [...selectedPkgs])}
             >
               {install.isPending && <Loader2 className="size-4 animate-spin" />}
               <Download className="size-4" />
-              {install.isPending ? '安装中…' : `安装到 ${selectedHost || '…'}`}
+              {install.isPending
+                ? '安装中…'
+                : selectedHosts.size === 0
+                  ? '选择目标宿主'
+                  : `安装到 ${selectedHosts.size} 个宿主`}
             </Button>
-            {selectedHost && selectedPkgs.size > 0 && (
+            {selectedHosts.size > 0 && selectedPkgs.size > 0 && (
               <span className="text-caption text-muted-foreground">
-                {selectedPkgs.size} 个包批量安装
+                {selectedPkgs.size} 个包 × {selectedHosts.size} 个宿主批量安装
               </span>
             )}
           </div>
@@ -280,7 +308,7 @@ export function SkillsPanel() {
                             size="sm"
                             variant="outline"
                             disabled={stalePkgs.length === 0 || install.isPending}
-                            onClick={() => doInstall(hs.key, stalePkgs)}
+                            onClick={() => void doInstall([hs.key], stalePkgs)}
                             title={stalePkgs.length ? `更新 ${stalePkgs.join('、')}` : '均已是最新'}
                           >
                             <Download className="size-3" />
