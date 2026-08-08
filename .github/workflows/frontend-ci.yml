@@ -6,6 +6,7 @@ on:
     paths: ['app/**', 'package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', '.github/workflows/frontend-ci.yml']
   pull_request:
     paths: ['app/**', 'package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', '.github/workflows/frontend-ci.yml']
+  workflow_dispatch:
 
 jobs:
   test:
