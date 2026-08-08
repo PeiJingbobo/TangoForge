@@ -32,6 +32,11 @@ func newTestDeps(t *testing.T) (Deps, string) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
+	// 项目目录最先注册清理（t.Cleanup 为 LIFO：最先注册的最后执行）。
+	// 必须晚于所有业务服务 Close（尤其异步审计消费者），否则清理时
+	// 消费者仍在写 .taskboard 目录 → RemoveAll "directory not empty"（慢环境偶发）。
+	dir := t.TempDir()
+
 	// mock LLM。
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -75,7 +80,6 @@ func newTestDeps(t *testing.T) (Deps, string) {
 	t.Cleanup(func() { _ = skillSvc.Close() })
 
 	projSvc := project.NewService(registry, logger)
-	dir := t.TempDir()
 	if _, err := projSvc.Import(context.Background(), dir); err != nil {
 		t.Fatalf("import project: %v", err)
 	}
