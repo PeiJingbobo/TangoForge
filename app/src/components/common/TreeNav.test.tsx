@@ -79,4 +79,20 @@ describe('TreeNav（树形导航）', () => {
     await user.click(screen.getByRole('button', { name: '任务 独立任务 B' }))
     expect(onSelect).toHaveBeenCalledWith('b')
   })
+
+  it('传入 states 时任务行展示状态机彩色状态点（QA 2026-08-09）', () => {
+    const tree = [{ ...mk('a', '任务甲'), status: 'doing' }]
+    render(
+      <TreeNav
+        tree={tree}
+        states={[
+          { Key: 'todo', Label: '待办', Color: '#9aa0a6' },
+          { Key: 'doing', Label: '进行中', Color: '#1a73e8' },
+        ]}
+        onSelect={() => {}}
+      />,
+    )
+    const dot = document.querySelector('span[style*="background-color: rgb(26, 115, 232)"]')
+    expect(dot).not.toBeNull()
+  })
 })

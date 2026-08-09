@@ -296,10 +296,10 @@ export function DraftReview({ draftId, onExit, project, onConfirmed }: DraftRevi
           <TabsTrigger value="status">状态分类</TabsTrigger>
         </TabsList>
         <TabsContent value="tree" className="min-h-0 flex-1 overflow-y-auto pt-4">
-          <TreeNav tree={treeNodes} onSelect={setEditId} />
+          <TreeNav tree={treeNodes} states={states} onSelect={setEditId} />
         </TabsContent>
         <TabsContent value="timeline" className="min-h-0 flex-1 overflow-y-auto pt-4">
-          <TimelineView tasks={flatTasks} onOpen={setEditId} />
+          <TimelineView tasks={flatTasks} states={states} onOpen={setEditId} />
         </TabsContent>
         <TabsContent value="status" className="min-h-0 flex-1 overflow-y-auto pt-4">
           <StatusView tasks={flatTasks} states={states} onOpen={setEditId} />

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { TreeNav } from '@/components/common/TreeNav'
 import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
+import { StateBadge } from '@/components/common/StateBadge'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTasks } from '@/hooks/useTasks'
@@ -10,9 +11,18 @@ import { useEventInvalidator } from '@/hooks/useEvents'
 import { useProjectId } from '@/hooks/useProject'
 import { useTaskDrawerStore } from '@/stores/task-drawer'
 import { matchesTaskQuery } from '@/lib/task-search'
+import type { StateMachineState } from '@/types/models'
 import type { Task, TaskTreeNode } from '@/types/task'
 
-function TaskRow({ task, onClick }: { task: Task; onClick: (id: string) => void }) {
+function TaskRow({
+  task,
+  states,
+  onClick,
+}: {
+  task: Task
+  states: StateMachineState[]
+  onClick: (id: string) => void
+}) {
   return (
     <div
       role="button"
@@ -28,9 +38,9 @@ function TaskRow({ task, onClick }: { task: Task; onClick: (id: string) => void 
           {t}
         </Badge>
       ))}
+      <StateBadge status={task.status} states={states} />
       <span className="text-caption text-muted-foreground">
-        {task.status}
-        {task.priority > 0 ? ` · P${task.priority}` : ''}
+        {task.priority > 0 ? `P${task.priority}` : ''}
       </span>
     </div>
   )
@@ -60,7 +70,15 @@ function ViewSearch({
 }
 
 /** 时间线视图：按创建时间倒序（行式，非卡片）；搜索框固定 + 列表内部滚动。 */
-export function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: string) => void }) {
+export function TimelineView({
+  tasks,
+  states,
+  onOpen,
+}: {
+  tasks: Task[]
+  states: StateMachineState[]
+  onOpen: (id: string) => void
+}) {
   const [query, setQuery] = useState('')
   const sorted = useMemo(
     () => [...tasks].sort((a, b) => b.created_at.localeCompare(a.created_at)),
@@ -78,7 +96,7 @@ export function TimelineView({ tasks, onOpen }: { tasks: Task[]; onOpen: (id: st
       />
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
         {visible.map((t) => (
-          <TaskRow key={t.id} task={t} onClick={onOpen} />
+          <TaskRow key={t.id} task={t} states={states} onClick={onOpen} />
         ))}
         {visible.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
@@ -97,7 +115,7 @@ export function StatusView({
   onOpen,
 }: {
   tasks: Task[]
-  states: { Key: string; Label: string }[]
+  states: StateMachineState[]
   onOpen: (id: string) => void
 }) {
   const [query, setQuery] = useState('')
@@ -119,13 +137,16 @@ export function StatusView({
             return (
               <div key={s.Key}>
                 <div className="mb-2 flex items-center gap-2 px-1">
-                  <span className="size-2 rounded-full bg-primary-500" />
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: s.Color || '#9aa0a6' }}
+                  />
                   <span className="text-sm font-semibold">{s.Label || s.Key}</span>
                   <span className="text-caption text-muted-foreground">{group.length}</span>
                 </div>
                 <div className="space-y-1.5">
                   {group.map((t) => (
-                    <TaskRow key={t.id} task={t} onClick={onOpen} />
+                    <TaskRow key={t.id} task={t} states={states} onClick={onOpen} />
                   ))}
                 </div>
               </div>
@@ -175,10 +196,10 @@ export function NavPage() {
           <TabsTrigger value="status">状态分类</TabsTrigger>
         </TabsList>
         <TabsContent value="tree" className="mt-4 min-h-0 flex-1">
-          <TreeNav tree={treeWithIds} onSelect={openTask} />
+          <TreeNav tree={treeWithIds} states={states} onSelect={openTask} />
         </TabsContent>
         <TabsContent value="timeline" className="mt-4 min-h-0 flex-1">
-          <TimelineView tasks={flat} onOpen={openTask} />
+          <TimelineView tasks={flat} states={states} onOpen={openTask} />
         </TabsContent>
         <TabsContent value="status" className="mt-4 min-h-0 flex-1">
           <StatusView tasks={flat} states={states} onOpen={openTask} />

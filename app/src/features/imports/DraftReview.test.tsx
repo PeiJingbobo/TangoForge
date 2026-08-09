@@ -105,7 +105,8 @@ describe('DraftReview（草稿审阅）', () => {
     render(<DraftReview draftId="d1" onExit={() => {}} />, { wrapper })
     await waitFor(() => expect(screen.getByText('顶层任务 A')).toBeInTheDocument())
     await user.click(screen.getByRole('tab', { name: '状态分类' }))
-    await waitFor(() => expect(screen.getByText('待办')).toBeInTheDocument())
+    // 「待办」出现在分组头与任务行状态徽标（QA 2026-08-09 状态展示）
+    await waitFor(() => expect(screen.getAllByText('待办').length).toBeGreaterThan(0))
   })
 
   it('点击任务打开抽屉 → 编辑保存 → PUT 草稿任务树（含编辑后标题）', async () => {

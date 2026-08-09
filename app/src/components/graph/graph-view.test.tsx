@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { GraphView } from './graph-view'
 import type { GraphData, StateMachineState } from '@/types/models'
 
@@ -62,5 +62,13 @@ describe('GraphView（D3 全景图）', () => {
       expect(document.querySelectorAll('svg circle').length).toBe(3)
     })
     expect(document.querySelectorAll('svg text').length).toBe(3)
+  })
+
+  it('渲染状态机颜色图例（QA 2026-08-09）', () => {
+    render(<GraphView data={DATA} states={STATES} onSelect={() => {}} />)
+    // 图例包含各状态 Label（todo/doing/done）
+    expect(screen.getByText('待办')).toBeInTheDocument()
+    expect(screen.getByText('进行中')).toBeInTheDocument()
+    expect(screen.getByText('已完成')).toBeInTheDocument()
   })
 })

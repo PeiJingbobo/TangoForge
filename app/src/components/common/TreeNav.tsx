@@ -2,22 +2,28 @@ import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { matchesTaskQuery } from '@/lib/task-search'
+import type { StateMachineState } from '@/types/models'
 import type { TaskTreeNode } from '@/types/task'
 import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 
 /**
  * 树形任务导航（TF-026）：折叠/展开、缩进、搜索过滤、当前任务高亮。
  * 数据为后端树结构（与后端树一致，验收项）。
+ * QA 2026-08-09：可选 states 传入后任务行尾展示状态机彩色状态点。
  */
 export interface TreeNavProps {
   tree: TaskTreeNode[]
   currentId?: string
+  states?: StateMachineState[]
   onSelect: (id: string) => void
 }
 
-export function TreeNav({ tree, currentId, onSelect }: TreeNavProps) {
+export function TreeNav({ tree, currentId, states, onSelect }: TreeNavProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
+
+  const stateColor = (status: string): string =>
+    states?.find((s) => s.Key === status)?.Color || '#9aa0a6'
 
   const matches = (node: TaskTreeNode): boolean => {
     // 同时匹配编号 / 标题 / 内容（TF-042）
@@ -87,11 +93,16 @@ export function TreeNav({ tree, currentId, onSelect }: TreeNavProps) {
             <TaskNumberBadge number={node.number} />
             <span className="truncate">{node.title}</span>
           </span>
-          {hasChildren && (
-            <span className="ml-auto text-caption text-muted-foreground">
-              {node.children.length}
-            </span>
-          )}
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            <span
+              className="size-2 rounded-full"
+              style={{ backgroundColor: stateColor(node.status) }}
+              title={node.status}
+            />
+            {hasChildren && (
+              <span className="text-caption text-muted-foreground">{node.children.length}</span>
+            )}
+          </span>
         </div>
         {hasChildren && !isCollapsed && (
           <div>{node.children.map((c) => renderNode(c, depth + 1))}</div>

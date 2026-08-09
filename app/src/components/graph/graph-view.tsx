@@ -177,11 +177,32 @@ export function GraphView({ data, states, onSelect, className }: GraphViewProps)
   }, [data, colorMap])
 
   return (
-    <svg
-      ref={svgRef}
-      className={cn('h-[520px] w-full rounded-2xl border border-divider bg-card', className)}
-      aria-label="任务全景图"
-      role="img"
-    />
+    <div className={cn('flex flex-col gap-2', className)}>
+      {/* 图例：状态机颜色（QA 2026-08-09）——任务点颜色与状态一一对应 */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1" aria-label="状态图例">
+        {states.map((s) => (
+          <span
+            key={s.Key}
+            className="flex items-center gap-1.5 text-caption text-muted-foreground"
+          >
+            <span
+              className="size-2.5 rounded-full"
+              style={{ backgroundColor: s.Color || '#9aa0a6' }}
+            />
+            {s.Label || s.Key}
+          </span>
+        ))}
+        <span className="flex items-center gap-1.5 text-caption text-muted-foreground">
+          <span className="size-2.5 rounded-full bg-[#9aa0a6]" />
+          未知/已归档
+        </span>
+      </div>
+      <svg
+        ref={svgRef}
+        className="h-[500px] w-full rounded-2xl border border-divider bg-card"
+        aria-label="任务全景图"
+        role="img"
+      />
+    </div>
   )
 }
