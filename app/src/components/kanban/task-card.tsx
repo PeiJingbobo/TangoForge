@@ -68,11 +68,14 @@ export const TaskCard = memo(function TaskCard({ task, onOpen, overlay = false }
     id: task.id,
   })
 
+  // QA 2026-08-09：层级缩进 = 卡片整体左移（marginLeft）+ 宽度收窄（右侧对齐），
+  // 不改变卡片内容 padding。
+  const level = task.level ?? 0
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    // QA 2026-08-09：层级缩进（level × 16px，覆盖 pl-4 基础 16px）
-    paddingLeft: 16 + (task.level ?? 0) * 16,
+    marginLeft: level * 16,
+    width: `calc(100% - ${level * 16}px)`,
   }
 
   return (
