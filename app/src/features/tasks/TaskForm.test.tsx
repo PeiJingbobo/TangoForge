@@ -103,6 +103,24 @@ describe('TaskForm（内容表单：footer 由宿主渲染）', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ title: '新标题' }))
   })
 
+  it('子任务展示编号与状态徽标（QA 2026-08-09）', () => {
+    const child = mk('c', { parent_id: 'a', title: '子任务甲', number: 'T006', status: 'doing' })
+    render(
+      <TaskForm
+        task={TASK_A}
+        states={STATES}
+        allTasks={[TASK_A, child]}
+        onSubmit={() => {}}
+        onDirtyChange={() => {}}
+      />,
+      { wrapper },
+    )
+    expect(screen.getByText('子任务（1）')).toBeInTheDocument()
+    expect(screen.getByText('子任务甲')).toBeInTheDocument()
+    expect(screen.getByText('T006')).toBeInTheDocument() // 编号徽标
+    expect(screen.getAllByText('进行中').length).toBeGreaterThan(0) // 状态徽标
+  })
+
   it('无改动时 dirty=false', () => {
     render(<Harness />, { wrapper })
     expect(screen.getByTestId('dirty')).toHaveTextContent('false')

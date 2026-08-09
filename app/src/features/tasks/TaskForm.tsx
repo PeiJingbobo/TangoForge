@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
-import { Check, Pencil, Plus, X } from 'lucide-react'
+import { Pencil, Plus, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
+import { StateBadge } from '@/components/common/StateBadge'
 import { cn } from '@/lib/utils'
 import type { StateMachineState } from '@/types/models'
 import type { Task, UpdateTaskInput } from '@/types/task'
@@ -336,19 +337,23 @@ export const TaskForm = forwardRef<TaskFormHandle, TaskFormProps>(function TaskF
         )}
       </div>
 
-      {/* 子任务（只读展示） */}
+      {/* 子任务（只读展示；编号 + 状态徽标，QA 2026-08-09） */}
       {children.length > 0 && (
         <div className="mt-6 border-t border-divider pt-4">
           <Label className="mb-2 text-muted-foreground">子任务（{children.length}）</Label>
           <ul className="space-y-1.5">
             {children.map((c) => (
               <li key={c.id} className="flex items-center gap-2 text-sm">
-                <Check className="size-3.5 text-success-ink" />
+                <TaskNumberBadge number={c.number} />
                 <span
-                  className={cn(c.status === 'archived' && 'text-muted-foreground line-through')}
+                  className={cn(
+                    'min-w-0 flex-1 truncate',
+                    c.status === 'archived' && 'text-muted-foreground line-through',
+                  )}
                 >
                   {c.title}
                 </span>
+                <StateBadge status={c.status} states={states} />
               </li>
             ))}
           </ul>
