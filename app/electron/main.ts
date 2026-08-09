@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { registerCliIpc } from './cli-register'
 import { registerConfigIpc, registerDaemonIpc } from './daemon'
@@ -101,6 +101,11 @@ app.whenReady().then(() => {
   registerDaemonIpc()
   registerConfigIpc()
   registerCliIpc()
+  // 剪贴板写（QA 2026-08-09：任务编号复制；file:// 下 navigator.clipboard 不可靠）
+  ipcMain.handle('clipboard:writeText', (_e, text: string) => {
+    clipboard.writeText(String(text ?? ''))
+    return true
+  })
   registerWindowIpc()
 
   // App 启动时探活/拉起内嵌守护进程（docs/TECHNICAL.md §4.4）；不阻塞窗口创建。

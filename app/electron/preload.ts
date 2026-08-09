@@ -75,6 +75,10 @@ const api = {
     unregister: (): Promise<{ ok: boolean; message: string }> =>
       ipcRenderer.invoke('cli:unregister'),
   },
+  /** 剪贴板（QA 2026-08-09：任务编号复制；file:// 下 navigator.clipboard 不可靠） */
+  clipboard: {
+    writeText: (text: string): Promise<boolean> => ipcRenderer.invoke('clipboard:writeText', text),
+  },
 }
 
 contextBridge.exposeInMainWorld('tangoforge', api)
