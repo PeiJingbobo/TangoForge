@@ -36,12 +36,17 @@ export function TaskNumberBadge({
         if (e.key === 'Enter' || e.key === ' ') void copy(e)
       }}
       className={cn(
-        'group inline-flex shrink-0 cursor-pointer items-center gap-0.5 rounded-md bg-primary-50 px-1.5 py-px font-mono text-[10px] font-semibold leading-4 text-primary-700 transition-colors hover:bg-primary-100 hover:text-primary-800',
+        'group relative inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md bg-primary-50 px-1.5 py-px font-mono text-[10px] font-semibold leading-4 text-primary-700 transition-colors hover:bg-primary-100 hover:text-primary-800',
         className,
       )}
     >
-      {number}
-      <Copy className="size-2.5 opacity-0 transition-opacity group-hover:opacity-70" />
+      {/* 编号文字：默认居中；hover 时轻微左移为图标让位（过渡平滑） */}
+      <span className="transition-transform duration-200 group-hover:-translate-x-1">{number}</span>
+      {/* 复制图标：绝对定位不占布局（文字始终居中）；hover 淡入 + 右侧滑入 */}
+      <Copy
+        className="absolute right-0.5 size-2.5 translate-x-0.5 opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-70"
+        aria-hidden
+      />
     </span>
   )
 }
