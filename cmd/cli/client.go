@@ -156,25 +156,40 @@ func (c *cliClient) ping() bool {
 
 // findDaemonBinary 查找 daemon 二进制（QA 2026-08-08 Q6）：
 // 优先级 TANGOFORGE_DAEMON env > CLI 同目录 > PATH。
+// findDaemonBinary 查找 daemon 二进制（QA 2026-08-08 Q6 + 2026-08-09 符号链接修复）：
+// 优先级 TANGOFORGE_DAEMON env > CLI 同目录（解析符号链接） > PATH。
 func findDaemonBinary() string {
 	if env := os.Getenv("TANGOFORGE_DAEMON"); env != "" {
 		if info, err := os.Stat(env); err == nil && !info.IsDir() {
 			return env
 		}
 	}
-	exe, err := os.Executable()
-	if err == nil {
-		dir := filepath.Dir(exe)
-		for _, name := range daemonNames() {
-			candidate := filepath.Join(dir, name)
-			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-				return candidate
-			}
+	if exe, err := os.Executable(); err == nil {
+		if p := findDaemonNear(exe); p != "" {
+			return p
 		}
 	}
 	for _, name := range daemonNames() {
 		if p, err := exec.LookPath(name); err == nil {
 			return p
+		}
+	}
+	return ""
+}
+
+// findDaemonNear 在 CLI 同目录查找 daemon。
+// 经符号链接执行（如 ~/bin/tangoforge -> 仓库 bin/tangoforge）时，os.Executable
+// 返回链接路径（mac 实测），同目录（~/bin）无 daemon → 先 EvalSymlinks 解析到
+// 真实路径再查（AI 经 shell 运行 tangoforge 时触发拉起的根因）。
+func findDaemonNear(exe string) string {
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	dir := filepath.Dir(exe)
+	for _, name := range daemonNames() {
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
 		}
 	}
 	return ""
