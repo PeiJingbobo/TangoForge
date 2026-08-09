@@ -71,6 +71,8 @@ export const TaskCard = memo(function TaskCard({ task, onOpen, overlay = false }
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    // QA 2026-08-09：层级缩进（level × 16px，覆盖 pl-4 基础 16px）
+    paddingLeft: 16 + (task.level ?? 0) * 16,
   }
 
   return (

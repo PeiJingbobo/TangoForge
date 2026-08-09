@@ -7,8 +7,9 @@ import {
   resolveDragTarget,
   applyColumnOrder,
   resolveColOrder,
+  stabilizeTreeOrder,
 } from '@/components/kanban/drag-logic'
-import { flattenTree } from '@/components/kanban/tree-utils'
+import { flattenTree, treeOrderIndex } from '@/components/kanban/tree-utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +50,8 @@ export function KanbanView() {
   useEventInvalidator(pid)
 
   const allTasks = useMemo(() => flattenTree(taskData?.tree ?? []), [taskData])
+  // 树 DFS 序索引（QA 2026-08-09：列内子任务始终跟随父任务）
+  const treeIdx = useMemo(() => treeOrderIndex(taskData?.tree ?? []), [taskData])
   const columns = useMemo(() => (sm?.States ?? []).filter((s) => s.Key !== 'archived'), [sm])
   const allTags = useMemo(() => [...new Set(allTasks.flatMap((t) => t.tags))].sort(), [allTasks])
 
@@ -67,9 +70,15 @@ export function KanbanView() {
   const tasksById = useMemo(() => new Map(allTasks.map((t) => [t.id, t])), [allTasks])
 
   // 看板展示顺序：本地列内顺序覆盖（拖拽结束保持；未记录列原序）
+  // → 树序稳定化：同列父子始终相邻（子任务紧跟父任务），拖拽仅流转状态
   const displayTasks = useMemo(
-    () => applyColumnOrder(filtered, colOrder, getEffectiveStatus),
-    [filtered, colOrder, getEffectiveStatus],
+    () =>
+      stabilizeTreeOrder(
+        applyColumnOrder(filtered, colOrder, getEffectiveStatus),
+        treeIdx,
+        getEffectiveStatus,
+      ),
+    [filtered, colOrder, getEffectiveStatus, treeIdx],
   )
 
   const createTask = useCreateTask(pid)

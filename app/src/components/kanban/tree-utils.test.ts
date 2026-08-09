@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { flattenTree, patchTaskInTree } from './tree-utils'
+import { flattenTree, patchTaskInTree, treeOrderIndex } from './tree-utils'
 import type { Task, TaskTreeNode } from '@/types/task'
 
 function mk(id: string, status: string, children: TaskTreeNode[] = []): TaskTreeNode {
@@ -32,6 +32,33 @@ describe('tree-utils', () => {
     ]
     const flat = flattenTree(tree)
     expect(flat.map((t) => t.id)).toEqual(['a', 'a1', 'a2', 'a2x', 'b'])
+  })
+
+  it('flattenTree 注入 level（QA 2026-08-09：看板层级缩进）', () => {
+    const tree = [
+      mk('a', 'todo', [mk('a1', 'todo'), mk('a2', 'doing', [mk('a2x', 'done')])]),
+      mk('b', 'done'),
+    ]
+    const flat = flattenTree(tree)
+    expect(flat.map((t) => [t.id, t.level])).toEqual([
+      ['a', 0],
+      ['a1', 1],
+      ['a2', 1],
+      ['a2x', 2],
+      ['b', 0],
+    ])
+  })
+
+  it('treeOrderIndex 返回树 DFS 序索引', () => {
+    const tree = [
+      mk('a', 'todo', [mk('a1', 'todo'), mk('a2', 'doing', [mk('a2x', 'done')])]),
+      mk('b', 'done'),
+    ]
+    const idx = treeOrderIndex(tree)
+    expect(idx.get('a')).toBe(0)
+    expect(idx.get('a2')).toBe(2)
+    expect(idx.get('a2x')).toBe(3)
+    expect(idx.get('b')).toBe(4)
   })
 
   it('patchTaskInTree 深层打补丁且不修改原树', () => {

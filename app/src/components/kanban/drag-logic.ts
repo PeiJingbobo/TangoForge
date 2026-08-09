@@ -94,3 +94,32 @@ export function applyColumnOrder(
   }
   return out
 }
+
+/**
+ * 树序稳定化（QA 2026-08-09）：同列任务按树 DFS 相对序重排——
+ * 子任务与父任务同列时始终紧跟在父任务下方（「一直排列在父任务下方」）。
+ * 应用在 applyColumnOrder 之后：拖拽仅流转状态，列内顺序由树层级决定。
+ * 纯函数，可单测。
+ */
+export function stabilizeTreeOrder(
+  tasks: Task[],
+  treeIndex: Map<string, number>,
+  statusOf: (t: Task) => string,
+): Task[] {
+  const groups = new Map<string, Task[]>()
+  for (const t of tasks) {
+    const s = statusOf(t)
+    if (!groups.has(s)) groups.set(s, [])
+    groups.get(s)!.push(t)
+  }
+  const out: Task[] = []
+  for (const group of groups.values()) {
+    const sorted = [...group].sort(
+      (a, b) =>
+        (treeIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (treeIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    )
+    out.push(...sorted)
+  }
+  return out
+}

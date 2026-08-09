@@ -31,6 +31,8 @@ export interface Task {
   assignee: string
   /** 被依赖任务 ID 数组 */
   depends_on: string[]
+  /** 树形层级深度（前端 flattenTree 计算注入；0 = 顶层任务，QA 2026-08-09 看板缩进） */
+  level?: number
   /** 归档前状态（归档/还原专用） */
   archived_from: string
   /** LLM 导入映射，内部字段 */

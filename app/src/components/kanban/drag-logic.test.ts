@@ -4,6 +4,7 @@ import {
   resolveOverIndex,
   resolveColOrder,
   applyColumnOrder,
+  stabilizeTreeOrder,
 } from './drag-logic'
 import type { Task } from '@/types/task'
 
@@ -133,5 +134,37 @@ describe('applyColumnOrder（本地列内顺序覆盖）', () => {
   it('覆盖含已删除 id → 过滤；未覆盖任务追加列尾', () => {
     const out = applyColumnOrder(tasks, { todo: ['D', 'ghost', 'A'] }, statusOf)
     expect(out.map((t) => t.id)).toEqual(['D', 'A', 'B', 'C'])
+  })
+})
+
+describe('stabilizeTreeOrder（QA 2026-08-09：同列子任务紧跟父任务）', () => {
+  const treeIdx = new Map([
+    ['a', 0],
+    ['a1', 1],
+    ['a2', 2],
+    ['b', 3],
+    ['b1', 4],
+    ['c', 5],
+  ])
+  const statusOf = (t: Task) => t.status
+
+  it('同列父子相邻：父任务与其同列子任务按树序连续排列', () => {
+    // 全部 doing：a → a1 → b → b1（树 DFS 序），乱序输入应被稳定化
+    const tasks = [mk('b1', 'doing'), mk('a', 'doing'), mk('b', 'doing'), mk('a1', 'doing')]
+    const out = stabilizeTreeOrder(tasks, treeIdx, statusOf)
+    expect(out.map((t) => t.id)).toEqual(['a', 'a1', 'b', 'b1'])
+  })
+
+  it('跨状态分组后各自按树序排列', () => {
+    const tasks = [mk('a1', 'todo'), mk('a', 'doing'), mk('b', 'todo'), mk('a2', 'doing')]
+    const out = stabilizeTreeOrder(tasks, treeIdx, statusOf)
+    // 组序按输入首次出现（todo 先 → [a1, b]；doing → [a, a2]）；组内各自树序
+    expect(out.map((t) => t.id)).toEqual(['a1', 'b', 'a', 'a2'])
+  })
+
+  it('未知 id 排到末尾（不崩溃）', () => {
+    const tasks = [mk('ghost', 'doing'), mk('a', 'doing')]
+    const out = stabilizeTreeOrder(tasks, treeIdx, statusOf)
+    expect(out.map((t) => t.id)).toEqual(['a', 'ghost'])
   })
 })
