@@ -66,10 +66,10 @@ func buildSystemPrompt() string {
 2. 每个任务必须有 title（标题）与 status（状态）字段；无法确定的 status 也必须从文档上下文推断。
 3. 层级：Markdown 标题层级映射为嵌套 children（## 为顶层，其下 ### 为子任务）。
 4. status 只能输出给定的状态 key 或其 label（label 会由系统自动映射）；不得自定义状态。
-5. priority 输出 0-5 整数或字符串别名（lowest/low/normal/high/highest/critical/urgent）。
+5. priority 输出 0-5 整数或字符串别名（lowest/low/normal/high/highest/critical/urgent，以及 P0~P5——P0=5 最高、P5=0 最低，大小写不敏感）。
 6. 每个任务必须输出一个唯一的 id（建议 T1、T2、T3… 形式，简短、全局唯一；子任务也在同一编号体系内递增）。
 7. depends_on 输出被依赖任务的【id】（必须引用本文档中已经定义过的任务 id），不要输出任务标题或文档序号。
-8. number 输出文档中任务自带的简短编号（如标题前缀 "P0"、"T01"）；文档没有编号则输出空字符串 ""。
+8. number 输出文档中任务自带的简短编号（如标题前缀 "TF-001"、"T01"），与 priority 区分：表示"任务序号/编号"的值进 number，表示"优先级/紧急程度"的值（如 P0/P1/P2、高/中/低）进 priority；文档没有编号则输出空字符串 ""。
 9. 保持任务顺序与文档一致。`
 }
 
@@ -86,11 +86,11 @@ func buildJSONSchema() string {
         "required": ["title", "status"],
         "properties": {
           "id": {"type": "string", "description": "临时唯一编号（如 T1/T2，仅草稿内依赖引用）"},
-          "number": {"type": "string", "description": "简短任务编号：文档自带编号（如 P0/T01），无则空字符串"},
+          "number": {"type": "string", "description": "简短任务编号：文档自带编号（如 TF-001/T01），无则空字符串"},
           "title": {"type": "string"},
           "description": {"type": "string"},
           "status": {"type": "string"},
-          "priority": {"type": ["integer", "string"]},
+          "priority": {"type": ["integer", "string"], "description": "0-5 整数或别名（lowest/low/normal/high/highest/critical/urgent/P0~P5，P0=5 最高）"},
           "tags": {"type": "array", "items": {"type": "string"}},
           "assignee": {"type": "string"},
           "depends_on": {"type": "array", "items": {"type": "string"}, "description": "被依赖任务的临时 id"},

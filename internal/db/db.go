@@ -16,6 +16,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动（零信任依赖约束）
@@ -94,4 +95,35 @@ func ProjectExists(ctx context.Context, db *sql.DB, workdir string) (bool, error
 // homeDir 由调用方提供（如 os.UserHomeDir），本层不做环境探测。
 func RegistryDBPath(homeDir string) string {
 	return filepath.Join(homeDir, ".taskboard-app", "registry.db")
+}
+
+// FileFingerprint 捕获文件系统指纹（跨平台：os.SameFile 语义的等价快照）。
+//
+// 用途：业务层按 workdir 缓存项目库连接时，记录打开时的文件指纹；
+// 缓存命中后再次校验，发现 meta.db 被删除重建（inode 变化）则废弃旧连接重新打开，
+// 防止连接仍指向已被移除/回收站中的旧文件（TF-001 根因：删除 .taskboard 后重建新库）。
+type FileFingerprint struct {
+	fi os.FileInfo
+}
+
+// CaptureFingerprint 捕获 path 当前的文件指纹（文件必须存在）。
+func CaptureFingerprint(path string) (*FileFingerprint, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return &FileFingerprint{fi: fi}, nil
+}
+
+// SameAs 判断 path 当前文件与缓存的指纹是否仍为同一文件（跨平台 inode/dev 比较）。
+// 文件不存在视为不一致（返回 false）。
+func (fp *FileFingerprint) SameAs(path string) bool {
+	if fp == nil || fp.fi == nil {
+		return false
+	}
+	cur, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fp.fi, cur)
 }

@@ -126,7 +126,8 @@ const (
 // service 实现。
 type service struct {
 	mu      sync.Mutex
-	dbs     map[string]*sql.DB // workdir → 项目库连接（SetMaxOpenConns(1)）
+	dbs     map[string]*sql.DB             // workdir → 项目库连接（SetMaxOpenConns(1)）
+	fp      map[string]*db.FileFingerprint // workdir → 打开时 meta.db 文件指纹（TF-001：删除重建校验）
 	logger  *slog.Logger
 	onWrite WriteHook
 }
@@ -138,6 +139,7 @@ func NewService(opts Options) Service {
 	}
 	return &service{
 		dbs:     make(map[string]*sql.DB),
+		fp:      make(map[string]*db.FileFingerprint),
 		logger:  opts.Logger,
 		onWrite: opts.OnWrite,
 	}
@@ -147,6 +149,10 @@ func NewService(opts Options) Service {
 //
 // 项目识别（QA Q2-B）：校验 {workdir}/.taskboard/meta.db 存在即视为项目，
 // 不查询全局注册表；连接复用，重复打开幂等（EnsureProject 迁移幂等）。
+//
+// TF-001 修复：缓存命中时校验 meta.db 文件指纹仍与打开时一致（os.SameFile），
+// 若文件被删除重建（如用户删除 .taskboard 目录、macOS 移入回收站后重建新库），
+// 关闭旧连接并重新打开，避免读写落在回收站旧库（数据源与审计源分裂）。
 func (s *service) projectDB(ctx context.Context, workdir string) (*sql.DB, error) {
 	clean := filepath.Clean(workdir)
 	if !filepath.IsAbs(clean) {
@@ -155,9 +161,19 @@ func (s *service) projectDB(ctx context.Context, workdir string) (*sql.DB, error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if conn, ok := s.dbs[clean]; ok {
-		return conn, nil
+		if s.fp[clean].SameAs(db.MetaDBPath(clean)) {
+			return conn, nil
+		}
+		s.logger.Warn("project db file replaced, reopening", "workdir", clean, "path", db.MetaDBPath(clean))
+		_ = conn.Close()
+		delete(s.dbs, clean)
+		delete(s.fp, clean)
 	}
 	if _, err := os.Stat(db.MetaDBPath(clean)); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrProjectNotFound, workdir)
+	}
+	fp, err := db.CaptureFingerprint(db.MetaDBPath(clean))
+	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrProjectNotFound, workdir)
 	}
 	conn, err := db.EnsureProject(ctx, db.MetaDBPath(clean))
@@ -165,6 +181,7 @@ func (s *service) projectDB(ctx context.Context, workdir string) (*sql.DB, error
 		return nil, fmt.Errorf("task: open project db %s: %w", clean, err)
 	}
 	s.dbs[clean] = conn
+	s.fp[clean] = fp
 	return conn, nil
 }
 
@@ -520,6 +537,7 @@ func (s *service) Close() error {
 			firstErr = fmt.Errorf("task: close %s: %w", wd, err)
 		}
 		delete(s.dbs, wd)
+		delete(s.fp, wd)
 	}
 	return firstErr
 }

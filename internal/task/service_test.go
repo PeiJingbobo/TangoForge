@@ -139,6 +139,14 @@ func TestCreate_PriorityNormalize(t *testing.T) {
 		{"critical", 5},
 		{"urgent", 5},
 		{"3", 3},
+		{"P0", 5},
+		{"P1", 4},
+		{"P2", 3},
+		{"P3", 2},
+		{"P4", 1},
+		{"P5", 0},
+		{"p0", 5},
+		{" p2 ", 3},
 	}
 	for _, c := range cases {
 		task := mustCreate(t, svc, wd, CreateInput{Title: "t", Priority: c.in})
@@ -658,4 +666,64 @@ func names(nodes []*TaskTreeNode) []string {
 		out = append(out, n.Title)
 	}
 	return out
+}
+
+// TestProjectDB_ReopenAfterMetaDBReplaced TF-001 回归：
+// 项目库 meta.db 被删除重建（模拟 macOS 删除 .taskboard 移入回收站后重建）后，
+// 服务必须自动废弃旧连接并打开新库——创建的任务应落到新库而非旧文件。
+func TestProjectDB_ReopenAfterMetaDBReplaced(t *testing.T) {
+	workdir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workdir, ".taskboard"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	metaPath := db.MetaDBPath(workdir)
+	conn, err := db.EnsureProject(context.Background(), metaPath)
+	if err != nil {
+		t.Fatalf("init project db: %v", err)
+	}
+	_ = conn.Close()
+
+	svc := NewService(Options{})
+	t.Cleanup(func() { _ = svc.Close() })
+
+	// 首次访问建立缓存连接。
+	if _, err := svc.Create(context.Background(), workdir, CreateInput{Title: "旧库任务"}); err != nil {
+		t.Fatalf("create on old db: %v", err)
+	}
+
+	// 删除 meta.db（含 WAL/SHM）并重建新库——inode 变化，旧连接必须失效。
+	os.Remove(metaPath)
+	os.Remove(metaPath + "-wal")
+	os.Remove(metaPath + "-shm")
+	conn2, err := db.EnsureProject(context.Background(), metaPath)
+	if err != nil {
+		t.Fatalf("recreate project db: %v", err)
+	}
+	_ = conn2.Close()
+
+	// 再次访问：应自动重开新库连接，任务写入新库。
+	if _, err := svc.Create(context.Background(), workdir, CreateInput{Title: "新库任务"}); err != nil {
+		t.Fatalf("create on new db: %v", err)
+	}
+
+	// 新库应只有新任务；旧任务被丢弃（对应旧 meta.db 已移到回收站）。
+	conn3, err := db.EnsureProject(context.Background(), metaPath)
+	if err != nil {
+		t.Fatalf("open final db: %v", err)
+	}
+	defer func() { _ = conn3.Close() }()
+	var n int
+	if err := conn3.QueryRow(`SELECT COUNT(*) FROM tasks`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("重建后应只含新库任务，count=%d", n)
+	}
+	var title string
+	if err := conn3.QueryRow(`SELECT title FROM tasks LIMIT 1`).Scan(&title); err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "新库任务" {
+		t.Fatalf("新库任务标题 = %q，期望 新库任务", title)
+	}
 }

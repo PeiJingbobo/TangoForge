@@ -2,11 +2,14 @@ package task
 
 import (
 	"strconv"
+	"strings"
 )
 
 // priorityAliases 字符串别名 → 归一值（docs/TASK-SEMANTICS.md §3）。
 //
 // 注意：`low` 归一为 1（QA Q5 确认，区间 1–2 取低值，与 normal=3 / high=4 拉开梯度）。
+// `P0~P5`（大小写不敏感）为项目级优先级约定（如文档中 "P0 无依赖"）：
+// P0=5（最高）、P1=4、P2=3、P3=2、P4=1、P5=0。
 var priorityAliases = map[string]int{
 	"lowest":   0,
 	"none":     0,
@@ -17,6 +20,12 @@ var priorityAliases = map[string]int{
 	"highest":  5,
 	"critical": 5,
 	"urgent":   5,
+	"p0":       5,
+	"p1":       4,
+	"p2":       3,
+	"p3":       2,
+	"p4":       1,
+	"p5":       0,
 }
 
 // NormalizePriority 将 priority 输入归一化为 0–5 整数（严格模式，非法值拒绝）。
@@ -24,7 +33,7 @@ var priorityAliases = map[string]int{
 // 支持输入（docs/TASK-SEMANTICS.md §3）：
 //   - nil → 0（缺省无优先级）
 //   - int / int64 / float64（JSON number，须为整数）→ 原值并校验 0–5
-//   - string → 别名表；否则按数字字符串解析（"3"），仍失败则拒绝
+//   - string → 别名表（大小写不敏感：P0~P5 亦受支持）；否则按数字字符串解析（"3"），仍失败则拒绝
 //
 // 非法输入返回 *Error（Code=CodeTaskInvalid），不静默 fallback。
 func NormalizePriority(v any) (int, error) {
@@ -42,7 +51,7 @@ func NormalizePriority(v any) (int, error) {
 		}
 		return checkPriorityRange(int(t))
 	case string:
-		if alias, ok := priorityAliases[t]; ok {
+		if alias, ok := priorityAliases[strings.ToLower(strings.TrimSpace(t))]; ok {
 			return alias, nil
 		}
 		n, err := strconv.Atoi(t)

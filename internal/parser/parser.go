@@ -72,6 +72,7 @@ type Options struct {
 type Service struct {
 	mu      sync.Mutex
 	dbs     map[string]*sql.DB
+	fp      map[string]*db.FileFingerprint // workdir → meta.db 文件指纹（TF-001 删除重建校验）
 	logger  *slog.Logger
 	llmCfg  func() config.LLMConfig
 	tasks   task.Service
@@ -88,6 +89,7 @@ func NewService(opts Options) *Service {
 	}
 	return &Service{
 		dbs:     make(map[string]*sql.DB),
+		fp:      make(map[string]*db.FileFingerprint),
 		logger:  opts.Logger,
 		llmCfg:  opts.LLM,
 		tasks:   opts.Tasks,
@@ -96,6 +98,7 @@ func NewService(opts Options) *Service {
 }
 
 // projectDB 打开并缓存项目库连接（语义同 task.Service.projectDB）。
+// TF-001 修复：缓存命中校验 meta.db 文件指纹，删除重建后重开连接。
 func (s *Service) projectDB(workdir string) (*sql.DB, error) {
 	clean := filepath.Clean(workdir)
 	if !filepath.IsAbs(clean) {
@@ -104,9 +107,19 @@ func (s *Service) projectDB(workdir string) (*sql.DB, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if conn, ok := s.dbs[clean]; ok {
-		return conn, nil
+		if s.fp[clean].SameAs(db.MetaDBPath(clean)) {
+			return conn, nil
+		}
+		s.logger.Warn("project db file replaced, reopening", "workdir", clean, "path", db.MetaDBPath(clean))
+		_ = conn.Close()
+		delete(s.dbs, clean)
+		delete(s.fp, clean)
 	}
 	if _, err := os.Stat(db.MetaDBPath(clean)); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrProjectNotFound, workdir)
+	}
+	fp, err := db.CaptureFingerprint(db.MetaDBPath(clean))
+	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrProjectNotFound, workdir)
 	}
 	conn, err := db.EnsureProject(context.Background(), db.MetaDBPath(clean))
@@ -114,6 +127,7 @@ func (s *Service) projectDB(workdir string) (*sql.DB, error) {
 		return nil, fmt.Errorf("parser: open project db %s: %w", clean, err)
 	}
 	s.dbs[clean] = conn
+	s.fp[clean] = fp
 	return conn, nil
 }
 
@@ -127,6 +141,7 @@ func (s *Service) Close() error {
 			firstErr = fmt.Errorf("parser: close %s: %w", wd, err)
 		}
 		delete(s.dbs, wd)
+		delete(s.fp, wd)
 	}
 	return firstErr
 }

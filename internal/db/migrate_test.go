@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -307,5 +308,41 @@ func TestMetaAndRegistryPaths(t *testing.T) {
 	}
 	if got := RegistryDBPath(`C:\Users\me`); got != filepath.Join(`C:\Users\me`, ".taskboard-app", "registry.db") {
 		t.Errorf("RegistryDBPath mismatch: %s", got)
+	}
+}
+
+// TestFileFingerprint_SameAs TF-001 回归：meta.db 被删除重建（inode 变化）后
+// 缓存指纹必须失效，防止业务层连接仍指向回收站旧库。
+func TestFileFingerprint_SameAs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "meta.db")
+
+	// 先写入旧文件，捕获指纹。
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatalf("write old: %v", err)
+	}
+	fp, err := CaptureFingerprint(path)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if !fp.SameAs(path) {
+		t.Fatal("指纹应匹配自身")
+	}
+
+	// 模拟 macOS 删除 .taskboard 目录 → 重建新库：删除旧文件并写入新内容。
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("new"), 0o644); err != nil {
+		t.Fatalf("write new: %v", err)
+	}
+	if fp.SameAs(path) {
+		t.Fatal("删除重建后指纹应失效（SameAs=false）")
+	}
+
+	// 文件不存在 → SameAs=false。
+	missing := filepath.Join(dir, "nope.db")
+	if fp.SameAs(missing) {
+		t.Fatal("文件不存在应 SameAs=false")
 	}
 }

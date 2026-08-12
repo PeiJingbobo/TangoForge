@@ -106,6 +106,25 @@ func TestParse_StatusLabelMapping(t *testing.T) {
 	}
 }
 
+func TestParse_PriorityP0Alias(t *testing.T) {
+	// LLM 按文档原文输出 "P0" 优先级（项目文档常见写法），应归一化为 5 而非拒绝。
+	srv := mockLLM(t, `{"tasks":[{"title":"数据库迁移脚本","status":"done","priority":"P0"}]}`)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+
+	draft, err := svc.Parse(context.Background(), workdir, ParseInput{Content: "x", SourceFile: "a.md"})
+	if err != nil {
+		t.Fatalf("Parse(P0): %v", err)
+	}
+	detail, err := svc.Get(context.Background(), workdir, draft.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(detail.Tasks) != 1 || detail.Tasks[0].Priority != 5 {
+		t.Fatalf("P0 应归一化为 5，got %+v", detail.Tasks)
+	}
+}
+
 func TestParse_Failures(t *testing.T) {
 	cases := []struct {
 		name    string
