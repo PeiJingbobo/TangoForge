@@ -60,6 +60,14 @@ type ProjectConfig struct {
 	StateMachine StateMachine `yaml:"state_machine"`
 	// Export 导出配置。
 	Export ExportConfig `yaml:"export"`
+	// Knowledge 知识库项目级配置（docs/KNOWLEDGE-BASE.md §4.2）。
+	Knowledge KnowledgeProjectConfig `yaml:"knowledge"`
+}
+
+// KnowledgeProjectConfig 知识库项目级配置（QA-K13：项目级覆盖全局）。
+type KnowledgeProjectConfig struct {
+	// DefaultDocDir 外部文件默认拷贝目录；空 = 用全局逻辑（.taskboard/knowledge）。
+	DefaultDocDir string `yaml:"default_doc_dir"`
 }
 
 // StateMachine 项目状态机定义。
