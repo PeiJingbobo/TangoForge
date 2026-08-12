@@ -62,13 +62,14 @@ func TestImport_NewProjectInitializesMeta(t *testing.T) {
 		}
 	}
 
-	// meta.db 4 表齐全（skills 表已由 v3 迁移移除，TF-033）。
+	// meta.db 业务表齐全（TF-044 v5 起含知识库 5 表）。
 	projDB, err := db.Open(db.MetaDBPath(workdir))
 	if err != nil {
 		t.Fatalf("open meta.db: %v", err)
 	}
 	defer func() { _ = projDB.Close() }()
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log"} {
+	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks"} {
 		if n := countRows(t, projDB, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='`+table+`'`); n != 1 {
 			t.Errorf("meta.db missing table %s", table)
 		}
@@ -76,6 +77,10 @@ func TestImport_NewProjectInitializesMeta(t *testing.T) {
 	// skills 表不应存在（v3 drop）。
 	if n := countRows(t, projDB, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='skills'`); n != 0 {
 		t.Error("skills table should be dropped by v3 migration (TF-033)")
+	}
+	// 默认知识库自动创建（TF-044：is_default=1）。
+	if n := countRows(t, projDB, `SELECT COUNT(*) FROM knowledge_bases WHERE is_default = 1`); n != 1 {
+		t.Error("default knowledge base should be created on project init (TF-044)")
 	}
 
 	// config.yaml：默认状态机（3 态）。
@@ -431,5 +436,36 @@ func TestHidden_ImportVsAIEntry(t *testing.T) {
 	// 未注册目录 complete → ErrNotFound。
 	if _, err := svc.CompleteOnboarding(context.Background(), t.TempDir()); err == nil {
 		t.Fatal("未注册目录 complete 应报错")
+	}
+}
+
+// TestImport_DefaultKB_CreatedOnce 验证默认库创建语义（TF-044）：
+//  1. Init（仅初始化）同样创建默认库；2) 幂等——重复执行不产生第二个默认库；
+//  3. 存量库（已迁移到 v5 但无默认库）在再次 EnsureProject 时不被静默补建（补建属 TF-045 业务层语义，
+//     此处仅验证项目初始化路径只建一次）。
+func TestImport_DefaultKB_CreatedOnce(t *testing.T) {
+	svc := newService(t)
+	workdir := t.TempDir()
+
+	if err := svc.Init(context.Background(), workdir); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	projDB, err := db.Open(db.MetaDBPath(workdir))
+	if err != nil {
+		t.Fatalf("open meta.db: %v", err)
+	}
+	defer func() { _ = projDB.Close() }()
+	if n := countRows(t, projDB, `SELECT COUNT(*) FROM knowledge_bases WHERE is_default = 1`); n != 1 {
+		t.Fatalf("Init 后默认库应为 1，got %d", n)
+	}
+	if n := countRows(t, projDB, `SELECT COUNT(*) FROM knowledge_bases`); n != 1 {
+		t.Fatalf("默认库是唯一库，got %d", n)
+	}
+	// 幂等：再次 Init 不新增。
+	if err := svc.Init(context.Background(), workdir); err != nil {
+		t.Fatalf("re-init: %v", err)
+	}
+	if n := countRows(t, projDB, `SELECT COUNT(*) FROM knowledge_bases`); n != 1 {
+		t.Fatalf("幂等 Init 后库数应为 1，got %d", n)
 	}
 }

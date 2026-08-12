@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // openMem 打开独立内存库（sqlite:memory: 隔离，不依赖文件系统）。
@@ -107,8 +109,13 @@ func TestMigrate_ProjectCreatesAllTablesAndIndexes(t *testing.T) {
 	if err := Migrate(context.Background(), conn, ProjectMigrations); err != nil {
 		t.Fatalf("migrate project: %v", err)
 	}
-	// 5 张业务表（含 schema_migrations）均存在；skills 表在 v3 已移除（TF-033）。
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log", "schema_migrations"} {
+	// 5 张业务表（含 schema_migrations）均存在；skills 表在 v3 已移除（TF-033）；
+	// 知识库 5 表由 v5 迁移创建（TF-044）。
+	for _, table := range []string{
+		"tasks", "permissions", "import_drafts", "audit_log", "schema_migrations",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents",
+		"task_documents", "knowledge_chunks",
+	} {
 		assertTableExists(t, conn, table)
 	}
 	// 关键列校验（与 REQUIREMENTS.md §四.4 DDL 一致）。
@@ -119,12 +126,28 @@ func TestMigrate_ProjectCreatesAllTablesAndIndexes(t *testing.T) {
 	assertColumns(t, conn, "permissions", "id", "project_id", "action", "allowed")
 	assertColumns(t, conn, "import_drafts", "id", "project_id", "source_file", "parsed_json", "status", "created_at", "confirmed_at")
 	assertColumns(t, conn, "audit_log", "id", "ts", "actor", "actor_class", "action", "target", "result", "detail")
+	// 知识库 5 表列结构（docs/KNOWLEDGE-BASE.md §3）。
+	assertColumns(t, conn, "knowledge_bases",
+		"id", "project_id", "name", "description", "is_default", "created_at", "updated_at")
+	assertColumns(t, conn, "knowledge_documents",
+		"id", "project_id", "path", "abs_path", "rel_path", "origin_path", "display_name",
+		"type", "size", "mtime", "content_hash", "summary", "status", "embedded",
+		"embedding_model", "index_error", "history", "created_at", "updated_at")
+	assertColumns(t, conn, "knowledge_base_documents", "kb_id", "document_id", "created_at")
+	assertColumns(t, conn, "task_documents", "task_id", "document_id", "created_at")
+	assertColumns(t, conn, "knowledge_chunks",
+		"id", "document_id", "seq", "heading", "content", "vector", "dim", "created_at")
 	// skills 表已被 v3 删除（TF-033：技能包改为内置 embed + 全局库）。
 	assertTableAbsent(t, conn, "skills")
 	// 索引齐全。
 	assertIndexExists(t, conn, "idx_tasks_project")
 	assertIndexExists(t, conn, "idx_tasks_status")
 	assertIndexExists(t, conn, "idx_audit_project")
+	assertIndexExists(t, conn, "idx_kd_abs")
+	assertIndexExists(t, conn, "idx_kd_status")
+	assertIndexExists(t, conn, "idx_td_doc")
+	assertIndexExists(t, conn, "idx_td_task")
+	assertIndexExists(t, conn, "idx_kc_doc")
 }
 
 func TestMigrate_Idempotent(t *testing.T) {
@@ -145,8 +168,8 @@ func TestMigrate_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current version: %v", err)
 	}
-	if v1 != v2 || v2 != 4 {
-		t.Errorf("version should stay 4 after idempotent migrate, got %d -> %d", v1, v2)
+	if v1 != v2 || v2 != 5 {
+		t.Errorf("version should stay 5 after idempotent migrate, got %d -> %d", v1, v2)
 	}
 }
 
@@ -161,7 +184,8 @@ func TestMigrate_UpDownRoundTrip(t *testing.T) {
 	if err := MigrateDown(ctx, conn, ProjectMigrations, 0); err != nil {
 		t.Fatalf("down to 0: %v", err)
 	}
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "skills", "audit_log"} {
+	for _, table := range []string{"tasks", "permissions", "import_drafts", "skills", "audit_log",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks"} {
 		assertTableAbsent(t, conn, table)
 	}
 	v, err := CurrentVersion(ctx, conn)
@@ -266,7 +290,7 @@ func TestEnsureGlobal_FileDB(t *testing.T) {
 	assertTableExists(t, conn, "projects")
 }
 
-// TestEnsureProject_FileDB 验证临时目录建项目库：meta.db 文件 + 4 表（TF-033 v3 移除 skills）+ 索引齐全。
+// TestEnsureProject_FileDB 验证临时目录建项目库：meta.db 文件 + 9 表（TF-033 v3 移除 skills，TF-044 v5 加知识库）+ 索引齐全。
 func TestEnsureProject_FileDB(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "meta.db")
@@ -275,7 +299,8 @@ func TestEnsureProject_FileDB(t *testing.T) {
 		t.Fatalf("ensure project: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log"} {
+	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks"} {
 		assertTableExists(t, conn, table)
 	}
 	// skills 表已由 v3 迁移移除（TF-033：技能包改为内置 embed + 全局库，无项目库依赖）。
@@ -283,6 +308,80 @@ func TestEnsureProject_FileDB(t *testing.T) {
 	assertIndexExists(t, conn, "idx_tasks_project")
 	assertIndexExists(t, conn, "idx_tasks_status")
 	assertIndexExists(t, conn, "idx_audit_project")
+	assertIndexExists(t, conn, "idx_kd_abs")
+	assertIndexExists(t, conn, "idx_kd_status")
+	assertIndexExists(t, conn, "idx_td_doc")
+	assertIndexExists(t, conn, "idx_td_task")
+	assertIndexExists(t, conn, "idx_kc_doc")
+}
+
+// TestKnowledgeSchema_UniqueConstraints 验证知识库表唯一约束（TF-044 验收）：
+// 库名唯一、文档 abs_path 唯一、chunk (document_id, seq) 唯一。
+func TestKnowledgeSchema_UniqueConstraints(t *testing.T) {
+	conn := openMem(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, conn, ProjectMigrations); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	now := "2026-08-12T00:00:00+08:00"
+	// 同项目重名库 → 唯一约束拒绝。
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO knowledge_bases (project_id, name, created_at, updated_at) VALUES (1, 'kb', ?, ?)`,
+		now, now); err != nil {
+		t.Fatalf("insert kb: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO knowledge_bases (project_id, name, created_at, updated_at) VALUES (1, 'kb', ?, ?)`,
+		now, now); err == nil {
+		t.Fatal("同项目重名知识库应被唯一约束拒绝")
+	}
+	// 跨项目同名库允许。
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO knowledge_bases (project_id, name, created_at, updated_at) VALUES (2, 'kb', ?, ?)`,
+		now, now); err != nil {
+		t.Fatalf("跨项目同名库应允许: %v", err)
+	}
+	// 文档 abs_path 唯一（idx_kd_abs）。
+	insDoc := func(abs string) error {
+		_, err := conn.ExecContext(ctx,
+			`INSERT INTO knowledge_documents (id, project_id, path, abs_path, display_name, created_at, updated_at)
+			 VALUES (?, 1, ?, ?, 'd', ?, ?)`,
+			randomID(t), abs, abs, now, now)
+		return err
+	}
+	if err := insDoc("/a/b.md"); err != nil {
+		t.Fatalf("insert doc1: %v", err)
+	}
+	if err := insDoc("/a/b.md"); err == nil {
+		t.Fatal("同项目同 abs_path 文档应被唯一约束拒绝")
+	}
+	if err := insDoc("/a/c.md"); err != nil {
+		t.Fatalf("insert doc2: %v", err)
+	}
+	// chunk (document_id, seq) 唯一。
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO knowledge_chunks (id, document_id, seq, content, vector, dim, created_at)
+		 VALUES ('c1', ?, 0, 'x', X'0000803F', 1, ?)`,
+		"doc", now); err != nil {
+		t.Fatalf("insert chunk: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO knowledge_chunks (id, document_id, seq, content, vector, dim, created_at)
+		 VALUES ('c2', ?, 0, 'y', X'0000803F', 1, ?)`,
+		"doc", now); err == nil {
+		t.Fatal("同 document 同 seq chunk 应被唯一约束拒绝")
+	}
+}
+
+// randomID 生成测试用 UUID v4 格式字符串（不依赖第三方库）。
+func randomID(t *testing.T) string {
+	t.Helper()
+	return fmt.Sprintf("%08x-%04x-4%03x-%04x-%012x",
+		time.Now().UnixNano()&0xffffffff,
+		time.Now().UnixNano()>>32&0xffff,
+		time.Now().UnixNano()>>48&0xfff,
+		time.Now().UnixNano()&0xffff,
+		time.Now().UnixNano()>>20&0xffffffffffff)
 }
 
 func TestOpen_WALMode(t *testing.T) {

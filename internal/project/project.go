@@ -18,6 +18,7 @@ import (
 	"strings"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"tangoforge/internal/knowledge"
 	"time"
 )
 
@@ -447,9 +448,37 @@ func (s *Service) initProjectDir(ctx context.Context, workdir string) error {
 		return fmt.Errorf("project: write default permissions: %w", err)
 	}
 
-	// 3) 默认 config.yaml（状态机 + export）。
+	// 3) 默认知识库：项目初始化自动创建「默认库」（TF-044，docs/KNOWLEDGE-BASE.md §3）。
+	if err := s.ensureDefaultKB(ctx, projDB); err != nil {
+		return fmt.Errorf("project: init default knowledge base: %w", err)
+	}
+
+	// 4) 默认 config.yaml（状态机 + export）。
 	if err := config.SaveProject(workdir, config.DefaultProjectConfig()); err != nil {
 		return fmt.Errorf("project: init config.yaml: %w", err)
+	}
+	return nil
+}
+
+// ensureDefaultKB 创建项目默认知识库（幂等：已存在则跳过）。
+// project_id 语义同权限：统一写入 1（项目库内冗余列，一致性由应用层维护）。
+func (s *Service) ensureDefaultKB(ctx context.Context, projDB *sql.DB) error {
+	const localProjectID = 1
+	var n int
+	if err := projDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM knowledge_bases WHERE project_id = ? AND is_default = 1`,
+		localProjectID).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	now := time.Now().Format(time.RFC3339)
+	if _, err := projDB.ExecContext(ctx,
+		`INSERT INTO knowledge_bases (project_id, name, description, is_default, created_at, updated_at)
+		 VALUES (?, ?, '', 1, ?, ?)`,
+		localProjectID, knowledge.DefaultKBName, now, now); err != nil {
+		return err
 	}
 	return nil
 }

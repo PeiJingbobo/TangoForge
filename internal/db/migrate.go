@@ -307,6 +307,103 @@ var ProjectMigrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// v5（TF-044）：知识库 5 表（docs/KNOWLEDGE-BASE.md §3）。
+		// 知识库 = 文档引用注册表 + 任务关联 + 语义索引（摘要/向量），不存原文；
+		// knowledge_documents 按 (project_id, abs_path) 唯一，多库/多任务共享单向量。
+		// 命名多库：默认库由项目初始化流程创建（is_default=1），此处仅建 schema。
+		Version: 5,
+		Name:    "create_knowledge_tables",
+		Up: func(ctx context.Context, tx *sql.Tx) error {
+			stmts := []string{
+				`CREATE TABLE knowledge_bases (
+					id          INTEGER PRIMARY KEY AUTOINCREMENT,
+					project_id  INTEGER NOT NULL DEFAULT 1,
+					name        TEXT NOT NULL,
+					description TEXT NOT NULL DEFAULT '',
+					is_default  INTEGER NOT NULL DEFAULT 0,
+					created_at  TEXT NOT NULL,
+					updated_at  TEXT NOT NULL,
+					UNIQUE(project_id, name)
+				)`,
+				`CREATE TABLE knowledge_documents (
+					id             TEXT PRIMARY KEY,
+					project_id     INTEGER NOT NULL DEFAULT 1,
+					path           TEXT NOT NULL,
+					abs_path       TEXT NOT NULL,
+					rel_path       TEXT,
+					origin_path    TEXT,
+					display_name   TEXT NOT NULL,
+					type           TEXT NOT NULL DEFAULT 'text',
+					size           INTEGER NOT NULL DEFAULT 0,
+					mtime          TEXT,
+					content_hash   TEXT,
+					summary        TEXT NOT NULL DEFAULT '',
+					status         TEXT NOT NULL DEFAULT 'ok',
+					embedded       INTEGER NOT NULL DEFAULT 0,
+					embedding_model TEXT,
+					index_error    TEXT,
+					history        TEXT NOT NULL DEFAULT '[]',
+					created_at     TEXT NOT NULL,
+					updated_at     TEXT NOT NULL
+				)`,
+				`CREATE UNIQUE INDEX idx_kd_abs ON knowledge_documents(project_id, abs_path)`,
+				`CREATE INDEX idx_kd_status ON knowledge_documents(status)`,
+				`CREATE TABLE knowledge_base_documents (
+					kb_id       INTEGER NOT NULL REFERENCES knowledge_bases(id),
+					document_id TEXT NOT NULL REFERENCES knowledge_documents(id),
+					created_at  TEXT NOT NULL,
+					PRIMARY KEY (kb_id, document_id)
+				)`,
+				`CREATE TABLE task_documents (
+					task_id     TEXT NOT NULL,
+					document_id TEXT NOT NULL REFERENCES knowledge_documents(id),
+					created_at  TEXT NOT NULL,
+					PRIMARY KEY (task_id, document_id)
+				)`,
+				`CREATE INDEX idx_td_doc ON task_documents(document_id)`,
+				`CREATE INDEX idx_td_task ON task_documents(task_id)`,
+				`CREATE TABLE knowledge_chunks (
+					id          TEXT PRIMARY KEY,
+					document_id TEXT NOT NULL REFERENCES knowledge_documents(id),
+					seq         INTEGER NOT NULL,
+					heading     TEXT NOT NULL DEFAULT '',
+					content     TEXT NOT NULL,
+					vector      BLOB NOT NULL,
+					dim         INTEGER NOT NULL,
+					created_at  TEXT NOT NULL,
+					UNIQUE(document_id, seq)
+				)`,
+				`CREATE INDEX idx_kc_doc ON knowledge_chunks(document_id)`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		Down: func(ctx context.Context, tx *sql.Tx) error {
+			stmts := []string{
+				`DROP INDEX IF EXISTS idx_kc_doc`,
+				`DROP TABLE IF EXISTS knowledge_chunks`,
+				`DROP INDEX IF EXISTS idx_td_task`,
+				`DROP INDEX IF EXISTS idx_td_doc`,
+				`DROP TABLE IF EXISTS task_documents`,
+				`DROP TABLE IF EXISTS knowledge_base_documents`,
+				`DROP INDEX IF EXISTS idx_kd_status`,
+				`DROP INDEX IF EXISTS idx_kd_abs`,
+				`DROP TABLE IF EXISTS knowledge_documents`,
+				`DROP TABLE IF EXISTS knowledge_bases`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // Migrate 将数据库向上迁移至迁移集合中的最新版本。
