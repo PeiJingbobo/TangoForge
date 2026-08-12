@@ -27,8 +27,24 @@ type Options struct {
 }
 
 // TaskLister 任务服务的最小只读接口（knowledge 不依赖 task 全接口，保持职责单一）。
+// Get 返回 any（校验存在性即可，不关心具体类型）。
 type TaskLister interface {
 	Get(ctx context.Context, workdir, id string) (any, error)
+}
+
+// taskListerAdapter 适配：将返回具体类型的 Get 函数适配为 TaskLister。
+type taskListerAdapter struct {
+	GetFn func(ctx context.Context, workdir, id string) (any, error)
+}
+
+func (a taskListerAdapter) Get(ctx context.Context, workdir, id string) (any, error) {
+	return a.GetFn(ctx, workdir, id)
+}
+
+// TaskListerAdapter 由任意 Get 函数构造 TaskLister（传输层组装用；
+// 例如 task.Service.Get 返回 task.Task，此处转换为 any）。
+func TaskListerAdapter(fn func(ctx context.Context, workdir, id string) (any, error)) TaskLister {
+	return taskListerAdapter{GetFn: fn}
 }
 
 // KnowledgeFile 知识库文件建议（parser 草稿透传；KB 为库名或空=默认库）。
@@ -72,6 +88,8 @@ type Service interface {
 	GetDocument(ctx context.Context, workdir, id string) (Document, error)
 	// RegisterDocument 注册文档 {path, copy, kb_ids[]}（存在则复用并返回既有记录，QA-K16）。
 	RegisterDocument(ctx context.Context, workdir, path, copyMode string, kbIDs []int64) (Document, error)
+	// UpdateContent 编辑原文（QA-K7：直接写盘原文件 → 触发重新索引；二进制拒绝）。
+	UpdateContent(ctx context.Context, workdir, id, content string) error
 	// DeleteDocument 解除引用（删文档 + chunks + 边）。
 	DeleteDocument(ctx context.Context, workdir, id string) error
 	// RelinkDocument 重新链接 {new_path, copy}（更新路径 + history + 重置重建索引，QA-K15）。

@@ -34,6 +34,8 @@ func (s *Server) handleTaskList(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTaskGet 任务详情（GET /api/tasks/:id）。
+// TF-050：响应内嵌 knowledge_documents 摘要数组（任务关联文档，knowledge.read 读取；
+// 权限中间件已挂 task.read，knowledge.read 默认只读也放行；查询失败不阻断详情返回）。
 func (s *Server) handleTaskGet(w http.ResponseWriter, r *http.Request) {
 	workdir := auth.WorkdirFrom(r.Context())
 	id := chi.URLParam(r, "id")
@@ -42,7 +44,45 @@ func (s *Server) handleTaskGet(w http.ResponseWriter, r *http.Request) {
 		writeBizError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": t})
+	data := map[string]any{
+		"id":                  t.ID,
+		"project_id":          t.ProjectID,
+		"parent_id":           t.ParentID,
+		"title":               t.Title,
+		"description":         t.Description,
+		"status":              t.Status,
+		"priority":            t.Priority,
+		"tags":                t.Tags,
+		"assignee":            t.Assignee,
+		"depends_on":          t.DependsOn,
+		"archived_from":       t.ArchivedFrom,
+		"source_file":         t.SourceFile,
+		"source_section":      t.SourceSection,
+		"number":              t.Number,
+		"created_at":          t.CreatedAt,
+		"updated_at":          t.UpdatedAt,
+		"knowledge_documents": []any{},
+	}
+	// 任务关联文档（摘要数组）。
+	if s.knowledgeSvc != nil {
+		if docs, err := s.knowledgeSvc.TaskDocuments(r.Context(), workdir, id); err == nil {
+			summaries := make([]map[string]any, 0, len(docs))
+			for _, d := range docs {
+				summaries = append(summaries, map[string]any{
+					"id":           d.ID,
+					"display_name": d.DisplayName,
+					"path":         d.Path,
+					"abs_path":     d.AbsPath,
+					"rel_path":     d.RelPath,
+					"type":         d.Type,
+					"status":       d.Status,
+					"summary":      d.Summary,
+				})
+			}
+			data["knowledge_documents"] = summaries
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": data})
 }
 
 // handleTaskCreate 创建任务（POST /api/tasks）。

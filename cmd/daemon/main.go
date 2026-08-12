@@ -89,6 +89,9 @@ func run(ctx context.Context, logger *slog.Logger, configPath string) error {
 	// 5. HTTP 服务。
 	srv := api.NewServer(&cfg, registry, logger, configPath, home)
 
+	// 5.1 知识库扫描器：注册全部已导入项目 + 启动扫描/监听（TF-048/050）。
+	srv.StartKnowledgeScanner()
+
 	// 6. 全局配置热重载：remote_access 立即生效 + 端口动态重绑（失败保留旧端口）。
 	stopWatch, err := config.WatchGlobal(configPath, func(next config.GlobalConfig) {
 		srv.SetConfig(&next)

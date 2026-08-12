@@ -29,6 +29,7 @@ var ErrNotFound = errors.New("project: not found")
 var ErrInvalidWorkdir = errors.New("project: invalid workdir")
 
 // AllActions v1 Agent 权限动作全集（REQUIREMENTS.md §7.1），初始化时全部显式写入。
+// TF-050：新增 knowledge.read / knowledge.write / knowledge.index（QA-K12）。
 var AllActions = []string{
 	"project.read",
 	"task.read",
@@ -47,15 +48,20 @@ var AllActions = []string{
 	"state_machine.write",
 	"audit.read",
 	"permission.read",
+	"knowledge.read",
+	"knowledge.write",
+	"knowledge.index",
 }
 
 // DefaultGrantedActions 新项目默认授予 Agent 的只读权限（REQUIREMENTS.md §7.1）。
+// TF-050：knowledge.read 加入默认只读（QA-K12：默认只读 5 项 → 6 项）。
 var DefaultGrantedActions = map[string]bool{
 	"task.read":       true,
 	"graph.read":      true,
 	"skill.read":      true,
 	"project.read":    true,
 	"permission.read": true,
+	"knowledge.read":  true,
 }
 
 // Project 项目注册表记录（projects 表，仅「名称 + 工作目录 + 可见性」）。

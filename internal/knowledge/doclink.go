@@ -490,6 +490,37 @@ func (s *service) resolveKB(ctx context.Context, conn *sql.DB, workdir, name str
 	}
 	return 0, fmt.Errorf("%w: 知识库 %q 不存在（knowledge_files 引用）", ErrKnowledgeInvalid, name)
 }
+
+// UpdateContent 编辑原文（QA-K7）：直接写盘原文件 → 触发重新索引（摘要 + 向量）。
+// 二进制文件禁止编辑；写盘失败 → DOCUMENT_INVALID（文档保持原状态）。
+func (s *service) UpdateContent(ctx context.Context, workdir, id, content string) error {
+	conn, err := s.projectDB(ctx, workdir)
+	if err != nil {
+		return err
+	}
+	doc, err := s.getDocumentByID(ctx, conn, id)
+	if err != nil {
+		return err
+	}
+	if doc.Type == DocTypeBinary {
+		return NewDocumentInvalid("二进制文件禁止编辑")
+	}
+	if err := os.WriteFile(doc.AbsPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("%w: 写盘失败: %v", ErrDocumentInvalid, err)
+	}
+	// 重置索引状态（扫描/防抖懒校验会重建；此处显式标记待索引）。
+	now := nowRFC3339()
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE knowledge_documents SET status = ?, content_hash = '', updated_at = ? WHERE id = ?`,
+		DocStatusIndexing, now, id); err != nil {
+		return fmt.Errorf("knowledge: mark doc for reindex: %w", err)
+	}
+	s.fireWrite(ctx, workdir, "document_content_edited", id)
+	return nil
+}
+
+// LinkTask 任务关联（§2.5，QA-K16）：task_id + document_id 或 path。
+// path 未注册 → 自动入库（注册 + 关联）；参数 copy/kb_ids 仅 path 形态生效。
 func (s *service) LinkTask(ctx context.Context, workdir, taskID, documentID, path, copyMode string, kbIDs []int64) error {
 	if taskID == "" {
 		return NewDocumentInvalid("task_id 必填")

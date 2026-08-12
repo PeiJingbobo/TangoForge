@@ -47,6 +47,10 @@ func (s *Server) handleProjectImport(w http.ResponseWriter, r *http.Request) {
 		writeBizError(w, err)
 		return
 	}
+	// TF-050：新导入项目登记到知识库扫描器（fsnotify 监听 + 启动扫描）。
+	if s.knowledgeScanner != nil {
+		s.knowledgeScanner.RegisterWorkdir(req.Workdir)
+	}
 	s.writeProjectAudit(r, "project.imported", req.Workdir, audit.ResultOK, "")
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": p})
 }
@@ -131,6 +135,18 @@ func (s *Server) handleProjectRemove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "TASK_INVALID", "项目 id 非法", err.Error())
 		return
 	}
+	// TF-050：移除前捕获 workdir（注销扫描器监听用）。
+	removedWorkdir := ""
+	if s.knowledgeScanner != nil {
+		if list, lerr := s.projects.List(r.Context()); lerr == nil {
+			for _, p := range list {
+				if p.ID == id {
+					removedWorkdir = p.Workdir
+					break
+				}
+			}
+		}
+	}
 	if err := s.projects.Remove(r.Context(), id); err != nil {
 		if errors.Is(err, project.ErrNotFound) {
 			writeBizError(w, err)
@@ -142,6 +158,9 @@ func (s *Server) handleProjectRemove(w http.ResponseWriter, r *http.Request) {
 	// 移除后无 workdir 可查审计（记录已删）；以注册表库为目标的审计写入全局 registry 不可行，
 	// 此处仅记录到日志（移除本身是注册表级操作，项目库审计表随项目保留）。
 	s.logger.Info("project record removed", "id", id)
+	if removedWorkdir != "" && s.knowledgeScanner != nil {
+		s.knowledgeScanner.UnregisterWorkdir(removedWorkdir)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"removed": true}})
 }
 

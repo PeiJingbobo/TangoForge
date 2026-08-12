@@ -6,6 +6,7 @@ import (
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/exporter"
+	"tangoforge/internal/knowledge"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
@@ -68,6 +69,16 @@ func mapError(err error) (status int, code, message string) {
 		return http.StatusNotFound, "SKILL_NOT_FOUND", err.Error()
 	case errors.Is(err, skill.ErrInvalidPackage), errors.Is(err, skill.ErrUnknownHost):
 		return http.StatusUnprocessableEntity, "SKILL_INVALID", err.Error()
+	case errors.Is(err, knowledge.ErrKnowledgeNotFound), errors.Is(err, knowledge.ErrDocumentNotFound):
+		return http.StatusNotFound, knowledge.CodeOf(err), err.Error()
+	case errors.Is(err, knowledge.ErrKnowledgeInvalid), errors.Is(err, knowledge.ErrDocumentInvalid),
+		errors.Is(err, knowledge.ErrDocumentMissing), errors.Is(err, knowledge.ErrCopyFailed):
+		return http.StatusUnprocessableEntity, knowledge.CodeOf(err), err.Error()
+	case errors.Is(err, knowledge.ErrEmbeddingNotConfigured):
+		return http.StatusUnprocessableEntity, knowledge.CodeEmbeddingNotConfigured, err.Error()
+	case errors.Is(err, knowledge.ErrEmbeddingFailed), errors.Is(err, knowledge.ErrSummaryFailed),
+		errors.Is(err, knowledge.ErrIndexFailed):
+		return http.StatusUnprocessableEntity, knowledge.CodeOf(err), err.Error()
 	}
 	// LLM 错误（TF-015，§14.3）→ 422 对应码。
 	if code := llm.ErrorCode(err); code != "" {

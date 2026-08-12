@@ -17,12 +17,15 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"tangoforge/internal/audit"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
 	"tangoforge/internal/exporter"
+	"tangoforge/internal/knowledge"
+	"tangoforge/internal/llm"
 	"tangoforge/internal/mcp"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
@@ -55,6 +58,9 @@ type Server struct {
 	parserSvc *parser.Service
 	// TF-019 导出服务（Markdown 渲染 + LLM 模板生成）。
 	exporterSvc *exporter.Service
+	// TF-050 知识库业务服务 + 文件扫描器。
+	knowledgeSvc     knowledge.Service
+	knowledgeScanner *knowledge.Scanner
 	// TF-016 远程 MCP HTTP 传输（/mcp，惰性初始化一次）。
 	mcpOnce    sync.Once
 	mcpHandler http.Handler
@@ -113,12 +119,37 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, 
 		hub:        hub,
 		skills:     skill.NewService(logger, homeDir),
 	}
+
+	// TF-050 知识库服务（写钩子 → 审计 + WS 事件；parser/exporter 依赖其只读接口）。
+	knowSvc := knowledge.NewService(knowledge.Options{
+		Logger: logger,
+		// task.Service → TaskLister 适配（返回类型转换）。
+		Tasks: knowledge.TaskListerAdapter(func(ctx context.Context, workdir, id string) (any, error) {
+			return taskSvc.Get(ctx, workdir, id)
+		}),
+		LLM: s.newLLMClient(),
+	})
+	knowSvc.SetOnWrite(func(ctx context.Context, workdir, action, target string) {
+		actor := auth.ActorFrom(ctx)
+		auditStore.Write(ctx, workdir, audit.Entry{
+			Actor: actor.Name, ActorClass: actor.Class,
+			Action: action, Target: target, Result: audit.ResultOK,
+		})
+		hub.Publish(workdir, action, map[string]any{"id": target})
+	})
+	s.knowledgeSvc = knowSvc
+	// 注入向量检索 embedding 配置（QA-K23：未配置模型 → 检索返回 NOT_CONFIGURED）。
+	s.knowledgeSvc.SetEmbeddingConfig(s.embeddingConfig())
+	// Scanner（daemon 启动时由 Start + RegisterWorkdir 接入）。
+	s.knowledgeScanner = knowledge.NewScanner(knowSvc, s.currentConfig().Knowledge, s.embeddingConfig(), logger)
+
 	s.parserSvc = parser.NewService(parser.Options{
 		Logger: logger,
 		LLM: func() config.LLMConfig {
 			return s.currentConfig().LLM // 每次调用取最新（LLM 配置热重载即时生效）。
 		},
-		Tasks: taskSvc,
+		Tasks:     taskSvc,
+		Knowledge: knowSvc,
 		OnEvent: func(ctx context.Context, workdir, action, target string) {
 			// 导入域事件双通道：异步审计 + WS 事件广播（与 task 写钩子同构）。
 			actor := auth.ActorFrom(ctx)
@@ -130,8 +161,9 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, 
 		},
 	})
 	s.exporterSvc = exporter.NewService(exporter.Options{
-		Logger: logger,
-		Tasks:  taskSvc,
+		Logger:    logger,
+		Tasks:     taskSvc,
+		Knowledge: knowSvc,
 		LLM: func() config.LLMConfig {
 			return s.currentConfig().LLM
 		},
@@ -176,7 +208,31 @@ func (s *Server) Close() error {
 			firstErr = err
 		}
 	}
+	if s.knowledgeScanner != nil {
+		s.knowledgeScanner.Stop()
+	}
+	if s.knowledgeSvc != nil {
+		if err := s.knowledgeSvc.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
 	return firstErr
+}
+
+// StartKnowledgeScanner 注册全部已导入项目并启动知识库扫描器（daemon 启动时调用）。
+// scanner 未创建（测试环境）→ 静默跳过。
+func (s *Server) StartKnowledgeScanner() {
+	if s.knowledgeScanner == nil {
+		return
+	}
+	// 注册全部已导入项目（project.Service.List 只返回可见项目；hidden 项目也需扫描，
+	// 用 projects.List 覆盖全部——此处依赖可见即可，隐藏项目下次导入引导后补注册）。
+	if list, err := s.projects.List(context.Background()); err == nil {
+		for _, p := range list {
+			s.knowledgeScanner.RegisterWorkdir(p.Workdir)
+		}
+	}
+	_ = s.knowledgeScanner.Start(context.Background())
 }
 
 // SetConfig 原子替换当前配置（remote_access 等内存标志立即生效；供热重载回调调用）。
@@ -201,6 +257,28 @@ func (s *Server) currentConfigPtr() *config.GlobalConfig {
 	s.cfgMu.RLock()
 	defer s.cfgMu.RUnlock()
 	return s.cfg
+}
+
+// newLLMClient 懒构造 LLM 客户端（知识库摘要用；配置不可用 → nil 降级）。
+func (s *Server) newLLMClient() *llm.Client {
+	cl, err := llm.New(llm.FromConfig(s.currentConfig().LLM), s.logger)
+	if err != nil {
+		return nil
+	}
+	return cl
+}
+
+// embeddingConfig 返回当前全局配置下的向量嵌入配置（QA-K23；model 空 → nil = 检索禁用）。
+func (s *Server) embeddingConfig() *llm.EmbeddingConfig {
+	cfg := s.currentConfig().LLM
+	if !llm.EmbeddingConfigured(cfg) {
+		return nil
+	}
+	ec := llm.EmbeddingFromConfig(cfg)
+	if ec.APIKey == "" {
+		ec.APIKey = os.Getenv("DEEPSEEK_API_KEY")
+	}
+	return &ec
 }
 
 // perm 包装动作权限中间件为 http.HandlerFunc（chi 路由要求 HandlerFunc）。
@@ -330,6 +408,26 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/skills/status", s.perm("skill.read", s.handleSkillStatus))
 			r.Post("/skills/install", s.perm("skill.install", s.handleSkillInstall))
 			r.Post("/skills/uninstall", s.perm("skill.install", s.handleSkillUninstall))
+
+			// TF-050：知识库端点（docs/KNOWLEDGE-BASE.md §6）。
+			r.Route("/knowledge", func(r chi.Router) {
+				r.Get("/bases", s.perm("knowledge.read", s.handleKnowledgeBasesGet))
+				r.Post("/bases", s.perm("knowledge.write", s.handleKnowledgeBasesCreate))
+				r.Patch("/bases/{id}", s.perm("knowledge.write", s.handleKnowledgeBasePatch))
+				r.Delete("/bases/{id}", s.perm("knowledge.write", s.handleKnowledgeBaseDelete))
+				r.Get("/documents", s.perm("knowledge.read", s.handleKnowledgeDocumentsGet))
+				r.Post("/documents", s.perm("knowledge.write", s.handleKnowledgeDocumentRegister))
+				r.Get("/documents/{id}", s.perm("knowledge.read", s.handleKnowledgeDocumentGet))
+				r.Get("/documents/{id}/content", s.perm("knowledge.read", s.handleKnowledgeDocumentContentGet))
+				r.Put("/documents/{id}/content", s.perm("knowledge.write", s.handleKnowledgeDocumentContentPut))
+				r.Post("/documents/{id}/relink", s.perm("knowledge.write", s.handleKnowledgeDocumentRelink))
+				r.Delete("/documents/{id}", s.perm("knowledge.write", s.handleKnowledgeDocumentDelete))
+				r.Post("/link", s.perm("knowledge.write", s.handleKnowledgeLink))
+				r.Post("/unlink", s.perm("knowledge.write", s.handleKnowledgeUnlink))
+				r.Get("/search", s.perm("knowledge.read", s.handleKnowledgeSearch))
+				r.Post("/scan", s.perm("knowledge.index", s.handleKnowledgeScan))
+				r.Get("/tasks/{taskId}", s.perm("knowledge.read", s.handleKnowledgeTaskDocuments))
+			})
 		})
 
 		r.Get("/", func(w http.ResponseWriter, _ *http.Request) {
