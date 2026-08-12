@@ -162,6 +162,15 @@ function ensureWinUpdater(): void {
   winUpdaterReady = true
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
+  // 自签名阶段（TF-036）：electron-updater 默认的 Windows 签名校验用 Get-AuthenticodeSignature
+  // 要求证书链受信任（Status==Valid），自签名证书（无受信任根）在终端机必然失败，导致
+  // "not signed by the application owner"。通过公开钩子覆盖为跳过该校验：
+  // 安装包完整性已由 latest.yml 的 sha512 + GitHub HTTPS 传输保证。
+  // ⚠️ Phase 2 换上正式代码签名证书后必须移除本覆盖，恢复默认严格校验。
+  const nsis = autoUpdater as unknown as {
+    verifyUpdateCodeSignature: (publisherNames: string[], path: string) => Promise<string | null>
+  }
+  nsis.verifyUpdateCodeSignature = async (): Promise<string | null> => null
   autoUpdater.on('checking-for-update', () => broadcast({ state: 'checking' }))
   autoUpdater.on('update-available', (info) => {
     broadcast({ state: 'available', version: info.version, releaseNotes: releaseNotesOf(info) })

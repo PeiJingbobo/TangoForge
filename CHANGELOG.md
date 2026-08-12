@@ -4,6 +4,16 @@
 
 > 版本号以 `app/package.json` 的 `version` 为唯一事实源；GitHub Release 标签须与之强一致（`release.yml` 强校验）。
 
+## [0.6.5] - 2026-08-12
+
+### 修复
+
+- **Windows 在线更新签名校验失败（TF-036）**：electron-updater 默认校验要求安装包证书链受信任（`Get-AuthenticodeSignature Status==Valid`），自签名证书（无受信任根）必然返回 `not signed by the application owner`，更新无法安装。修复：覆盖公开钩子 `autoUpdater.verifyUpdateCodeSignature` 跳过该校验（安装包完整性已由 latest.yml 的 sha512 + GitHub HTTPS 保证）；Phase 2 换上正式证书后恢复默认严格校验。
+
+### 变更
+
+- `app/package.json` version 0.6.4 → 0.6.5。
+
 ## [0.6.2] - 2026-08-12
 
 ### 修复

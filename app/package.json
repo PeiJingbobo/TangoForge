@@ -1,6 +1,6 @@
 {
   "name": "tangoforge-app",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "private": true,
   "description": "TangoForge 桌面客户端（Electron + React 19 + shadcn-ui）",
   "type": "module",
