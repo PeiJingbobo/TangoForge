@@ -144,17 +144,27 @@ jobs:
       - name: 生成 Windows 自签名代码签名证书（.pfx，注入 CSC_LINK）
         shell: bash
         run: |
-          # Git Bash 会把以 / 开头的参数（如 /CN=TangoForge）误转成路径；
-          # 仅对 -subj 的 /CN* 参数禁用转换（/tmp、$(pwd) 等路径仍需正常转换）。
-          export MSYS2_ARG_CONV_EXCL="/CN*"
+          # 用 openssl 配置文件（而非 -subj）定义证书主题：
+          # Git Bash 会把以 / 开头的参数（如 /CN=TangoForge）误转成路径，配置文件方式彻底规避。
           CERT_PFX="$(pwd)/tangoforge-selfsigned.pfx"
           KEY="$(pwd)/tangoforge-key.pem"
           CRT="$(pwd)/tangoforge-cert.pem"
-          openssl req -x509 -newkey rsa:3072 -keyout "$KEY" -out "$CRT" -days 3650 -nodes \
-            -subj "/CN=TangoForge" \
-            -addext "basicConstraints=critical,CA:FALSE" \
-            -addext "keyUsage=digitalSignature" \
-            -addext "extendedKeyUsage=codeSigning"
+          CNF="$(pwd)/tangoforge-openssl.cnf"
+          cat > "$CNF" <<'EOF'
+          [req]
+          prompt = no
+          distinguished_name = dn
+          x509_extensions = v3
+
+          [dn]
+          CN = TangoForge
+
+          [v3]
+          basicConstraints = critical, CA:FALSE
+          keyUsage = digitalSignature
+          extendedKeyUsage = codeSigning
+          EOF
+          openssl req -x509 -newkey rsa:3072 -nodes -keyout "$KEY" -out "$CRT" -days 3650 -config "$CNF"
           openssl pkcs12 -export -out "$CERT_PFX" \
             -inkey "$KEY" -in "$CRT" \
             -passout pass:tangoforge-ci -name "TangoForge Self-Signed"
