@@ -69,8 +69,14 @@ type Service interface {
 
 	// OnWrite 写操作回调（由 api 层注入审计/WS 事件）。
 	SetOnWrite(fn func(ctx context.Context, workdir, action, target string))
+	// SetEmbeddingConfig 设置向量检索用 embedding 配置（TF-047；daemon 启动时注入）。
+	SetEmbeddingConfig(cfg *llm.EmbeddingConfig)
 	// SummarizeAndCache 生成摘要并按 content_hash 缓存（TF-046；llmClient nil 时跳过）。
 	SummarizeAndCache(ctx context.Context, workdir, docID, contentHash, text string) (string, error)
+	// IndexDocument 文档索引流水线（TF-047：分块 + 摘要 + 嵌入 + 写 chunks）。
+	IndexDocument(ctx context.Context, workdir, docID string, opts IndexOptions) (IndexResult, error)
+	// Search 向量检索（TF-047：纯 Go 余弦，文档 + 命中片段）。
+	Search(ctx context.Context, workdir string, q SearchQuery) (SearchResult, error)
 	// Close 关闭缓存的项目库连接。
 	Close() error
 }
@@ -106,6 +112,7 @@ type service struct {
 	logger    *slog.Logger
 	tasks     TaskLister
 	llmClient *llm.Client
+	embCfg    *llm.EmbeddingConfig // 向量检索用 embedding 配置（nil = 检索不可用，QA-K23）
 	onWrite   func(ctx context.Context, workdir, action, target string)
 }
 
@@ -126,6 +133,11 @@ func NewService(opts Options) Service {
 // SetOnWrite 注入写操作回调。
 func (s *service) SetOnWrite(fn func(ctx context.Context, workdir, action, target string)) {
 	s.onWrite = fn
+}
+
+// SetEmbeddingConfig 设置向量检索用 embedding 配置（TF-047；nil = 检索返回未配置错误）。
+func (s *service) SetEmbeddingConfig(cfg *llm.EmbeddingConfig) {
+	s.embCfg = cfg
 }
 
 // fireWrite 触发写操作回调（不阻塞业务）。

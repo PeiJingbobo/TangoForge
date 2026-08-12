@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"tangoforge/internal/llm"
 	"time"
@@ -93,3 +94,156 @@ func (s *service) SummarizeAndCache(ctx context.Context, workdir, docID, content
 
 // IsSummaryFailed 判断摘要生成失败（返回空串表示降级，不视为业务错误）。
 func IsSummaryFailed(summary string) bool { return summary == "" }
+
+// IndexOptions 索引任务参数。
+type IndexOptions struct {
+	// ContentHash 当前文件 sha256；空 = 不更新 hash（未知）。
+	ContentHash string
+	// Embedding 嵌入运行配置（nil = 不嵌入，仅分块/摘要）。
+	Embedding *llm.EmbeddingConfig
+	// MaxIndexSize 超过该大小的文件不嵌入（仅注册 + 摘要，§2.7）。
+	MaxIndexSize int
+	// ForceReembed 强制重嵌入（模型漂移检测 / relink 重置后）。
+	ForceReembed bool
+}
+
+// IndexResult 索引结果摘要（供审计/WS 事件）。
+type IndexResult struct {
+	Chunks     int  `json:"chunks"`
+	Embedded   bool `json:"embedded"`
+	Summarized bool `json:"summarized"`
+	Skipped    bool `json:"skipped"` // 超限跳过嵌入
+}
+
+// IndexDocument 对文档执行完整索引流水线（docs/KNOWLEDGE-BASE.md §9）：
+//
+//	读文件 → 分块（标题分块 + 大小兜底）→ 摘要（LLM，失败不阻断）
+//	→ 逐 chunk 嵌入（llm.Embedding）→ 写 knowledge_chunks + 更新文档元数据。
+//
+// 失败容错：嵌入失败 → 文档 status=failed + index_error（下次扫描重试）；
+// 摘要失败 → summary="" 文档仍嵌入（解耦，§9）。
+func (s *service) IndexDocument(ctx context.Context, workdir, docID string, opts IndexOptions) (IndexResult, error) {
+	conn, err := s.projectDB(ctx, workdir)
+	if err != nil {
+		return IndexResult{}, err
+	}
+	doc, err := s.getDocumentByID(ctx, conn, docID)
+	if err != nil {
+		return IndexResult{}, err
+	}
+	// 二进制不索引。
+	if doc.Type == DocTypeBinary {
+		return IndexResult{Embedded: false}, nil
+	}
+	// 文件缺失 → missing 状态（内容/向量保留，检索仍命中并标注）。
+	if _, err := os.Stat(doc.AbsPath); err != nil {
+		if _, uerr := conn.ExecContext(ctx,
+			`UPDATE knowledge_documents SET status = ?, updated_at = ? WHERE id = ?`,
+			DocStatusMissing, nowRFC3339(), docID); uerr != nil {
+			return IndexResult{}, fmt.Errorf("knowledge: mark missing: %w", uerr)
+		}
+		return IndexResult{Embedded: false}, nil
+	}
+	// 读文件（max_index_size 限制仅影响嵌入，摘要输入单独截断）。
+	text, err := readTextFile(doc.AbsPath)
+	if err != nil {
+		s.logger.Warn("knowledge: read document failed", "id", docID, "path", doc.AbsPath, "err", err)
+		return IndexResult{}, fmt.Errorf("knowledge: read %s: %w", doc.AbsPath, err)
+	}
+
+	// 分块。
+	chunks := splitChunks(text)
+	if len(chunks) == 0 {
+		// 空文档：清空旧向量，标记 ok（无内容可索引）。
+		if _, err := conn.ExecContext(ctx,
+			`DELETE FROM knowledge_chunks WHERE document_id = ?`, docID); err != nil {
+			return IndexResult{}, fmt.Errorf("knowledge: clear chunks: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx,
+			`UPDATE knowledge_documents SET status = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+			DocStatusOK, opts.ContentHash, nowRFC3339(), docID); err != nil {
+			return IndexResult{}, fmt.Errorf("knowledge: update empty doc: %w", err)
+		}
+		return IndexResult{Embedded: false}, nil
+	}
+
+	// 摘要（失败不阻断）。
+	summary := ""
+	if s.llmClient != nil {
+		summary, _ = s.SummarizeAndCache(ctx, workdir, docID, opts.ContentHash, text)
+	}
+
+	// 嵌入。
+	res := IndexResult{Chunks: len(chunks), Summarized: summary != ""}
+	overLimit := opts.MaxIndexSize > 0 && doc.Size > int64(opts.MaxIndexSize)
+	if opts.Embedding == nil || overLimit {
+		// 未配置嵌入 / 超限：仅注册 + 摘要（QA-K8 max_index_size）。
+		if _, err := conn.ExecContext(ctx, `
+			UPDATE knowledge_documents
+			SET status = ?, content_hash = ?, index_error = ?, updated_at = ?
+			WHERE id = ?`,
+			DocStatusOK, opts.ContentHash, overLimitNote(overLimit, opts.MaxIndexSize), nowRFC3339(), docID); err != nil {
+			return res, fmt.Errorf("knowledge: update doc: %w", err)
+		}
+		res.Skipped = overLimit
+		return res, nil
+	}
+
+	// 逐 chunk 嵌入（串行，singleflight 由调用方保证）。
+	// 先清空旧向量（重索引幂等）。
+	if _, err := conn.ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE document_id = ?`, docID); err != nil {
+		return res, fmt.Errorf("knowledge: clear old chunks: %w", err)
+	}
+	model := opts.Embedding.Model
+	now := nowRFC3339()
+	for i, ck := range chunks {
+		vec, err := llm.Embedding(ctx, *opts.Embedding, ck.Content)
+		if err != nil {
+			// 嵌入失败 → 文档 failed + index_error（下次扫描重试）。
+			if _, uerr := conn.ExecContext(ctx, `
+				UPDATE knowledge_documents SET status = ?, index_error = ?, updated_at = ? WHERE id = ?
+				`, DocStatusFailed, err.Error(), now, docID); uerr != nil {
+				return res, fmt.Errorf("knowledge: mark failed: %w", uerr)
+			}
+			s.logger.Warn("knowledge: embed chunk failed", "id", docID, "seq", i, "err", err)
+			return res, fmt.Errorf("knowledge: embed chunk %d: %w", i, err)
+		}
+		if _, err := conn.ExecContext(ctx, `
+			INSERT INTO knowledge_chunks (id, document_id, seq, heading, content, vector, dim, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			uuidv4(), docID, i, ck.Heading, ck.Content, encodeVectorF32(vec), len(vec), now); err != nil {
+			return res, fmt.Errorf("knowledge: insert chunk %d: %w", i, err)
+		}
+	}
+	// 全部成功 → ok + embedded=1 + embedding_model。
+	if _, err := conn.ExecContext(ctx, `
+		UPDATE knowledge_documents
+		SET status = ?, content_hash = ?, embedded = 1, embedding_model = ?, index_error = '', updated_at = ?
+		WHERE id = ?`,
+		DocStatusOK, opts.ContentHash, model, now, docID); err != nil {
+		return res, fmt.Errorf("knowledge: finalize doc: %w", err)
+	}
+	res.Embedded = true
+	return res, nil
+}
+
+// overLimitNote 生成超限说明（index_error 字段语义）。
+func overLimitNote(over bool, limit int) string {
+	if over {
+		return "too_large"
+	}
+	return ""
+}
+
+// readTextFile 读取文本文件（UTF-8；上限 2MB 防御，超限截断）。
+func readTextFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	const maxRead = 2 << 20 // 2MB
+	if len(data) > maxRead {
+		data = data[:maxRead]
+	}
+	return string(data), nil
+}
