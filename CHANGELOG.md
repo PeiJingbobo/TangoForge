@@ -4,7 +4,20 @@
 
 > 版本号以 `app/package.json` 的 `version` 为唯一事实源；GitHub Release 标签须与之强一致（`release.yml` 强校验）。
 
-## [0.5.0] - 2026-08-12
+## [0.6.0] - 2026-08-12
+
+### 修复
+
+- **Windows 自签名证书生成（CI）**：修复 Git Bash 将 `-subj "/CN=TangoForge"` 误转为路径导致 openssl 失败；改用 `MSYS2_ARG_CONV_EXCL="/CN*"` 仅对该参数禁用路径转换，并把证书文件写入工作区（避免 `/tmp` 转换问题）。
+- 版本号 0.5.0 → 0.6.0（v0.5.0 发布链路未跑通，递增后重新发布）。
+
+### 变更
+
+- `app/package.json` version → 0.6.0。
+
+## [0.5.0] - 2026-08-12（发布链路失败，未对外发布）
+
+> v0.5.0 的 GitHub Actions 打包在 Windows 自签名步骤失败（Git Bash 路径转换），未生成可用 Release；功能变更已在 0.6.0 中继承。
 
 ### 新增
 

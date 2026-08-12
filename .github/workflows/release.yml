@@ -144,16 +144,19 @@ jobs:
       - name: 生成 Windows 自签名代码签名证书（.pfx，注入 CSC_LINK）
         shell: bash
         run: |
-          # Git Bash 会把以 / 开头的参数（如 /CN=TangoForge）误转成路径，禁用路径转换
-          export MSYS_NO_PATHCONV=1
+          # Git Bash 会把以 / 开头的参数（如 /CN=TangoForge）误转成路径；
+          # 仅对 -subj 的 /CN* 参数禁用转换（/tmp、$(pwd) 等路径仍需正常转换）。
+          export MSYS2_ARG_CONV_EXCL="/CN*"
           CERT_PFX="$(pwd)/tangoforge-selfsigned.pfx"
-          openssl req -x509 -newkey rsa:3072 -keyout /tmp/tangoforge-key.pem -out /tmp/tangoforge-cert.pem -days 3650 -nodes \
+          KEY="$(pwd)/tangoforge-key.pem"
+          CRT="$(pwd)/tangoforge-cert.pem"
+          openssl req -x509 -newkey rsa:3072 -keyout "$KEY" -out "$CRT" -days 3650 -nodes \
             -subj "/CN=TangoForge" \
             -addext "basicConstraints=critical,CA:FALSE" \
             -addext "keyUsage=digitalSignature" \
             -addext "extendedKeyUsage=codeSigning"
           openssl pkcs12 -export -out "$CERT_PFX" \
-            -inkey /tmp/tangoforge-key.pem -in /tmp/tangoforge-cert.pem \
+            -inkey "$KEY" -in "$CRT" \
             -passout pass:tangoforge-ci -name "TangoForge Self-Signed"
           echo "CSC_LINK=$(cygpath -w "$CERT_PFX")" >> "$GITHUB_ENV"
           echo "CSC_KEY_PASSWORD=tangoforge-ci" >> "$GITHUB_ENV"

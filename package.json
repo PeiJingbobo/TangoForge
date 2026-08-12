@@ -1,6 +1,6 @@
 {
   "name": "tangoforge",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "private": true,
   "description": "TangoForge — 人机协作任务看板系统（pnpm workspace 根）",
   "scripts": {
