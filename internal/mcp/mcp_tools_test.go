@@ -35,6 +35,9 @@ func TestTools_ListComplete(t *testing.T) {
 		"skill_info", "skill_install", "skill_status", "skill_uninstall",
 		"guide",
 		"permission_list",
+		// TF-051 知识库 8 工具。
+		"knowledge_list", "knowledge_search", "knowledge_read", "knowledge_link",
+		"knowledge_unlink", "knowledge_relink", "knowledge_scan", "knowledge_edit",
 	}
 	for _, name := range want {
 		if !names[name] {

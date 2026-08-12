@@ -41,7 +41,7 @@ func main() {
 	case "projects":
 		// 项目组子命令无 --project 参数（与 HTTP /api/projects 组一致）。
 		runCLI("projects", rest)
-	case "tasks", "import", "export", "graph", "state-machine", "skills", "permission", "audit":
+	case "tasks", "import", "export", "graph", "state-machine", "skills", "permission", "audit", "knowledge":
 		runCLI(cmd, rest)
 	default:
 		usage()
@@ -77,6 +77,8 @@ func runCLI(cmd string, args []string) {
 		err = runPermission(rest, g)
 	case "audit":
 		err = runAudit(rest, g)
+	case "knowledge":
+		err = runKnowledge(rest, g)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
@@ -127,6 +129,7 @@ func usage() {
   tangoforge skills [list|info <name>|install|status|uninstall]
   tangoforge permission
   tangoforge audit [export]
+  tangoforge knowledge bases|documents|search|read|link|unlink|relink|scan|edit
   tangoforge guide
 
 全局参数: --server <addr>（默认 127.0.0.1:19810） --actor <name>（默认 human） --json --no-lift

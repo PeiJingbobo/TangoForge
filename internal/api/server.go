@@ -508,13 +508,15 @@ func (s *Server) handlePing(w http.ResponseWriter, _ *http.Request) {
 func (s *Server) MCPHandler() http.Handler {
 	s.mcpOnce.Do(func() {
 		srv := mcp.NewServer(mcp.Deps{
-			Logger:   s.logger,
-			Tasks:    s.tasks,
-			Projects: s.projects,
-			Perms:    s.perms,
-			Skills:   s.skills,
-			Parser:   s.parserSvc,
-			Exporter: s.exporterSvc,
+			Logger:           s.logger,
+			Tasks:            s.tasks,
+			Projects:         s.projects,
+			Perms:            s.perms,
+			Skills:           s.skills,
+			Parser:           s.parserSvc,
+			Exporter:         s.exporterSvc,
+			Knowledge:        s.knowledgeSvc,
+			KnowledgeScanner: s.knowledgeScanner,
 		})
 		s.mcpHandler = srv.HTTPHandler()
 	})

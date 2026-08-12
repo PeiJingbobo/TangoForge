@@ -16,6 +16,7 @@ import (
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
 	"tangoforge/internal/exporter"
+	"tangoforge/internal/knowledge"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
@@ -91,14 +92,33 @@ func newTestDeps(t *testing.T) (Deps, string) {
 	t.Cleanup(func() { _ = parserSvc.Close() })
 	exporterSvc := exporter.NewService(exporter.Options{Logger: logger, Tasks: taskSvc, LLM: llmCfg})
 
+	// TF-051 知识库服务。
+	knowSvc := knowledge.NewService(knowledge.Options{
+		Logger: logger,
+		Tasks: knowledge.TaskListerAdapter(func(ctx context.Context, wd, id string) (any, error) {
+			return taskSvc.Get(ctx, wd, id)
+		}),
+	})
+	knowSvc.SetOnWrite(func(ctx context.Context, wd, action, target string) {
+		actor := auth.ActorFrom(ctx)
+		auditStore.Write(ctx, wd, audit.Entry{
+			Actor: actor.Name, ActorClass: actor.Class,
+			Action: action, Target: target, Result: audit.ResultOK,
+		})
+	})
+	t.Cleanup(func() { _ = knowSvc.Close() })
+	// 默认库（项目 import 已建，懒补）。
+	_, _ = knowSvc.EnsureDefaultBase(context.Background(), dir)
+
 	return Deps{
-		Logger:   logger,
-		Tasks:    taskSvc,
-		Projects: projSvc,
-		Perms:    permStore,
-		Skills:   skillSvc,
-		Parser:   parserSvc,
-		Exporter: exporterSvc,
+		Logger:    logger,
+		Tasks:     taskSvc,
+		Projects:  projSvc,
+		Perms:     permStore,
+		Skills:    skillSvc,
+		Parser:    parserSvc,
+		Exporter:  exporterSvc,
+		Knowledge: knowSvc,
 	}, dir
 }
 

@@ -14,6 +14,8 @@ import (
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
 	"tangoforge/internal/exporter"
+	"tangoforge/internal/knowledge"
+	"tangoforge/internal/llm"
 	"tangoforge/internal/mcp"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
@@ -122,14 +124,46 @@ func serveMCP(ctx context.Context, logger *slog.Logger, configPath string) error
 		},
 	})
 
+	// TF-050 知识库服务（stdio 进程：写审计直写项目库；scanner 不启动——stdio 非常驻，
+	// knowledge_scan 工具返回 INDEX_FAILED 引导使用 daemon 侧）。
+	knowSvc := knowledge.NewService(knowledge.Options{
+		Logger: logger,
+		Tasks: knowledge.TaskListerAdapter(func(ctx context.Context, workdir, id string) (any, error) {
+			return taskSvc.Get(ctx, workdir, id)
+		}),
+		LLM: func() *llm.Client {
+			cfg, _ := config.LoadGlobal(configPath)
+			cl, _ := llm.New(llm.FromConfig(cfg.LLM), logger)
+			return cl
+		}(),
+	})
+	knowSvc.SetOnWrite(func(ctx context.Context, workdir, action, target string) {
+		actor := auth.ActorFrom(ctx)
+		auditStore.Write(ctx, workdir, audit.Entry{
+			Actor: actor.Name, ActorClass: actor.Class,
+			Action: action, Target: target, Result: audit.ResultOK,
+		})
+	})
+	defer func() { _ = knowSvc.Close() }()
+	// 向量检索配置（QA-K23：未配置 → search 返回 NOT_CONFIGURED）。
+	if cfg, err := config.LoadGlobal(configPath); err == nil && llm.EmbeddingConfigured(cfg.LLM) {
+		ec := llm.EmbeddingFromConfig(cfg.LLM)
+		if ec.APIKey == "" {
+			ec.APIKey = os.Getenv("DEEPSEEK_API_KEY")
+		}
+		knowSvc.SetEmbeddingConfig(&ec)
+	}
+
 	deps := mcp.Deps{
-		Logger:   logger,
-		Tasks:    taskSvc,
-		Projects: project.NewService(registry, logger),
-		Perms:    permStore,
-		Skills:   skillSvc,
-		Parser:   parserSvc,
-		Exporter: exporterSvc,
+		Logger:           logger,
+		Tasks:            taskSvc,
+		Projects:         project.NewService(registry, logger),
+		Perms:            permStore,
+		Skills:           skillSvc,
+		Parser:           parserSvc,
+		Exporter:         exporterSvc,
+		Knowledge:        knowSvc,
+		KnowledgeScanner: nil, // stdio 不常驻扫描
 	}
 	srv := mcp.NewServer(deps)
 

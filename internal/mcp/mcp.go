@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/exporter"
+	"tangoforge/internal/knowledge"
 	"tangoforge/internal/parser"
 	"tangoforge/internal/project"
 	"tangoforge/internal/skill"
@@ -34,13 +35,18 @@ import (
 // Deps MCP 工具执行所需的业务依赖（由调用方组装注入：
 // daemon 侧复用 api.Server 既有实例，stdio 侧 cmd 层自建）。
 type Deps struct {
-	Logger   *slog.Logger
-	Tasks    task.Service
-	Projects *project.Service
-	Perms    *auth.PermissionStore
-	Skills   *skill.Service
-	Parser   *parser.Service
-	Exporter *exporter.Service
+	Logger    *slog.Logger
+	Tasks     task.Service
+	Projects  *project.Service
+	Perms     *auth.PermissionStore
+	Skills    *skill.Service
+	Parser    *parser.Service
+	Exporter  *exporter.Service
+	Knowledge knowledge.Service
+	// KnowledgeScanner 手动扫描工具（knowledge_scan）；nil = 扫描返回错误。
+	KnowledgeScanner interface {
+		Scan(ctx context.Context) (knowledge.ScanStats, error)
+	}
 }
 
 // Server MCP 服务：持有业务依赖与已注册工具。
@@ -90,6 +96,15 @@ func (s *Server) registerTools() {
 	s.mcpSrv.AddTool(toolSkillStatus, s.handleSkillStatus)
 	s.mcpSrv.AddTool(toolSkillUninstall, s.handleSkillUninstall)
 	s.mcpSrv.AddTool(toolPermissionList, s.handlePermissionList)
+	// TF-050 知识库域（8 工具）。
+	s.mcpSrv.AddTool(toolKnowledgeList, s.handleKnowledgeList)
+	s.mcpSrv.AddTool(toolKnowledgeSearch, s.handleKnowledgeSearch)
+	s.mcpSrv.AddTool(toolKnowledgeRead, s.handleKnowledgeRead)
+	s.mcpSrv.AddTool(toolKnowledgeLink, s.handleKnowledgeLink)
+	s.mcpSrv.AddTool(toolKnowledgeUnlink, s.handleKnowledgeUnlink)
+	s.mcpSrv.AddTool(toolKnowledgeRelink, s.handleKnowledgeRelink)
+	s.mcpSrv.AddTool(toolKnowledgeScan, s.handleKnowledgeScan)
+	s.mcpSrv.AddTool(toolKnowledgeEdit, s.handleKnowledgeEdit)
 	// TF-033 guide 说明书工具（免鉴权，无 project 参数）。
 	s.mcpSrv.AddTool(toolGuide, s.handleGuide)
 }
@@ -127,6 +142,8 @@ func toolError(err error) (*mcp.CallToolResult, error) {
 		code = "PERMISSION_DENIED"
 	} else if errors.Is(err, auth.ErrProjectNotFound) {
 		code = "PROJECT_NOT_FOUND"
+	} else if kc := knowledge.CodeOf(err); kc != "" {
+		code = kc
 	}
 	body, _ := json.Marshal(map[string]string{"code": code, "message": msg})
 	return &mcp.CallToolResult{

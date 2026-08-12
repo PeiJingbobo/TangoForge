@@ -140,7 +140,8 @@ type DocumentListResult struct {
 // 分页默认值与上限。
 const (
 	defaultPageSize = 50
-	maxPageSize     = 500
+	// MaxPageSize 文档列表单页上限（MCP 工具全量读取用）。
+	MaxPageSize = 500
 )
 
 // service 实现。
