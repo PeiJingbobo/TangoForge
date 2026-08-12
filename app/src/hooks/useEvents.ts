@@ -29,6 +29,10 @@ export function useEventInvalidator(project?: string): void {
         qc.invalidateQueries({ queryKey: ['tasks', pid] })
       } else if (e.type.startsWith('import.')) {
         qc.invalidateQueries({ queryKey: ['drafts', pid] })
+      } else if (e.type.startsWith('knowledge.')) {
+        qc.invalidateQueries({ queryKey: ['knowledge', pid] })
+        // 任务详情内嵌文档摘要 → 任务查询也失效。
+        qc.invalidateQueries({ queryKey: ['tasks', pid] })
       }
     }
 

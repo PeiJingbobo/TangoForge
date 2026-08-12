@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ArrowLeft, Check, Loader2, Trash2, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, Check, Loader2, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -288,6 +288,33 @@ export function DraftReview({ draftId, onExit, project, onConfirmed }: DraftRevi
           </Button>
         </div>
       </div>
+
+      {/* TF-049：LLM 建议的知识库文件（确认时自动关联全部生成任务） */}
+      {detail?.knowledge_files && detail.knowledge_files.length > 0 && (
+        <div className="mb-4 shrink-0 rounded-xl border border-divider p-3">
+          <div className="flex items-center gap-1.5 text-sm font-medium">
+            <BookOpen className="size-4 text-muted-foreground" />
+            建议关联知识库文件
+            <span className="text-xs text-muted-foreground">（确认导入时自动建立任务关联）</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {detail.knowledge_files.map((kf, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-divider bg-muted/40 px-2 py-1 text-xs"
+              >
+                <span className="font-mono">{kf.path}</span>
+                {kf.kb && (
+                  <span className="rounded bg-primary-50 px-1 text-[10px] text-primary-700">
+                    {kf.kb}
+                  </span>
+                )}
+                {kf.reason && <span className="text-muted-foreground">· {kf.reason}</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 三视图预览（与任务导航一致）；仅内容区滚动 */}
       <Tabs defaultValue="tree" className="flex min-h-0 flex-1 flex-col">

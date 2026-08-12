@@ -130,7 +130,7 @@ func (s *Scanner) scanAll(ctx context.Context, trigger string) ScanStats {
 	workdirs := s.listWorkdirs(ctx)
 	stats := ScanStats{}
 	for _, wd := range workdirs {
-		docs, err := s.svc.ListDocuments(ctx, wd, DocumentFilter{Page: 0, Size: maxPageSize})
+		docs, err := s.svc.ListDocuments(ctx, wd, DocumentFilter{Page: 0, Size: MaxPageSize})
 		if err != nil {
 			s.logger.Warn("knowledge: scan list documents failed", "workdir", wd, "err", err)
 			continue

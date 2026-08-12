@@ -10,6 +10,7 @@ export const PROJECT_SECTIONS = [
   'permissions',
   'skills',
   'audit',
+  'knowledge',
   'settings',
 ] as const
 

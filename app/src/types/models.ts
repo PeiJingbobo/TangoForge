@@ -6,6 +6,7 @@
  * - /api/projects 豁免 X-Project；其余端点必须携带。
  */
 import type { Task } from './task'
+import type { KnowledgeFileSuggestion } from './knowledge'
 
 /* ---------- projects（/api/projects，豁免 X-Project） ---------- */
 export interface Project {
@@ -108,6 +109,8 @@ export interface ParsedTask {
 /** 草稿明细（审阅界面数据源：完整任务树） */
 export interface DraftDetail extends ImportDraft {
   tasks: ParsedTask[]
+  /** LLM 建议关联的知识库文件（TF-049，草稿审阅展示/勾选） */
+  knowledge_files?: KnowledgeFileSuggestion[]
 }
 
 /* ---------- export（TF-019） ---------- */
@@ -145,6 +148,9 @@ export const ACTION_KEYS = [
   'state_machine.write',
   'audit.read',
   'permission.read',
+  'knowledge.read',
+  'knowledge.write',
+  'knowledge.index',
 ] as const
 export type ActionKey = (typeof ACTION_KEYS)[number]
 export type PermissionMap = Record<ActionKey, boolean>
@@ -168,6 +174,9 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   'state_machine.write': '编辑状态机',
   'audit.read': '查看审计日志',
   'permission.read': '查看权限',
+  'knowledge.read': '查看知识库',
+  'knowledge.write': '管理知识库',
+  'knowledge.index': '触发知识库扫描',
 }
 
 /** 权限域中文标题（分组展示用） */
@@ -181,6 +190,7 @@ export const ACTION_DOMAIN_LABELS: Record<string, string> = {
   state_machine: '状态机',
   audit: '审计',
   permission: '权限',
+  knowledge: '知识库',
 }
 
 /* ---------- audit（审计 action 中文化，TF-042） ---------- */
@@ -285,6 +295,18 @@ export const WS_EVENT_TYPES = [
   'import.draft_confirmed',
   'import.draft_discarded',
   'import.failed',
+  'knowledge.document_added',
+  'knowledge.document_updated',
+  'knowledge.document_removed',
+  'knowledge.document_relinked',
+  'knowledge.task_linked',
+  'knowledge.task_unlinked',
+  'knowledge.kb_created',
+  'knowledge.kb_updated',
+  'knowledge.kb_deleted',
+  'knowledge.scan_completed',
+  'knowledge.index_failed',
+  'knowledge.document_content_edited',
 ] as const
 export type WSEventType = (typeof WS_EVENT_TYPES)[number]
 
@@ -297,3 +319,16 @@ export interface WSEvent {
 
 export type { Task, TaskTreeNode, TaskListFilter, TaskListResult } from './task'
 export type { CreateTaskInput, UpdateTaskInput, ChangeStatusInput } from './task'
+export type {
+  KnowledgeBase,
+  KnowledgeDocument,
+  KnowledgeDocumentStatus,
+  KnowledgeDocumentContent,
+  TaskKnowledgeSummary,
+  KnowledgeSnippet,
+  KnowledgeSearchHit,
+  KnowledgeSearchResult,
+  KnowledgeScanStats,
+  KnowledgeDocumentListResult,
+  KnowledgeFileSuggestion,
+} from './knowledge'

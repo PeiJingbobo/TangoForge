@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   BookOpen,
   ScrollText,
+  Library,
   Settings,
 } from 'lucide-react'
 import { isProjectSection, useProjectStore } from '@/stores/project'
@@ -27,6 +28,7 @@ const PROJECT_TABS = [
   { to: 'permissions', label: '权限', icon: ShieldCheck },
   { to: 'skills', label: 'Skills', icon: BookOpen },
   { to: 'audit', label: '审计', icon: ScrollText },
+  { to: 'knowledge', label: '知识库', icon: Library },
   { to: 'settings', label: '设置', icon: Settings },
 ]
 

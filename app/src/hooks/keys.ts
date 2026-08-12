@@ -10,6 +10,8 @@ export const qk = {
   permissions: (project: string) => ['permissions', project] as const,
   skills: (project: string) => ['skills', project] as const,
   audit: (project: string) => ['audit', project] as const,
+  /** 知识库（TF-050/052） */
+  knowledge: (project: string) => ['knowledge', project] as const,
   /** 导出模板内容（TF-038 对话框预览） */
   exportTemplate: (project: string, mode: string) => ['export-template', project, mode] as const,
 }

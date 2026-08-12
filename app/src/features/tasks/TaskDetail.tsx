@@ -15,6 +15,10 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { TaskForm, type TaskFormHandle } from '@/features/tasks/TaskForm'
+import {
+  TaskKnowledgeSection,
+  type TaskKnowledgeDoc,
+} from '@/features/knowledge/TaskKnowledgeSection'
 import { useTask, useTasks, useUpdateTask, useArchiveTask, useRestoreTask } from '@/hooks/useTasks'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
@@ -22,6 +26,11 @@ import { useProjectId } from '@/hooks/useProject'
 import { getTitleBarHeight } from '@/lib/window-chrome'
 import { useTaskDrawerStore, type TaskDrawerMode } from '@/stores/task-drawer'
 import type { Task, UpdateTaskInput } from '@/types/task'
+
+/** 任务详情内嵌知识库文档摘要（/api/tasks/:id knowledge_documents） */
+interface TaskWithKnowledge extends Task {
+  knowledge_documents?: TaskKnowledgeDoc[]
+}
 
 /**
  * 任务详情抽屉（TF 改造）：全局右侧抽屉形态。
@@ -240,6 +249,13 @@ export function TaskDetailDrawer({
                 readOnly={mode === 'read'}
                 onSubmit={handleSubmit}
                 onDirtyChange={setDirty}
+              />
+
+              {/* 资料区（TF-052：任务关联知识库文档） */}
+              <TaskKnowledgeSection
+                taskId={task.id}
+                documents={(task as TaskWithKnowledge).knowledge_documents}
+                project={pid ?? ''}
               />
 
               {/* 元信息（只读，抽屉内纵向排列） */}

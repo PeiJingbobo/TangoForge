@@ -14,6 +14,7 @@ import { ImportExportPage } from '@/features/tasks/ImportExportPage'
 import { PermissionsPage } from '@/features/permissions/PermissionsPage'
 import { SkillsPage } from '@/features/skills/SkillsPage'
 import { AuditPage } from '@/features/audit/AuditPage'
+import { KnowledgePage } from '@/features/knowledge/KnowledgePage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
 import { ProjectSettingsPage } from '@/features/settings/ProjectSettingsPage'
 import { bootstrapDaemon } from '@/lib/bootstrap'
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="permissions" element={<PermissionsPage />} />
               <Route path="skills" element={<SkillsPage />} />
               <Route path="audit" element={<AuditPage />} />
+              <Route path="knowledge" element={<KnowledgePage />} />
               <Route path="settings" element={<ProjectSettingsPage />} />
               <Route path="tasks/:taskId" element={<TaskDetailPage />} />
             </Route>

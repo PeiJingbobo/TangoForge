@@ -35,6 +35,9 @@ const ACTIONS: PermissionMap = {
   'state_machine.write': false,
   'audit.read': false,
   'permission.read': false,
+  'knowledge.read': false,
+  'knowledge.write': false,
+  'knowledge.index': false,
 }
 
 describe('PermissionsPanel', () => {
@@ -50,7 +53,7 @@ describe('PermissionsPanel', () => {
   it('渲染 17 项权限（中文 label + switch）', async () => {
     render(<PermissionsPanel />, { wrapper })
     await waitFor(() => expect(screen.getByLabelText('权限 task.read')).toBeInTheDocument())
-    expect(screen.getAllByRole('switch')).toHaveLength(17)
+    expect(screen.getAllByRole('switch')).toHaveLength(20)
     // 中文 label 展示（含域标题「任务」与动作「查看任务」）。
     expect(screen.getByText('查看任务')).toBeInTheDocument()
     expect(screen.getByText('任务')).toBeInTheDocument()

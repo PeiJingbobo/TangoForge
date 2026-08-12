@@ -482,6 +482,8 @@ func (s *Service) Discard(ctx context.Context, workdir, draftID string) error {
 type DraftDetail struct {
 	Draft
 	Tasks []ParsedTask `json:"tasks"`
+	// KnowledgeFiles LLM 建议关联的知识库文件（TF-049；草稿审阅展示/勾选）。
+	KnowledgeFiles []knowledge.KnowledgeFile `json:"knowledge_files,omitempty"`
 }
 
 // Get 读取单个 pending 草稿明细（含任务树；供审阅/编辑）。
@@ -504,12 +506,13 @@ func (s *Service) Get(ctx context.Context, workdir, draftID string) (DraftDetail
 	if d.Status != "pending" {
 		return DraftDetail{}, fmt.Errorf("%w: %s（status=%s）", ErrDraftNotFound, draftID, d.Status)
 	}
-	if err := json.Unmarshal([]byte(parsed), &d.Tasks); err != nil {
-		// 兼容旧存储（ParseResult 包裹）
-		var pr ParseResult
-		if err2 := json.Unmarshal([]byte(parsed), &pr); err2 == nil {
-			d.Tasks = pr.Tasks
-		} else {
+	// 统一按 ParseResult 解析（tasks + knowledge_files；兼容旧存储直接 tasks 数组）。
+	var pr ParseResult
+	if err := json.Unmarshal([]byte(parsed), &pr); err == nil && len(pr.Tasks) > 0 {
+		d.Tasks = pr.Tasks
+		d.KnowledgeFiles = pr.KnowledgeFiles
+	} else {
+		if err := json.Unmarshal([]byte(parsed), &d.Tasks); err != nil {
 			return DraftDetail{}, fmt.Errorf("parser: parse draft json: %w", err)
 		}
 	}

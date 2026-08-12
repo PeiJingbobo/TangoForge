@@ -616,8 +616,8 @@ func (s *service) ListDocuments(ctx context.Context, workdir string, f DocumentF
 	if size <= 0 {
 		size = defaultPageSize
 	}
-	if size > maxPageSize {
-		size = maxPageSize
+	if size > MaxPageSize {
+		size = MaxPageSize
 	}
 
 	var conds []string
