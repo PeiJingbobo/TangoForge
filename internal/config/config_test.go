@@ -20,6 +20,40 @@ func TestDefaultGlobalConfig(t *testing.T) {
 	if llm.TimeoutSec != 60 || llm.Retries != 1 || llm.MaxTokens != 4096 || llm.Concurrency != 1 {
 		t.Errorf("default llm = %+v", llm)
 	}
+	// TF-046：embedding 默认（model 空 = 未配置；api_kind/timeout 有默认）。
+	if llm.Embedding.APIKind != "openai" || llm.Embedding.TimeoutSec != 60 {
+		t.Errorf("default embedding = %+v", llm.Embedding)
+	}
+	// TF-046/048：knowledge 全局默认（QA-K18 全开）。
+	k := cfg.Knowledge
+	if !k.EnabledOn() || !k.FSNotifyOn() || !k.StartupScanOn() || !k.VectorSearchOn() {
+		t.Errorf("knowledge booleans should default on: %+v", k)
+	}
+	if k.DebounceMS != 30000 || k.EmbedConcurrency != 1 || k.MaxIndexSize != 524288 ||
+		k.SearchTopK != 10 || k.SearchThreshold != 0.3 {
+		t.Errorf("knowledge defaults wrong: %+v", k)
+	}
+}
+
+func TestWithDefaults_KnowledgePartialConfig(t *testing.T) {
+	// 只显式关闭 fsnotify，其余未写 → fsnotify=false，其余默认。
+	cfg := GlobalConfig{Knowledge: KnowledgeGlobalConfig{FSNotify: boolPtr(false)}}
+	got := cfg.WithDefaults()
+	if got.Knowledge.FSNotifyOn() {
+		t.Error("fsnotify 显式 false 应保留")
+	}
+	if !got.Knowledge.EnabledOn() || !got.Knowledge.StartupScanOn() || !got.Knowledge.VectorSearchOn() {
+		t.Error("未设置开关应补默认 true")
+	}
+	if got.Knowledge.DebounceMS != 30000 {
+		t.Errorf("debounce = %d, want 30000", got.Knowledge.DebounceMS)
+	}
+	// 显式 enabled=false 保留。
+	cfg2 := GlobalConfig{Knowledge: KnowledgeGlobalConfig{Enabled: boolPtr(false)}}
+	got2 := cfg2.WithDefaults()
+	if got2.Knowledge.EnabledOn() {
+		t.Error("enabled 显式 false 应保留")
+	}
 }
 
 func TestLoadGlobal_MissingFileReturnsDefaults(t *testing.T) {

@@ -22,18 +22,49 @@ func DefaultLLMConfig() LLMConfig {
 		Retries:     1,
 		MaxTokens:   4096,
 		Concurrency: 1,
+		Embedding:   DefaultEmbeddingConfig(),
 	}
 }
 
-// DefaultGlobalConfig 返回全局配置默认值：端口 19810、远程访问关闭、LLM 默认。
+// DefaultEmbeddingConfig 返回 embedding 默认配置（QA-K5：model 空 = 未配置，向量功能受限）。
+func DefaultEmbeddingConfig() EmbeddingConfig {
+	return EmbeddingConfig{
+		APIKind:    "openai",
+		TimeoutSec: 60,
+	}
+}
+
+// DefaultGlobalConfig 返回全局配置默认值：端口 19810、远程访问关闭、LLM 默认、知识库默认。
 func DefaultGlobalConfig() GlobalConfig {
 	return GlobalConfig{
-		Port: DefaultPort,
-		LLM:  DefaultLLMConfig(),
+		Port:      DefaultPort,
+		LLM:       DefaultLLMConfig(),
+		Knowledge: DefaultKnowledgeGlobalConfig(),
 	}
 }
 
+// DefaultKnowledgeGlobalConfig 返回知识库全局配置默认值（QA-K18：全开 + 30s 防抖 + 串行 + 512KB）。
+func DefaultKnowledgeGlobalConfig() KnowledgeGlobalConfig {
+	return KnowledgeGlobalConfig{
+		Enabled:          boolPtr(true),
+		FSNotify:         boolPtr(true),
+		StartupScan:      boolPtr(true),
+		DebounceMS:       30000,
+		EmbedConcurrency: 1,
+		MaxIndexSize:     524288,
+		VectorSearch:     boolPtr(true),
+		SearchTopK:       10,
+		SearchThreshold:  0.3,
+	}
+}
+
+// boolPtr 返回 bool 指针。
+func boolPtr(v bool) *bool { return &v }
+
 // WithDefaults 用默认值补齐缺失字段（零值字段视为未配置）。
+//
+// 知识库布尔开关语义（QA-K18 默认全开）：*bool 指针 nil = 未设置 → 补默认 true；
+// 显式 false 保留关闭。数值字段零值补默认。
 func (c GlobalConfig) WithDefaults() GlobalConfig {
 	d := DefaultGlobalConfig()
 	if c.Port <= 0 {
@@ -54,6 +85,43 @@ func (c GlobalConfig) WithDefaults() GlobalConfig {
 	if c.LLM.Concurrency <= 0 {
 		c.LLM.Concurrency = d.LLM.Concurrency
 	}
+	// embedding 默认值（模型空 = 未配置，其余给默认）。
+	if c.LLM.Embedding.APIKind == "" {
+		c.LLM.Embedding.APIKind = d.LLM.Embedding.APIKind
+	}
+	if c.LLM.Embedding.TimeoutSec <= 0 {
+		c.LLM.Embedding.TimeoutSec = d.LLM.Embedding.TimeoutSec
+	}
+	// knowledge 全局配置默认值（QA-K18/K23）。
+	k := c.Knowledge
+	if k.DebounceMS <= 0 {
+		k.DebounceMS = d.Knowledge.DebounceMS
+	}
+	if k.EmbedConcurrency <= 0 {
+		k.EmbedConcurrency = d.Knowledge.EmbedConcurrency
+	}
+	if k.MaxIndexSize <= 0 {
+		k.MaxIndexSize = d.Knowledge.MaxIndexSize
+	}
+	if k.SearchTopK <= 0 {
+		k.SearchTopK = d.Knowledge.SearchTopK
+	}
+	if k.SearchThreshold <= 0 {
+		k.SearchThreshold = d.Knowledge.SearchThreshold
+	}
+	// 布尔开关：nil → 默认 true。
+	boolDefault := func(p *bool, def bool) *bool {
+		if p == nil {
+			v := def
+			return &v
+		}
+		return p
+	}
+	k.Enabled = boolDefault(k.Enabled, true)
+	k.FSNotify = boolDefault(k.FSNotify, true)
+	k.StartupScan = boolDefault(k.StartupScan, true)
+	k.VectorSearch = boolDefault(k.VectorSearch, true)
+	c.Knowledge = k
 	return c
 }
 

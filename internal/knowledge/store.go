@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"tangoforge/internal/db"
+	"tangoforge/internal/llm"
 
 	"github.com/google/uuid"
 )
@@ -21,6 +22,8 @@ type Options struct {
 	Logger *slog.Logger
 	// Tasks 任务服务只读接口（校验任务存在性；TF-045 关联校验用）。
 	Tasks TaskLister
+	// LLM 摘要生成客户端（TF-046）；nil = 摘要功能禁用（文档仍可注册/嵌入）。
+	LLM *llm.Client
 }
 
 // TaskLister 任务服务的最小只读接口（knowledge 不依赖 task 全接口，保持职责单一）。
@@ -66,6 +69,8 @@ type Service interface {
 
 	// OnWrite 写操作回调（由 api 层注入审计/WS 事件）。
 	SetOnWrite(fn func(ctx context.Context, workdir, action, target string))
+	// SummarizeAndCache 生成摘要并按 content_hash 缓存（TF-046；llmClient nil 时跳过）。
+	SummarizeAndCache(ctx context.Context, workdir, docID, contentHash, text string) (string, error)
 	// Close 关闭缓存的项目库连接。
 	Close() error
 }
@@ -95,12 +100,13 @@ const (
 
 // service 实现。
 type service struct {
-	mu      sync.Mutex
-	dbs     map[string]*sql.DB
-	fp      map[string]*db.FileFingerprint
-	logger  *slog.Logger
-	tasks   TaskLister
-	onWrite func(ctx context.Context, workdir, action, target string)
+	mu        sync.Mutex
+	dbs       map[string]*sql.DB
+	fp        map[string]*db.FileFingerprint
+	logger    *slog.Logger
+	tasks     TaskLister
+	llmClient *llm.Client
+	onWrite   func(ctx context.Context, workdir, action, target string)
 }
 
 // NewService 构造知识库服务。
@@ -109,10 +115,11 @@ func NewService(opts Options) Service {
 		opts.Logger = slog.Default()
 	}
 	return &service{
-		dbs:    make(map[string]*sql.DB),
-		fp:     make(map[string]*db.FileFingerprint),
-		logger: opts.Logger,
-		tasks:  opts.Tasks,
+		dbs:       make(map[string]*sql.DB),
+		fp:        make(map[string]*db.FileFingerprint),
+		logger:    opts.Logger,
+		tasks:     opts.Tasks,
+		llmClient: opts.LLM,
 	}
 }
 

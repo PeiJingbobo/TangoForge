@@ -30,7 +30,48 @@ type GlobalConfig struct {
 	UIToken string `yaml:"ui_token"`
 	// LLM LLM 服务配置（OpenAI 兼容，含 Ollama 等本地模型）。
 	LLM LLMConfig `yaml:"llm"`
+	// Knowledge 知识库全局配置（docs/KNOWLEDGE-BASE.md §4.1）。
+	Knowledge KnowledgeGlobalConfig `yaml:"knowledge"`
 }
+
+// KnowledgeGlobalConfig 知识库全局配置（QA-K18 默认值 + QA-K23 向量搜索开关）。
+//
+// 布尔开关用 *bool：YAML 显式写 false 才关闭；未写（nil）→ WithDefaults 补默认 true
+// （与「显式优于隐式」不冲突：关闭是显式行为，开启是默认值补齐）。
+type KnowledgeGlobalConfig struct {
+	// Enabled 总开关（关闭 = 不扫描/不监听/不索引，查询原样可用），默认 true。
+	Enabled *bool `yaml:"enabled"`
+	// FSNotify 实时监听开关，默认 true。
+	FSNotify *bool `yaml:"fsnotify"`
+	// StartupScan 启动扫描开关，默认 true。
+	StartupScan *bool `yaml:"startup_scan"`
+	// DebounceMS 防抖窗口（毫秒），默认 30000。
+	DebounceMS int `yaml:"debounce_ms"`
+	// EmbedConcurrency 摘要/嵌入 LLM 调用并发（默认 1 = 串行）。
+	EmbedConcurrency int `yaml:"embed_concurrency"`
+	// MaxIndexSize 超过该大小的文件不做向量嵌入（默认 512KB）。
+	MaxIndexSize int `yaml:"max_index_size"`
+	// VectorSearch 向量搜索开关（QA-K23）；未配置 Embedding 模型时强制禁用。
+	VectorSearch *bool `yaml:"vector_search"`
+	// SearchTopK 检索默认 top_k，默认 10。
+	SearchTopK int `yaml:"search_top_k"`
+	// SearchThreshold 检索相似度阈值，默认 0.3。
+	SearchThreshold float64 `yaml:"search_threshold"`
+	// DefaultDocDir 外部文件默认拷贝目录（空 = .taskboard/knowledge，QA-K13）。
+	DefaultDocDir string `yaml:"default_doc_dir"`
+}
+
+// EnabledOn 返回知识库总开关（nil → 默认 true）。
+func (k KnowledgeGlobalConfig) EnabledOn() bool { return k.Enabled == nil || *k.Enabled }
+
+// FSNotifyOn 返回实时监听开关（nil → 默认 true）。
+func (k KnowledgeGlobalConfig) FSNotifyOn() bool { return k.FSNotify == nil || *k.FSNotify }
+
+// StartupScanOn 返回启动扫描开关（nil → 默认 true）。
+func (k KnowledgeGlobalConfig) StartupScanOn() bool { return k.StartupScan == nil || *k.StartupScan }
+
+// VectorSearchOn 返回向量搜索开关（nil → 默认 true）。
+func (k KnowledgeGlobalConfig) VectorSearchOn() bool { return k.VectorSearch == nil || *k.VectorSearch }
 
 // LLMConfig LLM 服务配置项集合（QA Q14 确认；QA P4-1 多协议扩展）。
 type LLMConfig struct {
@@ -52,6 +93,24 @@ type LLMConfig struct {
 	MaxTokens int `yaml:"max_tokens"`
 	// Concurrency 请求并发数，默认 1。
 	Concurrency int `yaml:"concurrency"`
+	// Embedding 向量嵌入配置（QA-K5：独立于 chat 的 embedding 节）。
+	Embedding EmbeddingConfig `yaml:"embedding"`
+}
+
+// EmbeddingConfig 向量嵌入配置（docs/KNOWLEDGE-BASE.md §4.1，QA-K5）。
+type EmbeddingConfig struct {
+	// BaseURL 为空 = 复用 llm.base_url。
+	BaseURL string `yaml:"base_url"`
+	// APIKey 为空 = 回退 llm.api_key / DEEPSEEK_API_KEY。
+	APIKey string `yaml:"api_key"`
+	// Model 如 nomic-embed-text (Ollama) / text-embedding-3-small；空 = embedding 未配置。
+	Model string `yaml:"model"`
+	// APIKind openai（POST {base}/embeddings）| ollama（POST {base}/api/embed）。
+	APIKind string `yaml:"api_kind"`
+	// TimeoutSec 请求超时（秒），默认 60。
+	TimeoutSec int `yaml:"timeout_sec"`
+	// MaxTokens 仅 openai 类生效，0 = 不限制。
+	MaxTokens int `yaml:"max_tokens"`
 }
 
 // ProjectConfig 项目配置（{workdir}/.taskboard/config.yaml）：仅业务配置。
