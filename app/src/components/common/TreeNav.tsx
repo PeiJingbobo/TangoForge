@@ -5,11 +5,13 @@ import { matchesTaskQuery } from '@/lib/task-search'
 import type { StateMachineState } from '@/types/models'
 import type { TaskTreeNode } from '@/types/task'
 import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
+import { StateBadge } from '@/components/common/StateBadge'
 
 /**
  * 树形任务导航（TF-026）：折叠/展开、缩进、搜索过滤、当前任务高亮。
  * 数据为后端树结构（与后端树一致，验收项）。
  * QA 2026-08-09：可选 states 传入后任务行尾展示状态机彩色状态点。
+ * 任务导航优化：行内展示状态名称（StateBadge）、优先级（P#）、标签（≤2）。
  */
 export interface TreeNavProps {
   tree: TaskTreeNode[]
@@ -21,9 +23,6 @@ export interface TreeNavProps {
 export function TreeNav({ tree, currentId, states, onSelect }: TreeNavProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
-
-  const stateColor = (status: string): string =>
-    states?.find((s) => s.Key === status)?.Color || '#9aa0a6'
 
   const matches = (node: TaskTreeNode): boolean => {
     // 同时匹配编号 / 标题 / 内容（TF-042）
@@ -92,13 +91,20 @@ export function TreeNav({ tree, currentId, states, onSelect }: TreeNavProps) {
           <span className="flex min-w-0 items-center gap-1.5">
             <TaskNumberBadge number={node.number} />
             <span className="truncate">{node.title}</span>
+            {node.priority > 0 && (
+              <span className="shrink-0 text-caption text-muted-foreground">P{node.priority}</span>
+            )}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
-            <span
-              className="size-2 rounded-full"
-              style={{ backgroundColor: stateColor(node.status) }}
-              title={node.status}
-            />
+            {node.tags.slice(0, 2).map((t) => (
+              <span
+                key={t}
+                className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
+              >
+                #{t}
+              </span>
+            ))}
+            <StateBadge status={node.status} states={states ?? []} />
             {hasChildren && (
               <span className="text-caption text-muted-foreground">{node.children.length}</span>
             )}

@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { CheckCircle2, Loader2, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { usePermissions, useSavePermissions } from '@/hooks/usePermissions'
-import { ACTION_LABELS, type PermissionMap } from '@/types/models'
+import {
+  ACTION_KEYS,
+  ACTION_DOMAIN_LABELS,
+  ACTION_LABELS,
+  type PermissionMap,
+} from '@/types/models'
 
 /**
- * 引导 Step 3：Agent 权限配置（TF-041 简化版）。
- * 默认只读 5 项；可勾选常用写操作（task.create/update/update_status/import/export）。
- * 保存后 onReady(true)；也可保留默认直接继续。
+ * 引导 Step 4：Agent 权限配置（与权限配置页 ACTION_KEYS 全量对齐）。
+ * 默认只读；可勾选授予写操作。保存后 onReady(true)；也可保留默认直接继续。
  */
 export function PermissionsStep({
   workdir,
@@ -30,19 +35,14 @@ export function PermissionsStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])
 
-  // 引导页仅展示常用写操作 + 只读基础项。
-  const FOCUS_KEYS = [
-    'task.read',
-    'task.create',
-    'task.update',
-    'task.update_status',
-    'task.delete',
-    'import.run',
-    'import.confirm',
-    'export.run',
-    'graph.read',
-    'skill.read',
-  ] as const
+  const groups = useMemo(() => {
+    const byDomain = new Map<string, string[]>()
+    for (const key of ACTION_KEYS) {
+      const domain = key.split('.')[0]
+      byDomain.set(domain, [...(byDomain.get(domain) ?? []), key])
+    }
+    return [...byDomain.entries()]
+  }, [])
 
   const toggle = (key: keyof PermissionMap) => {
     if (!draft) return
@@ -85,22 +85,42 @@ export function PermissionsStep({
         </p>
       </div>
 
-      {/* 权限列表（仅此处内部滚动） */}
-      <ul className="mt-3 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
-        {FOCUS_KEYS.map((key) => (
-          <li
-            key={key}
-            className="flex items-center justify-between rounded-lg border border-divider px-3 py-2.5"
-          >
-            <span className="text-sm">{ACTION_LABELS[key]}</span>
-            <Switch
-              checked={draft[key]}
-              onCheckedChange={() => toggle(key)}
-              aria-label={ACTION_LABELS[key]}
-            />
-          </li>
+      {/* 权限列表（按域分组，仅此处内部滚动） */}
+      <div className="mt-3 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+        {groups.map(([domain, keys]) => (
+          <div key={domain}>
+            <Separator className="mb-3" />
+            <div className="mb-2 text-label uppercase tracking-wider text-muted-foreground">
+              {ACTION_DOMAIN_LABELS[domain] ?? domain}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {keys.map((key) => {
+                const actionKey = key as keyof PermissionMap
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center gap-3 rounded-xl border border-divider px-3 py-2.5 transition-colors hover:border-primary-300"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-foreground">
+                        {ACTION_LABELS[actionKey]}
+                      </div>
+                      <div className="truncate font-mono text-[11px] text-muted-foreground">
+                        {key}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={draft[actionKey]}
+                      onCheckedChange={() => toggle(actionKey)}
+                      aria-label={`权限 ${key}`}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         ))}
-      </ul>
+      </div>
 
       {/* 操作按钮（固定底部） */}
       <div className="mt-3 flex shrink-0 items-center justify-between border-t border-divider pt-3">

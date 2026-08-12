@@ -154,7 +154,7 @@ describe('TaskDetailDrawer（全局抽屉）', () => {
 describe('GlobalTaskDrawer（store 桥接）', () => {
   beforeEach(() => {
     useProjectStore.setState({ project: '/data/projects/tf' })
-    useTaskDrawerStore.setState({ open: false, taskId: undefined, task: undefined })
+    useTaskDrawerStore.setState({ stack: [] })
     vi.stubGlobal(
       'WebSocket',
       class {
@@ -164,6 +164,12 @@ describe('GlobalTaskDrawer（store 桥接）', () => {
     server.use(
       http.get(`${DAEMON_BASE_URL}/api/tasks/task-1`, () =>
         HttpResponse.json({ code: 0, data: TASK_A }),
+      ),
+      http.get(`${DAEMON_BASE_URL}/api/tasks/task-2`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: { ...TASK_A, id: 'task-2', title: '关联任务乙' },
+        }),
       ),
       http.get(`${DAEMON_BASE_URL}/api/tasks`, () =>
         HttpResponse.json({
@@ -175,7 +181,7 @@ describe('GlobalTaskDrawer（store 桥接）', () => {
   })
   afterEach(() => {
     vi.unstubAllGlobals()
-    useTaskDrawerStore.setState({ open: false, taskId: undefined, task: undefined })
+    useTaskDrawerStore.setState({ stack: [] })
   })
 
   it('openDrawer({taskId}) → 渲染任务抽屉', async () => {
@@ -183,5 +189,62 @@ describe('GlobalTaskDrawer（store 桥接）', () => {
     expect(screen.queryByText('前端 token 接入')).not.toBeInTheDocument()
     useTaskDrawerStore.getState().openDrawer({ taskId: 'task-1' })
     await waitFor(() => expect(screen.getByText('前端 token 接入')).toBeInTheDocument())
+  })
+
+  it('详情内 pushTask 压入新层 Dialog：返回（pop）后还原上一个任务', async () => {
+    const user = userEvent.setup()
+    render(<GlobalTaskDrawer />, { wrapper })
+    useTaskDrawerStore.getState().openDrawer({ taskId: 'task-1' })
+    await waitFor(() => expect(screen.getByText('前端 token 接入')).toBeInTheDocument())
+    // 详情内打开关联任务 → 压入新层（新 Dialog 展示关联任务）
+    useTaskDrawerStore.getState().pushTask({ taskId: 'task-2' })
+    await waitFor(() => expect(screen.getByText('关联任务乙')).toBeInTheDocument())
+    // 点击顶层返回箭头 → 弹出新层，还原上一个任务
+    const backButtons = screen.getAllByRole('button', { name: '返回关闭详情' })
+    await user.click(backButtons[backButtons.length - 1])
+    await waitFor(() => expect(screen.getByText('前端 token 接入')).toBeInTheDocument())
+    expect(screen.queryByText('关联任务乙')).not.toBeInTheDocument()
+  })
+
+  it('堆栈层级 z-index 递增：新层遮罩/内容高于旧层，内容高于自身遮罩', async () => {
+    render(<GlobalTaskDrawer />, { wrapper })
+    useTaskDrawerStore.getState().openDrawer({ taskId: 'task-1' })
+    await waitFor(() => expect(screen.getByText('前端 token 接入')).toBeInTheDocument())
+    const rootOverlay = document.querySelector('[data-slot="sheet-overlay"]')
+    const rootContent = document.querySelector('[data-slot="sheet-content"]')
+    // 根层：遮罩 50，内容 51（内容高于自身遮罩）
+    expect(rootOverlay?.getAttribute('style')).toContain('z-index: 50')
+    expect(rootContent?.getAttribute('style')).toContain('z-index: 51')
+
+    useTaskDrawerStore.getState().pushTask({ taskId: 'task-2' })
+    await waitFor(() => expect(screen.getByText('关联任务乙')).toBeInTheDocument())
+    const overlays = document.querySelectorAll('[data-slot="sheet-overlay"]')
+    const contents = document.querySelectorAll('[data-slot="sheet-content"]')
+    // 新层（stack 末尾）：遮罩 60、内容 61，均高于根层
+    expect(overlays[overlays.length - 1].getAttribute('style')).toContain('z-index: 60')
+    expect(contents[contents.length - 1].getAttribute('style')).toContain('z-index: 61')
+  })
+
+  it('popTask 关闭动画：顶层先标记 open=false 保持挂载，动画结束后移除', async () => {
+    // 真实计时器完成数据加载与首层渲染
+    render(<GlobalTaskDrawer />, { wrapper })
+    useTaskDrawerStore.getState().openDrawer({ taskId: 'task-1' })
+    useTaskDrawerStore.getState().pushTask({ taskId: 'task-2' })
+    await waitFor(() => expect(screen.getByText('关联任务乙')).toBeInTheDocument())
+
+    // 切假计时器：验证关闭层延迟移除
+    vi.useFakeTimers()
+    useTaskDrawerStore.getState().popTask()
+    let stack = useTaskDrawerStore.getState().stack
+    expect(stack.length).toBe(2)
+    expect(stack[0].open).toBe(true)
+    expect(stack[1].open).toBe(false)
+
+    vi.advanceTimersByTime(400)
+    stack = useTaskDrawerStore.getState().stack
+    expect(stack.length).toBe(1)
+    expect(stack[0].taskId).toBe('task-1')
+    expect(stack[0].open).toBe(true)
+    vi.useRealTimers()
   })
 })

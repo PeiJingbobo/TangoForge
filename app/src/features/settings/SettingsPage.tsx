@@ -11,6 +11,7 @@ import { useConfig, useUpdateConfig, isConfigInvalid } from '@/hooks/useConfig'
 import { useThemeMode, type ThemeMode } from '@/hooks/useThemeMode'
 import { useSkillTemplate, useSkillTemplateWrite } from '@/hooks/useSkills'
 import { CLISettingsSection } from '@/features/settings/CLISettingsSection'
+import { UpdateSection } from '@/features/settings/UpdateSection'
 import { cn } from '@/lib/utils'
 
 /**
@@ -24,8 +25,7 @@ export function SettingsPage() {
 
   if (isError) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">全局设置</p>
+      <div className="w-full px-6 py-6">
         <h1 className="text-h2 text-foreground">首选项</h1>
         <div className="mt-6 rounded-2xl border border-destructive-200 bg-destructive-soft p-5">
           <div className="text-sm font-semibold text-destructive-ink">全局配置加载失败</div>
@@ -42,10 +42,9 @@ export function SettingsPage() {
   }
 
   return (
-    // 标题 + Tab 固定，仅各 tab 内容区内部滚动（TF-042）
-    <div className="mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
+    // 标题 + Tab 固定，仅各 tab 内容区内部滚动（TF-042）；宽度与边距和其他页面统一
+    <div className="flex h-full w-full min-h-0 flex-col px-6 py-6">
       <div className="shrink-0">
-        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">全局设置</p>
         <h1 className="text-h2 text-foreground">首选项</h1>
         <p className="mt-1 text-caption text-muted-foreground">
           设置实时保存（无确定按钮）；保存前校验配置项值，无效则提示并回滚。
@@ -59,6 +58,7 @@ export function SettingsPage() {
           <TabsTrigger value="daemon">守护进程</TabsTrigger>
           <TabsTrigger value="skill">Skill 模板</TabsTrigger>
           <TabsTrigger value="cli">CLI</TabsTrigger>
+          <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
         <TabsContent value="llm" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <LLMSection />
@@ -74,6 +74,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="cli" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <CLISettingsSection />
+        </TabsContent>
+        <TabsContent value="about" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
+          <UpdateSection />
         </TabsContent>
       </Tabs>
     </div>

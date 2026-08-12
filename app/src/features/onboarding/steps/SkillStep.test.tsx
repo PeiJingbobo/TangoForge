@@ -81,4 +81,83 @@ describe('SkillStep（TF-041 Step 4：多宿主安装）', () => {
     await user.click(screen.getAllByRole('button', { name: /\.claude\/skills/ })[0])
     expect(screen.getByRole('button', { name: /不安装并继续/ })).toBeInTheDocument()
   })
+
+  it('AGENTS.md 推荐提示词：复制含变量替换的实时配置', async () => {
+    const user = userEvent.setup()
+    const clipboard = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/config`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            port: 19810,
+            remote_access: false,
+            api_token: '',
+            llm: {
+              base_url: '',
+              api_key: '',
+              model: '',
+              api_kind: 'openai',
+              timeout_sec: 30,
+              retries: 3,
+              max_tokens: 4096,
+              concurrency: 5,
+            },
+          },
+        }),
+      ),
+      http.get(`${DAEMON_BASE_URL}/api/state-machine`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            States: [
+              { Key: 'todo', Label: '待办', Color: '#6b7280' },
+              { Key: 'doing', Label: '进行中', Color: '#2563eb' },
+              { Key: 'done', Label: '已完成', Color: '#16a34a' },
+            ],
+            Transitions: [],
+          },
+        }),
+      ),
+      http.get(`${DAEMON_BASE_URL}/api/skills/status`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: [
+            {
+              key: '.claude/skills',
+              label: '.claude/skills（Claude Code）',
+              scope: 'project',
+              installed: [{ name: 'taskboard-basic', version: '1.0.0', state: 'current' }],
+            },
+          ],
+        }),
+      ),
+    )
+    render(<SkillStep workdir="/data/projects/tf" onReady={vi.fn()} />, { wrapper })
+    await waitFor(() => expect(screen.getByText(/放入 AGENTS.md 的推荐提示词/)).toBeInTheDocument())
+
+    // 中文复制
+    await user.click(screen.getByRole('button', { name: '中文' }))
+    await user.click(screen.getByRole('button', { name: /复制/, hidden: true }))
+    await waitFor(() => expect(clipboard).toBeCalled())
+    const zhText = clipboard.mock.calls[0][0]
+    expect(zhText).toContain('## TangoForge 任务管理')
+    expect(zhText).toContain('默认端口为 `19810`')
+    expect(zhText).toContain('project=/data/projects/tf')
+    expect(zhText).toContain('taskboard-basic')
+    expect(zhText).toContain('todo(待办)')
+    expect(zhText).not.toContain('{{')
+    clipboard.mockClear()
+
+    // 英文复制
+    await user.click(screen.getByRole('button', { name: 'English' }))
+    await user.click(screen.getByRole('button', { name: /复制/, hidden: true }))
+    await waitFor(() => expect(clipboard).toBeCalled())
+    const enText = clipboard.mock.calls[0][0]
+    expect(enText).toContain('## TangoForge Task Management')
+    expect(enText).toContain('port `19810`')
+    expect(enText).toContain('project=/data/projects/tf')
+    expect(enText).not.toContain('{{')
+    clipboard.mockRestore()
+  })
 })

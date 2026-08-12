@@ -297,8 +297,7 @@ export function ProjectSettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">项目设置</p>
+      <div className="w-full">
         <h1 className="text-h2 text-foreground">设置</h1>
         <Skeleton className="mt-6 h-64 w-full" />
       </div>
@@ -307,8 +306,7 @@ export function ProjectSettingsPage() {
 
   if (isError || !data) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">项目设置</p>
+      <div className="w-full">
         <h1 className="text-h2 text-foreground">设置</h1>
         <div className="mt-6 rounded-2xl border border-destructive-200 bg-destructive-soft p-5">
           <div className="text-sm font-semibold text-destructive-ink">项目配置加载失败</div>
@@ -467,10 +465,9 @@ export function ProjectSettingsPage() {
   }
 
   return (
-    // 标题固定顶部、操作栏固定底部，仅表单主体内部滚动（TF-042）
-    <div className="mx-auto flex h-full w-full max-w-2xl min-h-0 flex-col">
+    // 标题固定顶部、操作栏固定底部，仅表单主体内部滚动（TF-042）；宽度与其他页面统一
+    <div className="flex h-full w-full min-h-0 flex-col">
       <div className="shrink-0">
-        <p className="text-caption uppercase tracking-[0.09em] text-muted-foreground">项目设置</p>
         <h1 className="text-h2 text-foreground">设置</h1>
         <p className="mt-1 text-caption text-muted-foreground">
           编辑项目 config.yaml（状态机 / 导出模板）。保存时校验配置与状态占用，失败不落盘。

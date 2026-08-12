@@ -28,6 +28,10 @@ const sheetVariants = cva(
 interface SheetContentProps
   extends React.ComponentProps<typeof SheetPrimitive.Content>, VariantProps<typeof sheetVariants> {
   showCloseButton?: boolean
+  /** 是否渲染遮罩（嵌套抽屉堆栈时内层可关掉遮罩，保留下层可见） */
+  overlay?: boolean
+  /** 层叠层级（Dialog 页面堆栈）：每层递增；内容在遮罩之上（zIndex+1），保证层级关系稳定 */
+  zIndex?: number
 }
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
@@ -67,14 +71,18 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  overlay = true,
+  zIndex = 50,
+  style,
   ...props
 }: SheetContentProps) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      {overlay && <SheetOverlay style={{ zIndex }} />}
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(sheetVariants({ side }), className)}
+        style={{ zIndex: zIndex + 1, ...style }}
         {...props}
       >
         {children}

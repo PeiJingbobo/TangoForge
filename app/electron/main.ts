@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { registerCliIpc } from './cli-register'
 import { registerConfigIpc, registerDaemonIpc } from './daemon'
+import { registerUpdaterIpc, scheduleAutoCheck } from './updater'
 
 // 单实例锁（Electron 官方最佳实践）：防止多窗口/多实例并存时
 // 旧主进程响应 IPC（token 缓存失效、WS 连接错乱等）。
@@ -101,6 +102,7 @@ app.whenReady().then(() => {
   registerDaemonIpc()
   registerConfigIpc()
   registerCliIpc()
+  registerUpdaterIpc()
   // 剪贴板写（QA 2026-08-09：任务编号复制；file:// 下 navigator.clipboard 不可靠）
   ipcMain.handle('clipboard:writeText', (_e, text: string) => {
     clipboard.writeText(String(text ?? ''))
@@ -110,6 +112,9 @@ app.whenReady().then(() => {
 
   // App 启动时探活/拉起内嵌守护进程（docs/TECHNICAL.md §4.4）；不阻塞窗口创建。
   void import('./daemon').then(({ ensureDaemonRunning }) => ensureDaemonRunning())
+
+  // 在线更新：安装版启动后延迟后台检查一次（TF-036；mac 自动打开 dmg 手动安装）。
+  scheduleAutoCheck()
 
   createWindow()
 

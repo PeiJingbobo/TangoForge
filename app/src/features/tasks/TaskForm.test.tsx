@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useRef, useState, type ReactNode } from 'react'
 import { TaskForm, type TaskFormHandle } from './TaskForm'
+import { useTaskDrawerStore } from '@/stores/task-drawer'
 import type { StateMachineState } from '@/types/models'
 import type { Task } from '@/types/task'
 
@@ -121,6 +122,79 @@ describe('TaskForm（内容表单：footer 由宿主渲染）', () => {
     expect(screen.getAllByText('进行中').length).toBeGreaterThan(0) // 状态徽标
   })
 
+  it('父任务展示：编号/优先级/状态，点击打开详情', async () => {
+    const user = userEvent.setup()
+    const parent = mk('p', { title: '父任务甲', number: 'T001', priority: 3, status: 'doing' })
+    const child = mk('c', { parent_id: 'p', title: '子任务乙', priority: 5 })
+    const drawerSpy = vi.spyOn(useTaskDrawerStore.getState(), 'pushTask')
+    render(
+      <TaskForm
+        task={child}
+        states={STATES}
+        allTasks={[parent, child]}
+        onSubmit={() => {}}
+        onDirtyChange={() => {}}
+      />,
+      { wrapper },
+    )
+    expect(screen.getByText('父任务')).toBeInTheDocument()
+    expect(screen.getByText('父任务甲')).toBeInTheDocument()
+    expect(screen.getByText('T001')).toBeInTheDocument()
+    expect(screen.getByText('P3')).toBeInTheDocument() // 父任务优先级
+    await user.click(screen.getByRole('button', { name: '查看父任务 父任务甲' }))
+    expect(drawerSpy).toHaveBeenCalledWith({ taskId: 'p' })
+    drawerSpy.mockRestore()
+  })
+
+  it('子任务展示优先级徽标，点击打开详情', async () => {
+    const user = userEvent.setup()
+    const child = mk('c', { parent_id: 'a', title: '子任务甲', priority: 5, number: 'T006' })
+    const drawerSpy = vi.spyOn(useTaskDrawerStore.getState(), 'pushTask')
+    render(
+      <TaskForm
+        task={TASK_A}
+        states={STATES}
+        allTasks={[TASK_A, child]}
+        onSubmit={() => {}}
+        onDirtyChange={() => {}}
+      />,
+      { wrapper },
+    )
+    expect(screen.getByText('P5')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '查看子任务 子任务甲' }))
+    expect(drawerSpy).toHaveBeenCalledWith({ taskId: 'c' })
+    drawerSpy.mockRestore()
+  })
+
+  it('依赖任务展示编号，点击打开详情', async () => {
+    const user = userEvent.setup()
+    const dep = mk('b', { title: '依赖任务乙', number: 'T002' })
+    const taskC = mk('c', { depends_on: ['b'] })
+    const drawerSpy = vi.spyOn(useTaskDrawerStore.getState(), 'pushTask')
+    render(
+      <TaskForm
+        task={taskC}
+        states={STATES}
+        allTasks={[taskC, dep]}
+        onSubmit={() => {}}
+        onDirtyChange={() => {}}
+      />,
+      { wrapper },
+    )
+    expect(screen.getByText('T002')).toBeInTheDocument() // 依赖任务编号
+    await user.click(screen.getByRole('button', { name: '查看依赖任务 依赖任务乙' }))
+    expect(drawerSpy).toHaveBeenCalledWith({ taskId: 'b' })
+    drawerSpy.mockRestore()
+  })
+
+  it('标题 hover 提示区固定高度常驻：非 hover 时提示文字隐藏但容器存在', () => {
+    render(<Harness />, { wrapper })
+    // 提示文字常驻 DOM（容器不因 hover 消失 → 无布局跳动），但默认 hidden 不展示
+    const hint = screen.getByText('点击编辑标题')
+    expect(hint).toBeInTheDocument()
+    expect(hint.closest('span')).toHaveClass('hidden')
+  })
+
   it('无改动时 dirty=false', () => {
     render(<Harness />, { wrapper })
     expect(screen.getByTestId('dirty')).toHaveTextContent('false')
@@ -137,7 +211,7 @@ describe('TaskForm（内容表单：footer 由宿主渲染）', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['前端', '交互'] }))
   })
 
-  it('依赖添加：选择任务后提交 depends_on', async () => {
+  it('依赖添加：打开搜索选择器 → 选择任务后提交 depends_on', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     const taskC = mk('c')
@@ -163,8 +237,12 @@ describe('TaskForm（内容表单：footer 由宿主渲染）', () => {
       )
     }
     render(<Harness3 />, { wrapper })
-    await user.click(screen.getByRole('combobox', { name: /添加依赖/ }))
-    await user.click(await screen.findByText('任务 a'))
+    await user.click(screen.getByRole('button', { name: '添加依赖' }))
+    // 搜索过滤：输入关键词后列表收敛（与任务导航/看板搜索一致）
+    await user.type(screen.getByRole('textbox', { name: '搜索依赖任务' }), '任务 a')
+    expect(screen.getByRole('button', { name: /选择依赖 任务 a/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /选择依赖 任务 b/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /选择依赖 任务 a/ }))
     await user.click(screen.getByRole('button', { name: '测试提交' }))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ depends_on: ['a'] }))
   })

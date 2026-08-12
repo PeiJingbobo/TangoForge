@@ -102,7 +102,8 @@ export function WorkspacePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
+    // 页面宽度与其他页面统一：撑满 main 容器；边距与项目二级页一致（ProjectPanel 同 px-6 py-6）
+    <div className="w-full px-6 py-6">
       <div className="flex items-center gap-3">
         <span className="grid size-12 place-items-center rounded-2xl bg-primary-50 text-primary-600">
           <FolderOpen className="size-6" />

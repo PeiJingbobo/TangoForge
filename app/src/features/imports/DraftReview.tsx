@@ -19,6 +19,7 @@ import { useDraftDetail, useUpdateDraftTasks } from '@/hooks/useDraftDetail'
 import { useConfirmDraft, useDiscardDraft } from '@/hooks/useImports'
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useProjectId } from '@/hooks/useProject'
+import { getTitleBarHeight } from '@/lib/window-chrome'
 import type { ParsedTask } from '@/types/models'
 import type { StateMachineState } from '@/types/models'
 import type { Task, TaskTreeNode, UpdateTaskInput } from '@/types/task'
@@ -340,6 +341,9 @@ function DraftTaskDrawer({
   const formRef = useRef<TaskFormHandle>(null)
   const [dirty, setDirty] = useState(false)
 
+  // 桌面自绘标题栏高度：全高抽屉头部需预留顶部内边距，避免被标题栏遮挡
+  const titleBarH = getTitleBarHeight()
+
   const handleSubmit = (body: UpdateTaskInput & { status?: string }) => {
     if (!task) return
     const latest: Task = {
@@ -358,9 +362,25 @@ function DraftTaskDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <SheetContent
+        style={{ paddingTop: titleBarH }}
+        showCloseButton={false}
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+      >
         <SheetHeader className="border-b border-divider px-6 py-4">
-          <SheetTitle className="text-base">草稿任务</SheetTitle>
+          <div className="flex items-center gap-2">
+            <SheetTitle className="text-base">草稿任务</SheetTitle>
+            {/* 关闭：与标题同一行、右侧对齐、垂直居中（避开标题栏遮挡） */}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="关闭详情"
+              title="关闭"
+              className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
           <SheetDescription>编辑将保存到草稿（确认导入时生效）。</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">

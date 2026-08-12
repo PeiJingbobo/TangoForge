@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { UpdatePayload, UpdateStatus } from '../src/types/update'
 
 /**
  * 白名单 IPC API（docs/TECHNICAL.md §4.4 + Electron 官方安全清单）：
@@ -78,6 +79,25 @@ const api = {
   /** 剪贴板（QA 2026-08-09：任务编号复制；file:// 下 navigator.clipboard 不可靠） */
   clipboard: {
     writeText: (text: string): Promise<boolean> => ipcRenderer.invoke('clipboard:writeText', text),
+  },
+  /** 在线更新（TF-036）：Windows 全链路 / macOS 打开 dmg 手动安装 */
+  update: {
+    /** 检查更新（主进程检测；状态经 onState 推送） */
+    check: (): Promise<boolean> => ipcRenderer.invoke('update:check'),
+    /** 下载更新（仅 Windows） */
+    download: (): Promise<boolean> => ipcRenderer.invoke('update:download'),
+    /** 下载完成后重启并安装（仅 Windows） */
+    install: (): Promise<boolean> => ipcRenderer.invoke('update:install'),
+    /** 打开新版本 dmg 下载页（macOS 手动安装） */
+    openDownload: (): Promise<boolean> => ipcRenderer.invoke('update:openDownload'),
+    /** 拉取当前更新状态（当前版本号 + 平台支持性） */
+    getState: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:getState'),
+    /** 订阅主进程推送的更新状态；返回取消订阅函数 */
+    onState: (cb: (payload: UpdatePayload) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, payload: UpdatePayload): void => cb(payload)
+      ipcRenderer.on('update:state', handler)
+      return () => ipcRenderer.removeListener('update:state', handler)
+    },
   },
 }
 

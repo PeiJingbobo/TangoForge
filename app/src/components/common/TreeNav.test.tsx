@@ -95,4 +95,33 @@ describe('TreeNav（树形导航）', () => {
     const dot = document.querySelector('span[style*="background-color: rgb(26, 115, 232)"]')
     expect(dot).not.toBeNull()
   })
+
+  it('任务行展示状态名称、优先级与标签（任务导航优化）', () => {
+    const tree = [
+      {
+        ...mk('a', '任务甲'),
+        status: 'doing',
+        priority: 4,
+        tags: ['前端', '交互', '多余标签'],
+      },
+    ]
+    render(
+      <TreeNav
+        tree={tree}
+        states={[
+          { Key: 'todo', Label: '待办', Color: '#9aa0a6' },
+          { Key: 'doing', Label: '进行中', Color: '#1a73e8' },
+        ]}
+        onSelect={() => {}}
+      />,
+    )
+    // 状态名称（StateBadge label）
+    expect(screen.getByText('进行中')).toBeInTheDocument()
+    // 优先级
+    expect(screen.getByText('P4')).toBeInTheDocument()
+    // 标签（≤2 个展示）
+    expect(screen.getByText('#前端')).toBeInTheDocument()
+    expect(screen.getByText('#交互')).toBeInTheDocument()
+    expect(screen.queryByText('#多余标签')).not.toBeInTheDocument()
+  })
 })

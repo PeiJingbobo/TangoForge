@@ -1,0 +1,162 @@
+# TangoForge 发布流水线（TF-036，docs/CI-CD-UPDATER.md 评审版）
+# 触发：推送 v* 标签（与 app/package.json version 强一致校验）；workflow_dispatch 手动兜底。
+# 流程：质量门禁 → 创建 Release 骨架 → mac(arm64) 未签名打包发布 / win(x64) 自签名打包发布。
+# 说明：
+# - macOS 当前无 Apple Developer ID 证书（identity: null 未签名）：dmg 供手动安装，
+#   更新策略为 App 内检测新版本后自动打开 dmg 下载页（docs/CI-CD-UPDATER.md §7.1 / 评审决策）。
+# - Windows 使用 CI 内生成的自签名证书签名（CSC_LINK/CSC_KEY_PASSWORD），
+#   SmartScreen 仍会提示"未知发布者"，属预期；electron-updater 依据 latest.yml 校验。
+# - GitHub 托管 runner 可直连 GitHub，无需 ELECTRON_MIRROR（本地镜像仅限国内本机）。
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: 版本校验 + 质量门禁
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取版本并校验（tag 触发时强制 tag==version）
+        id: v
+        run: |
+          VERSION=$(node -p "require('./app/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG=${GITHUB_REF_NAME#v}
+            if [ "$VERSION" != "$TAG" ]; then
+              echo "::error::tag($GITHUB_REF_NAME) 与 app/package.json version($VERSION) 不一致"
+              exit 1
+            fi
+          fi
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: 前端质量门禁
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm lint
+          pnpm format:check
+          pnpm test
+
+      - name: 后端质量门禁
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go test ./...
+          ./scripts/check_coverage.sh
+
+  prepare-release:
+    name: 创建 GitHub Release 骨架
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 创建（或复用）Release
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${VERSION}" --generate-notes --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" || echo "release 已存在（重试场景），继续复用"
+
+  build-mac-arm64:
+    name: 打包 macOS（arm64，未签名）
+    needs: prepare-release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: 编译内嵌 daemon/CLI（darwin/arm64，CGO_ENABLED=0）
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o bin/tangoforge-daemon ./cmd/daemon
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o bin/tangoforge ./cmd/cli
+
+      - name: 安装依赖 + 构建前端
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: electron-builder 打包并发布（dmg + zip + latest-mac.yml）
+        run: pnpm exec electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-win-x64:
+    name: 打包 Windows（x64，自签名）
+    needs: prepare-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: 编译内嵌 daemon/CLI（windows/amd64，CGO_ENABLED=0）
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -o bin/tangoforge-daemon.exe ./cmd/daemon
+          go build -o bin/tangoforge.exe ./cmd/cli
+
+      - name: 安装依赖 + 构建前端
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: 生成 Windows 自签名代码签名证书（.pfx，注入 CSC_LINK）
+        shell: bash
+        run: |
+          CERT_PFX="$(pwd)/tangoforge-selfsigned.pfx"
+          openssl req -x509 -newkey rsa:3072 -keyout /tmp/tangoforge-key.pem -out /tmp/tangoforge-cert.pem -days 3650 -nodes \
+            -subj "/CN=TangoForge" \
+            -addext "basicConstraints=critical,CA:FALSE" \
+            -addext "keyUsage=digitalSignature" \
+            -addext "extendedKeyUsage=codeSigning"
+          openssl pkcs12 -export -out "$CERT_PFX" \
+            -inkey /tmp/tangoforge-key.pem -in /tmp/tangoforge-cert.pem \
+            -passout pass:tangoforge-ci -name "TangoForge Self-Signed"
+          echo "CSC_LINK=$(cygpath -w "$CERT_PFX")" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=tangoforge-ci" >> "$GITHUB_ENV"
+
+      - name: electron-builder 打包并发布（nsis + portable + latest.yml）
+        run: pnpm exec electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

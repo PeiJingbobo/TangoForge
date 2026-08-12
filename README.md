@@ -113,6 +113,36 @@ pnpm dist:win    # Windows：nsis + portable
 
 > 产物默认输出到本机磁盘（如 `~/tangoforge-release`）；未签名，安装时系统会提示"未知开发者"。
 
+## 下载与更新（GitHub Releases）
+
+安装包由 **GitHub Actions 自动打包并发布**到 [GitHub Releases](https://github.com/PeiJingbobo/TangoForge/releases)（推送 `vX.Y.Z` 标签触发，版本号与 `app/package.json` 强一致）：
+
+- **Windows（x64）**：`TangoForge-<版本>-setup.exe`（NSIS 安装包，自签名）+ `TangoForge-<版本>-win-x64.exe`（便携版）；
+- **macOS（arm64）**：`TangoForge-<版本>.dmg`（安装/手动更新用）+ `TangoForge-<版本>-mac-arm64.zip`。
+
+App 内置在线更新：启动后延迟自动检查，也可在「设置 → 关于」手动检查。
+
+| 平台 | 更新方式 |
+|---|---|
+| Windows | 检测到新版本 → 提示下载 → 「重启并安装」自动完成（electron-updater 全链路） |
+| macOS | 未签名阶段**无法自动安装**：检测到新版本后**自动打开 dmg 下载页**，下载后双击 dmg 将 TangoForge 拖入 Applications 完成手动安装 |
+
+> 无签名阶段说明（TF-036 评审决策）：macOS 暂无 Apple Developer ID 证书，产物未签名；Windows 使用 CI 内生成的自签名证书签名（SmartScreen 仍会提示"未知发布者"，点「更多信息 → 仍要运行」即可，属预期）。
+
+### macOS：首次打开未签名 App 的允许运行指令
+
+macOS 未签名产物首次打开会提示「无法验证开发者」或「已损坏，无法打开」，按下列任一方式允许运行：
+
+```bash
+# 方式一（推荐）：移除 quarantine 隔离标记，之后可正常双击打开
+xattr -dr com.apple.quarantine "/Applications/TangoForge.app"
+
+# 方式二：终端直接启动（绕过 Gatekeeper 校验）
+open "/Applications/TangoForge.app"
+```
+
+或 GUI 操作：在「访达」中**右键** `TangoForge.app` →「打开」→ 在弹窗中再次点「打开」（仅首次提示一次，此后可正常双击启动）。
+
 ## CLI 使用与全局注册
 
 打包产物 `resources/bin/` 内包含 **CLI（tangoforge）** 与 **守护进程（tangoforge-daemon）** 双二进制（App 启动自动拉起 daemon；CLI 通过 HTTP 与 daemon 等价操作，见 `tangoforge --help`）。

@@ -3,6 +3,7 @@ import { flattenTree } from '@/components/kanban/tree-utils'
 import { TreeNav } from '@/components/common/TreeNav'
 import { TaskNumberBadge } from '@/components/common/TaskNumberBadge'
 import { StateBadge } from '@/components/common/StateBadge'
+import { TagFilter } from '@/components/common/TagFilter'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTasks } from '@/hooks/useTasks'
@@ -13,6 +14,20 @@ import { useTaskDrawerStore } from '@/stores/task-drawer'
 import { matchesTaskQuery } from '@/lib/task-search'
 import type { StateMachineState } from '@/types/models'
 import type { Task, TaskTreeNode } from '@/types/task'
+
+/** 按选中标签过滤树（保留层级：节点自身命中或子节点命中时保留）。 */
+function filterTreeByTags(nodes: TaskTreeNode[], selected: Set<string>): TaskTreeNode[] {
+  if (selected.size === 0) return nodes
+  const matches = (t: Task) => t.tags.some((tag) => selected.has(tag))
+  return nodes
+    .map((n) => ({ ...n, children: filterTreeByTags(n.children, selected) }))
+    .filter((n) => matches(n) || n.children.length > 0)
+}
+
+/** 按选中标签过滤平铺任务列表。 */
+function matchesTagFilter(t: Task, selected: Set<string>): boolean {
+  return selected.size === 0 || t.tags.some((tag) => selected.has(tag))
+}
 
 function TaskRow({
   task,
@@ -172,11 +187,21 @@ export function NavPage() {
 
   const flat = useMemo(() => flattenTree(taskData?.tree ?? []), [taskData])
   const states = sm?.States ?? []
+  // 标签多选筛选（导航三视图共用）
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
+  const allTags = useMemo(() => [...new Set(flat.flatMap((t) => t.tags))].sort(), [flat])
 
   const openTaskDrawer = useTaskDrawerStore((st) => st.openDrawer)
   const openTask = (id: string) => openTaskDrawer({ taskId: id })
 
-  const treeWithIds = (taskData?.tree ?? []) as TaskTreeNode[]
+  const filteredFlat = useMemo(
+    () => flat.filter((t) => matchesTagFilter(t, selectedTags)),
+    [flat, selectedTags],
+  )
+  const filteredTree = useMemo(
+    () => filterTreeByTags((taskData?.tree ?? []) as TaskTreeNode[], selectedTags),
+    [taskData, selectedTags],
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -188,21 +213,29 @@ export function NavPage() {
         </p>
       </div>
 
-      {/* Tab 固定，视图内容占满剩余高度（内部滚动） */}
+      {/* Tab + 标签筛选同一行（Tab 左侧，标签筛选右侧，高度对齐） */}
       <Tabs defaultValue="tree" className="mt-5 flex min-h-0 flex-1 flex-col">
-        <TabsList className="w-fit shrink-0">
-          <TabsTrigger value="tree">树形</TabsTrigger>
-          <TabsTrigger value="timeline">时间线</TabsTrigger>
-          <TabsTrigger value="status">状态分类</TabsTrigger>
-        </TabsList>
+        <div className="flex shrink-0 items-center gap-3">
+          <TabsList className="w-fit shrink-0">
+            <TabsTrigger value="tree">树形</TabsTrigger>
+            <TabsTrigger value="timeline">时间线</TabsTrigger>
+            <TabsTrigger value="status">状态分类</TabsTrigger>
+          </TabsList>
+          <TagFilter
+            tags={allTags}
+            selected={selectedTags}
+            onChange={setSelectedTags}
+            className="min-w-0 flex-1"
+          />
+        </div>
         <TabsContent value="tree" className="mt-4 min-h-0 flex-1">
-          <TreeNav tree={treeWithIds} states={states} onSelect={openTask} />
+          <TreeNav tree={filteredTree} states={states} onSelect={openTask} />
         </TabsContent>
         <TabsContent value="timeline" className="mt-4 min-h-0 flex-1">
-          <TimelineView tasks={flat} states={states} onOpen={openTask} />
+          <TimelineView tasks={filteredFlat} states={states} onOpen={openTask} />
         </TabsContent>
         <TabsContent value="status" className="mt-4 min-h-0 flex-1">
-          <StatusView tasks={flat} states={states} onOpen={openTask} />
+          <StatusView tasks={filteredFlat} states={states} onOpen={openTask} />
         </TabsContent>
       </Tabs>
     </div>

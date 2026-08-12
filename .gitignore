@@ -1,5 +1,6 @@
 # ---- Go 编译产物 ----
 bin/
+/cli
 *.exe
 *.test
 *.out
@@ -13,11 +14,13 @@ coverage.out
 .workbuddy/
 
 # ---- Agent 宿主安装产物（TF-042：技能包安装目录 + 技能锁） ----
-# 注意：.github/（CI workflows）与 .husky/（hooks 配置）是项目基础设施，不得忽略。
+# 注意：.github/workflows（CI 流程）与 .husky/（hooks 配置）是项目基础设施，不得忽略；
+# 仅 .github/skills/（技能包安装目标，与 .claude/skills 同类）忽略。
 .agents/
 .claude/
 .cursor/
 .kilocode/
+.github/skills/
 skills-lock.json
 
 # ---- 前端依赖与构建产物 ----
@@ -26,6 +29,7 @@ app/node_modules/
 app/dist/
 app/out/
 app/release/
+app/coverage/
 release/
 *.blockmap
 *.tsbuildinfo
@@ -43,6 +47,7 @@ Thumbs.db
 tmp/
 *.tmp
 _tmp_*
+tmp_*.sh
 
 # ---- 文档（TF-045：仓库仅保留源代码，docs 移出 git 管理；磁盘文件保留） ----
 docs/
@@ -55,3 +60,6 @@ AGENTS.md
 
 # ---- 本地测试数据（磁盘保留，不入库） ----
 test-markdown/
+
+.kilo
+kilo.json

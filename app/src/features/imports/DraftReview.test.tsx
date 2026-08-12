@@ -153,7 +153,7 @@ describe('DraftReview（草稿审阅）', () => {
       expect(screen.getByRole('button', { name: '编辑标题' })).toBeInTheDocument(),
     )
     expect(screen.getByRole('button', { name: '移除依赖 顶层任务 A' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: /添加依赖/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加依赖' })).toBeInTheDocument()
   })
 
   it('确认导入 → toast + onExit', async () => {

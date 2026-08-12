@@ -14,28 +14,66 @@ export interface OpenTaskDrawerOptions {
   onSaved?: (task: Task) => void
 }
 
-interface TaskDrawerState {
-  open: boolean
+/** 抽屉栈中单层条目（一层 = 一个 Dialog 页面） */
+export interface TaskDrawerEntry {
   taskId?: string
   task?: Task
   mode: TaskDrawerMode
   onSaved?: (task: Task) => void
+  /** 是否处于打开态；false = 正在播关闭动画（保持挂载，动画结束后移除） */
+  open: boolean
+}
+
+interface TaskDrawerState {
+  /** Dialog 页面堆栈：尾部为当前顶层；从详情内打开关联任务 → push 新层，返回 → pop */
+  stack: TaskDrawerEntry[]
+  /** 打开抽屉（外部入口：看板/导航/全景图/新建，重置栈为单层） */
   openDrawer: (opts: OpenTaskDrawerOptions) => void
+  /** 从任务详情内打开关联任务（依赖/子任务/父任务）：压入新的一层 Dialog */
+  pushTask: (opts: OpenTaskDrawerOptions) => void
+  /** 弹出顶层（返回上一个任务）：先标记关闭播动画，动画结束后移除；栈空即关闭抽屉 */
+  popTask: () => void
+  /** 关闭全部层（清空栈） */
   closeDrawer: () => void
 }
 
+/** 关闭动画时长（与 sheet.tsx data-[state=closed]:duration-300 对齐，稍留余量） */
+const CLOSE_ANIM_MS = 350
+
+function toEntry(opts: OpenTaskDrawerOptions): TaskDrawerEntry {
+  return {
+    taskId: opts.taskId,
+    task: opts.task,
+    mode: opts.mode ?? 'edit',
+    onSaved: opts.onSaved,
+    open: true,
+  }
+}
+
 /**
- * 全局任务详情抽屉（zustand）：
- * 看板/导航/全景图等入口 openDrawer({ taskId }) 或 openDrawer({ task, onSaved })，
- * 由 AppLayout 挂载的 GlobalTaskDrawer 渲染（当前页保留，抽屉浮层覆盖）。
+ * 全局任务详情抽屉（zustand，Dialog 页面堆栈）：
+ * 看板/导航/全景图等入口 openDrawer({ taskId }) 或 openDrawer({ task, onSaved }) 打开根层；
+ * 详情内点击依赖/子任务/父任务经 pushTask 压入新层，逐层返回（popTask，带关闭动画）。
  */
 export const useTaskDrawerStore = create<TaskDrawerState>((set) => ({
-  open: false,
-  taskId: undefined,
-  task: undefined,
-  mode: 'edit',
-  onSaved: undefined,
-  openDrawer: ({ taskId, task, mode = 'edit', onSaved }) =>
-    set({ open: true, taskId, task, mode, onSaved }),
-  closeDrawer: () => set({ open: false, taskId: undefined, task: undefined, onSaved: undefined }),
+  stack: [],
+  openDrawer: (opts) => set({ stack: [toEntry(opts)] }),
+  pushTask: (opts) => set((s) => ({ stack: [...s.stack, toEntry(opts)] })),
+  popTask: () => {
+    set((s) => {
+      if (s.stack.length === 0) return s
+      const stack = s.stack.map((e, i) => (i === s.stack.length - 1 ? { ...e, open: false } : e))
+      return { stack }
+    })
+    // 关闭动画结束后移除末尾处于关闭态的层（含连点/中途压入新层时只清关闭态尾部）
+    window.setTimeout(() => {
+      useTaskDrawerStore.setState((s) => {
+        if (s.stack.length === 0) return s
+        const stack = [...s.stack]
+        while (stack.length > 0 && !stack[stack.length - 1].open) stack.pop()
+        return stack.length === s.stack.length ? s : { stack }
+      })
+    }, CLOSE_ANIM_MS)
+  },
+  closeDrawer: () => set({ stack: [] }),
 }))

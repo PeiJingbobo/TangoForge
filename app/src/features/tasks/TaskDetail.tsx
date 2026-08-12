@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { Archive, ArrowLeft, RotateCcw } from 'lucide-react'
+import { Archive, ArrowLeft, RotateCcw, X } from 'lucide-react'
 import { ApiError } from '@/api/client'
 import { flattenTree } from '@/components/kanban/tree-utils'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import { useTask, useTasks, useUpdateTask, useArchiveTask, useRestoreTask } from
 import { useStateMachine } from '@/hooks/useStateMachine'
 import { useEventInvalidator } from '@/hooks/useEvents'
 import { useProjectId } from '@/hooks/useProject'
+import { getTitleBarHeight } from '@/lib/window-chrome'
 import { useTaskDrawerStore, type TaskDrawerMode } from '@/stores/task-drawer'
 import type { Task, UpdateTaskInput } from '@/types/task'
 
@@ -27,6 +28,7 @@ import type { Task, UpdateTaskInput } from '@/types/task'
  * - props 化：taskId 优先级高（内部 useTask 加载 + useUpdateTask 保存）；
  *   传入 task 对象时直接使用，编辑完成经 onSaved(latest) 回调最新详情（不内部发请求）；
  * - mode：'edit'（默认，可编辑保存）/ 'read'（只读展示）；
+ * - stacked：Dialog 页面堆栈中的内层（非顶层），关闭遮罩保留下层可见；
  * - 复用 TaskForm（行内编辑 + 差异提交）。
  */
 export interface TaskDetailDrawerProps {
@@ -34,9 +36,13 @@ export interface TaskDetailDrawerProps {
   onOpenChange: (open: boolean) => void
   /** 任务 id（优先级高：内部加载详情并内部保存） */
   taskId?: string
-  /** 任务详情对象（传入时直接使用；编辑完成经 onSaved 回调） */
+  /** 任务详情对象（传入时直接使用；编辑完成经 onSaved 回调最新详情） */
   task?: Task
   mode?: TaskDrawerMode
+  /** 堆栈内层（非顶层）：不渲染遮罩 */
+  stacked?: boolean
+  /** 堆栈深度（0=根层）；用于 z-index 递增，保证层级关系稳定 */
+  level?: number
   /** 编辑保存成功回调（task 对象模式必需；taskId 模式保存后也回调最新详情） */
   onSaved?: (task: Task) => void
 }
@@ -47,6 +53,8 @@ export function TaskDetailDrawer({
   taskId,
   task: taskProp,
   mode = 'edit',
+  stacked = false,
+  level = 0,
   onSaved,
 }: TaskDetailDrawerProps) {
   const pid = useProjectId()
@@ -62,6 +70,9 @@ export function TaskDetailDrawer({
   const formRef = useRef<TaskFormHandle>(null)
 
   useEventInvalidator(pid)
+
+  // 桌面自绘标题栏高度：全高抽屉头部需预留顶部内边距，避免被标题栏遮挡
+  const titleBarH = getTitleBarHeight()
 
   // taskId 模式：用加载数据；task 对象模式：直接用 props（优先级 id > 对象，但对象非空时以对象为展示源）
   const task = taskProp ?? loaded
@@ -176,7 +187,13 @@ export function TaskDetailDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <SheetContent
+        overlay={!stacked}
+        zIndex={50 + level * 10}
+        style={{ paddingTop: titleBarH }}
+        showCloseButton={false}
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+      >
         <SheetHeader className="border-b border-divider px-6 py-4">
           <div className="flex items-center gap-2">
             <button
@@ -189,6 +206,16 @@ export function TaskDetailDrawer({
               <ArrowLeft className="size-4" />
             </button>
             <SheetTitle className="text-base">任务详情</SheetTitle>
+            {/* 关闭：与标题同一行、右侧对齐、垂直居中（避开标题栏遮挡） */}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="关闭详情"
+              title="关闭"
+              className="ml-auto grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <X className="size-4" />
+            </button>
           </div>
           <SheetDescription>
             {task ? `${task.status}${task.priority > 0 ? ` · P${task.priority}` : ''}` : '加载中…'}
@@ -262,22 +289,35 @@ export function TaskDetailDrawer({
 }
 
 /**
- * 全局任务抽屉（store 桥接）：挂载于 AppLayout，
- * 各入口（看板/导航/全景图/新建）通过 useTaskDrawerStore.openDrawer 打开。
+ * 全局任务抽屉（store 桥接）：挂载于 AppLayout。
+ * 各入口（看板/导航/全景图/新建）通过 openDrawer 打开根层；
+ * 详情内打开关联任务经 pushTask 压入新层 —— 每层渲染为一个独立 Dialog，
+ * 逐层返回（popTask），关闭全部层后抽屉消失。
  */
 export function GlobalTaskDrawer() {
-  const { open, taskId, task, mode, onSaved, closeDrawer } = useTaskDrawerStore()
+  const { stack, popTask } = useTaskDrawerStore()
   return (
-    <TaskDetailDrawer
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) closeDrawer()
-      }}
-      taskId={taskId}
-      task={task}
-      mode={mode}
-      onSaved={onSaved}
-    />
+    <>
+      {stack.map((entry, i) => {
+        const isTop = i === stack.length - 1
+        return (
+          <TaskDetailDrawer
+            key={`${i}-${entry.taskId ?? entry.task?.id ?? 'new'}`}
+            open={entry.open}
+            onOpenChange={(o) => {
+              // 仅顶层可关闭：关闭/返回 → 弹出该层（下层原样保留）
+              if (!o && isTop) popTask()
+            }}
+            taskId={entry.taskId}
+            task={entry.task}
+            mode={entry.mode}
+            stacked={!isTop}
+            level={i}
+            onSaved={entry.onSaved}
+          />
+        )
+      })}
+    </>
   )
 }
 

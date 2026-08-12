@@ -10,6 +10,7 @@ import {
   stabilizeTreeOrder,
 } from '@/components/kanban/drag-logic'
 import { flattenTree, treeOrderIndex } from '@/components/kanban/tree-utils'
+import { TagFilter } from '@/components/common/TagFilter'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -30,7 +31,6 @@ import { useProjectId } from '@/hooks/useProject'
 import { useTaskDrawerStore } from '@/stores/task-drawer'
 import { matchesTaskQuery } from '@/lib/task-search'
 import type { Task } from '@/types/task'
-import { cn } from '@/lib/utils'
 
 /** 看板视图（TF-025）：状态机动态列 + dnd-kit 拖拽流转 + 虚拟滚动 + 过滤搜索 */
 export function KanbanView() {
@@ -39,7 +39,8 @@ export function KanbanView() {
   const pid = useProjectId()
 
   const [query, setQuery] = useState('')
-  const [tagFilter, setTagFilter] = useState<string | null>(null)
+  // 标签多选筛选（空集合 = 不过滤）
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set())
   const [createOpen, setCreateOpen] = useState(false)
   // 本地列内顺序（拖拽结束保持，避免数据刷新回跳闪烁；仅会话内，未记录列用默认序）
   const [colOrder, setColOrder] = useState<Record<string, string[]>>({})
@@ -61,7 +62,8 @@ export function KanbanView() {
         if (t.status === 'archived') return false
         // 同时匹配编号 / 标题 / 内容（TF-042）
         if (!matchesTaskQuery(t, query)) return false
-        if (tagFilter && !t.tags.includes(tagFilter)) return false
+        // 标签多选：命中任一选中标签即保留
+        if (tagFilter.size > 0 && !t.tags.some((tag) => tagFilter.has(tag))) return false
         return true
       }),
     [allTasks, query, tagFilter],
@@ -126,16 +128,16 @@ export function KanbanView() {
   return (
     // h-full flex-col：工具栏固定，看板区 flex-1 撑满剩余高度（列内滚动，页面不滚动）
     <div className="flex h-full min-h-0 flex-col">
-      {/* 工具栏：标题 + 搜索 + 标签过滤 + 新建 */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      {/* 工具栏：标题一行；搜索 + 标签多选筛选 + 新建 一行（新建右侧对齐） */}
+      <div className="mb-5 shrink-0">
         <div>
           <h1 className="text-h2 text-foreground">任务看板</h1>
           <p className="mt-1 text-caption text-muted-foreground">
             基于项目状态机动态生成列 · {filtered.length} 个任务
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="mt-4 flex min-w-0 items-center gap-3">
+          <div className="relative shrink-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
@@ -145,26 +147,13 @@ export function KanbanView() {
               className="h-9 w-52 rounded-full pl-9 text-sm"
             />
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setTagFilter(null)}
-            className={cn(!tagFilter && 'text-muted-foreground')}
-          >
-            全部
-          </Button>
-          {allTags.slice(0, 5).map((tag) => (
-            <Button
-              key={tag}
-              variant="ghost"
-              size="sm"
-              onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-              className={cn(tagFilter === tag && 'bg-primary-50 text-primary-700')}
-            >
-              #{tag}
-            </Button>
-          ))}
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <TagFilter
+            tags={allTags}
+            selected={tagFilter}
+            onChange={setTagFilter}
+            className="min-w-0 flex-1"
+          />
+          <Button size="sm" className="ml-auto shrink-0" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
             新建任务
           </Button>
