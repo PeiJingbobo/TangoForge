@@ -91,6 +91,7 @@ function normalizeDto(dto: ProjectConfigDTO, targets: string[][]): ProjectConfig
       Transitions: generateTransitions(dto.StateMachine.States, targets),
     },
     Export: dto.Export,
+    Knowledge: dto.Knowledge,
   }
 }
 
@@ -106,6 +107,10 @@ function toYamlText(dto: ProjectConfigDTO): string {
       transitions: dto.StateMachine.Transitions.map((t) => ({ from: t.From, to: t.To })),
     },
     export: dto.Export.TemplatePath ? { template_path: dto.Export.TemplatePath } : {},
+    // TF-052：知识库节（default_doc_dir 非空才写）。
+    ...(dto.Knowledge?.DefaultDocDir
+      ? { knowledge: { default_doc_dir: dto.Knowledge.DefaultDocDir } }
+      : {}),
   })
 }
 
@@ -150,10 +155,15 @@ function fromYamlText(text: string): { dto: ProjectConfigDTO; targets: string[][
     if (!byKey.has(t.From)) byKey.set(t.From, [...new Set(t.To)])
   }
   const targets = states.map((s) => byKey.get(s.Key) ?? [])
+  // TF-052：知识库节（default_doc_dir；兼容 snake_case/PascalCase）。
+  const kb = (root.knowledge ?? root.Knowledge) as Record<string, unknown> | undefined
   return {
     dto: {
       StateMachine: { States: states, Transitions: transitions },
       Export: { TemplatePath: String(ex?.template_path ?? ex?.TemplatePath ?? '') },
+      Knowledge: {
+        DefaultDocDir: String(kb?.default_doc_dir ?? kb?.DefaultDocDir ?? ''),
+      },
     },
     targets,
   }
@@ -546,6 +556,34 @@ export function ProjectSettingsPage() {
               size="sm"
               className="shrink-0 text-muted-foreground"
               onClick={() => commit({ ...current, Export: { TemplatePath: '' } }, targets)}
+            >
+              <RotateCcw className="size-3.5" />
+              恢复默认
+            </Button>
+          </div>
+        </section>
+
+        {/* ---------- 知识库（TF-052） ---------- */}
+        <section className="mt-4 rounded-2xl border border-border bg-surface p-5">
+          <h2 className="text-sm font-semibold text-foreground">知识库</h2>
+          <p className="mt-0.5 text-caption text-muted-foreground">
+            项目级配置：外部文件默认拷贝目录（覆盖全局知识库设置）。
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              value={current.Knowledge?.DefaultDocDir ?? ''}
+              onChange={(e) =>
+                commit({ ...current, Knowledge: { DefaultDocDir: e.target.value } }, targets)
+              }
+              placeholder="如 kb_files（相对项目目录）；留空 = 用全局默认 .taskboard/knowledge"
+              className="flex-1 font-mono text-sm"
+              aria-label="知识库默认文档目录"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted-foreground"
+              onClick={() => commit({ ...current, Knowledge: { DefaultDocDir: '' } }, targets)}
             >
               <RotateCcw className="size-3.5" />
               恢复默认

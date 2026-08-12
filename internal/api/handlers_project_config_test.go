@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"tangoforge/internal/audit"
 	"tangoforge/internal/config"
@@ -169,5 +170,46 @@ func TestProjectConfigPut_PreservesUnknownSections(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "future_feature:") {
 		t.Errorf("未知节丢失:\n%s", raw)
+	}
+}
+
+// TF-052：PUT /api/project-config 写 knowledge.default_doc_dir（部分更新保留未知节）。
+func TestProjectConfigPut_KnowledgeSection(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+	dir := importProjectViaAPI(t, srv)
+
+	body := `{"StateMachine":{"States":[
+		{"Key":"todo","Label":"待办","Color":"#666"},
+		{"Key":"done","Label":"完成","Color":"#0a0"}
+	],"Transitions":[{"From":"todo","To":["done"]}]},"Export":{},"Knowledge":{"DefaultDocDir":"kb_files"}}`
+	rec := uiReq(t, srv, http.MethodPut, "/api/project-config", dir, body)
+	out := mustCode(t, rec, http.StatusOK, "UI PUT project-config knowledge")
+	if !strings.Contains(out, `"kb_files"`) {
+		t.Fatalf("响应未含 default_doc_dir: %s", out)
+	}
+
+	// 落盘验证（knowledge 节写入 config.yaml）。
+	cfg, err := config.LoadProject(dir)
+	if err != nil {
+		t.Fatalf("load disk: %v", err)
+	}
+	if cfg.Knowledge.DefaultDocDir != "kb_files" {
+		t.Fatalf("knowledge.default_doc_dir = %q, want kb_files", cfg.Knowledge.DefaultDocDir)
+	}
+
+	// 未知节保留（PUT 前写入自定义节 → PUT 后仍在）。
+	cfgPath := filepath.Join(dir, ".taskboard", "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("custom_section:\n  key: value\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec = uiReq(t, srv, http.MethodPut, "/api/project-config", dir, body)
+	mustCode(t, rec, http.StatusOK, "PUT preserve unknown")
+	raw, _ := os.ReadFile(cfgPath)
+	if !strings.Contains(string(raw), "custom_section") {
+		t.Fatalf("未知节被覆盖: %s", string(raw))
+	}
+	if !strings.Contains(string(raw), "kb_files") {
+		t.Fatalf("knowledge 节未写入: %s", string(raw))
 	}
 }

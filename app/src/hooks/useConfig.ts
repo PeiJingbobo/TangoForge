@@ -19,12 +19,37 @@ export interface GlobalConfigView {
     retries: number
     max_tokens: number
     concurrency: number
+    /** TF-046：向量嵌入配置（独立于 chat 的 llm.embedding 节） */
+    embedding: {
+      base_url: string
+      api_key: string
+      model: string
+      api_kind: string
+      timeout_sec: number
+      max_tokens: number
+    }
+  }
+  /** TF-052：知识库全局配置（docs/KNOWLEDGE-BASE.md §4.1） */
+  knowledge: {
+    enabled: boolean
+    fsnotify: boolean
+    startup_scan: boolean
+    debounce_ms: number
+    embed_concurrency: number
+    max_index_size: number
+    vector_search: boolean
+    search_top_k: number
+    search_threshold: number
+    default_doc_dir: string
   }
 }
 
 /** PUT 请求体：字段省略 = 不修改；api_key/api_token 空 = 保留原值 */
-export type ConfigPatch = Omit<Partial<GlobalConfigView>, 'llm'> & {
-  llm?: Partial<GlobalConfigView['llm']>
+export type ConfigPatch = Omit<Partial<GlobalConfigView>, 'llm' | 'knowledge'> & {
+  llm?: Partial<Omit<GlobalConfigView['llm'], 'embedding'>> & {
+    embedding?: Partial<GlobalConfigView['llm']['embedding']>
+  }
+  knowledge?: Partial<GlobalConfigView['knowledge']>
 }
 
 export function useConfig() {

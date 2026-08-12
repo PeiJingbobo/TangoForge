@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useConfig, useUpdateConfig, isConfigInvalid } from '@/hooks/useConfig'
 import { useThemeMode, type ThemeMode } from '@/hooks/useThemeMode'
 import { useSkillTemplate, useSkillTemplateWrite } from '@/hooks/useSkills'
+import { KnowledgeSection } from '@/features/settings/KnowledgeSection'
 import { CLISettingsSection } from '@/features/settings/CLISettingsSection'
 import { UpdateSection } from '@/features/settings/UpdateSection'
 import { cn } from '@/lib/utils'
@@ -57,6 +58,7 @@ export function SettingsPage() {
           <TabsTrigger value="appearance">外观</TabsTrigger>
           <TabsTrigger value="daemon">守护进程</TabsTrigger>
           <TabsTrigger value="skill">Skill 模板</TabsTrigger>
+          <TabsTrigger value="knowledge">知识库</TabsTrigger>
           <TabsTrigger value="cli">CLI</TabsTrigger>
           <TabsTrigger value="about">关于</TabsTrigger>
         </TabsList>
@@ -71,6 +73,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="skill" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <SkillTemplateSection />
+        </TabsContent>
+        <TabsContent value="knowledge" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
+          <KnowledgeSection />
         </TabsContent>
         <TabsContent value="cli" className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pt-6">
           <CLISettingsSection />

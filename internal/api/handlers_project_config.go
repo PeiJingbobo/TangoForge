@@ -31,7 +31,7 @@ func (s *Server) handleProjectConfigGet(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleProjectConfigPut 更新项目配置（PUT /api/project-config，仅 UI）。
-// 请求体为完整 ProjectConfig（state_machine + export 全量覆盖）。
+// 请求体为完整 ProjectConfig（state_machine + export + knowledge 全量覆盖）。
 func (s *Server) handleProjectConfigPut(w http.ResponseWriter, r *http.Request) {
 	actor := auth.ActorFrom(r.Context())
 	if actor.Class != auth.ClassUI {
@@ -54,10 +54,11 @@ func (s *Server) handleProjectConfigPut(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// 部分更新写盘：替换 state_machine + export 节，保留未知节（TF-032）。
+	// 部分更新写盘：替换 state_machine + export + knowledge 节，保留未知节（TF-032/TF-052）。
 	if err := config.UpdateProjectFile(workdir, func(cfg *config.ProjectConfig) {
 		cfg.StateMachine = norm
 		cfg.Export = req.Export
+		cfg.Knowledge = req.Knowledge
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "CONFIG_SAVE_FAILED",
 			"项目配置写入失败", err.Error())

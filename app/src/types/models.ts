@@ -43,10 +43,16 @@ export interface StateMachineDTO {
 export interface ExportConfigDTO {
   TemplatePath: string
 }
-/** 项目 config.yaml 全量视图（state_machine + export；PUT 为全量覆盖，仅 UI） */
+/** 项目级知识库配置（TF-052：外部文件默认拷贝目录） */
+export interface ProjectKnowledgeConfigDTO {
+  /** 相对 workdir 或绝对路径；空 = 用全局逻辑（.taskboard/knowledge） */
+  DefaultDocDir: string
+}
+/** 项目 config.yaml 全量视图（state_machine + export + knowledge；PUT 为全量覆盖，仅 UI） */
 export interface ProjectConfigDTO {
   StateMachine: StateMachineDTO
   Export: ExportConfigDTO
+  Knowledge: ProjectKnowledgeConfigDTO
 }
 
 /* ---------- graph（GET /api/graph） ---------- */

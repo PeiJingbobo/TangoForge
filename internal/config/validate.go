@@ -52,5 +52,48 @@ func Validate(cfg GlobalConfig) error {
 	if llm.Concurrency < 1 {
 		return fmt.Errorf("并发数至少为 1")
 	}
+
+	// TF-046：embedding 配置校验（model 空 = 未配置，仅校验已配置部分）。
+	emb := llm.Embedding
+	if strings.TrimSpace(emb.Model) != "" {
+		kind := emb.APIKind
+		if kind == "" {
+			kind = "openai"
+		}
+		if kind != "openai" && kind != "ollama" {
+			return fmt.Errorf("Embedding 协议类型必须是 openai / ollama")
+		}
+		// base_url 为空时复用 chat base_url（EmbeddingFromConfig 处理）；此处校验显式配置的 URL。
+		if strings.TrimSpace(emb.BaseURL) != "" {
+			eu, err := url.Parse(emb.BaseURL)
+			if err != nil || (eu.Scheme != "http" && eu.Scheme != "https") || eu.Host == "" {
+				return fmt.Errorf("Embedding 接口地址必须是合法的 http/https URL")
+			}
+		}
+		if emb.TimeoutSec < 0 {
+			return fmt.Errorf("Embedding 请求超时不能为负数")
+		}
+		if emb.MaxTokens < 0 {
+			return fmt.Errorf("Embedding max_tokens 不能为负数")
+		}
+	}
+
+	// TF-052：知识库全局配置数值校验（0 = 未设置，由 WithDefaults 补默认；仅拒绝负数）。
+	k := cfg.Knowledge
+	if k.DebounceMS < 0 {
+		return fmt.Errorf("知识库防抖窗口不能为负数")
+	}
+	if k.EmbedConcurrency < 0 {
+		return fmt.Errorf("知识库嵌入并发不能为负数")
+	}
+	if k.MaxIndexSize < 0 {
+		return fmt.Errorf("知识库索引大小上限不能为负数")
+	}
+	if k.SearchTopK < 0 {
+		return fmt.Errorf("知识库检索 top_k 不能为负数")
+	}
+	if k.SearchThreshold < 0 || k.SearchThreshold > 1 {
+		return fmt.Errorf("知识库检索阈值必须在 0-1 之间")
+	}
 	return nil
 }

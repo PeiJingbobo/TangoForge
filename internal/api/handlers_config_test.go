@@ -244,3 +244,126 @@ func TestConfigTestLLM_NotConfigured(t *testing.T) {
 		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
 	}
 }
+
+// TF-052：GET /api/config 返回 llm.embedding + knowledge 节（脱敏 embedding api_key）。
+func TestConfigGet_EmbeddingAndKnowledge(t *testing.T) {
+	srv := newConfigServer(t, &config.GlobalConfig{
+		Port:    19810,
+		UIToken: "ui-secret",
+		LLM: config.LLMConfig{
+			BaseURL: "https://api.deepseek.com",
+			Model:   "deepseek-chat",
+			Embedding: config.EmbeddingConfig{
+				Model: "nomic-embed-text", APIKind: "ollama", TimeoutSec: 30,
+			},
+		},
+		Knowledge: func() config.KnowledgeGlobalConfig {
+			k := config.DefaultKnowledgeGlobalConfig()
+			k.DebounceMS = 15000
+			k.SearchTopK = 5
+			return k
+		}(),
+	}, "")
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, uiConfigRequest(t, http.MethodGet, "/api/config", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/config status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	view := decodeConfigResp(t, rec.Body.String())
+	if view.LLM.Embedding.Model != "nomic-embed-text" || view.LLM.Embedding.APIKind != "ollama" {
+		t.Fatalf("embedding 视图错误: %+v", view.LLM.Embedding)
+	}
+	if !view.Knowledge.Enabled || !view.Knowledge.FSNotify || !view.Knowledge.VectorSearch {
+		t.Fatalf("knowledge 默认开关应为 true: %+v", view.Knowledge)
+	}
+	if view.Knowledge.DebounceMS != 15000 || view.Knowledge.SearchTopK != 5 {
+		t.Fatalf("knowledge 数值错误: %+v", view.Knowledge)
+	}
+	if view.Knowledge.MaxIndexSize != 524288 {
+		t.Fatalf("max_index_size 默认 524288: %+v", view.Knowledge)
+	}
+}
+
+// TF-052：PUT /api/config 更新 llm.embedding + knowledge 节（部分更新，布尔显式 false 关闭）。
+func TestConfigPut_EmbeddingAndKnowledge(t *testing.T) {
+	cfg := config.DefaultGlobalConfig()
+	cfg.UIToken = "ui-secret"
+	cfg.LLM.BaseURL = "https://api.deepseek.com"
+	cfg.LLM.Model = "deepseek-chat"
+	srv := newConfigServer(t, &cfg, "")
+	body, _ := json.Marshal(map[string]any{
+		"llm": map[string]any{
+			"embedding": map[string]any{
+				"model": "qwen3-embedding:4b", "api_kind": "ollama", "timeout_sec": 45,
+			},
+		},
+		"knowledge": map[string]any{
+			"enabled": true, "fsnotify": false, "debounce_ms": 12000, "search_top_k": 8,
+		},
+	})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, uiConfigRequest(t, http.MethodPut, "/api/config", strings.NewReader(string(body))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/config status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	view := decodeConfigResp(t, rec.Body.String())
+	if view.LLM.Embedding.Model != "qwen3-embedding:4b" || view.LLM.Embedding.APIKind != "ollama" ||
+		view.LLM.Embedding.TimeoutSec != 45 {
+		t.Fatalf("embedding 更新失败: %+v", view.LLM.Embedding)
+	}
+	if view.Knowledge.FSNotify {
+		t.Fatal("fsnotify 显式 false 应关闭")
+	}
+	if !view.Knowledge.Enabled || view.Knowledge.DebounceMS != 12000 || view.Knowledge.SearchTopK != 8 {
+		t.Fatalf("knowledge 更新失败: %+v", view.Knowledge)
+	}
+	// 未更新的字段保持默认。
+	if view.Knowledge.MaxIndexSize != 524288 {
+		t.Fatalf("未更新字段应保持默认: %+v", view.Knowledge)
+	}
+	// 持久化到文件。
+	if srv.configPath != "" {
+		saved, err := config.LoadGlobal(srv.configPath)
+		if err != nil {
+			t.Fatalf("reload saved config: %v", err)
+		}
+		if saved.LLM.Embedding.Model != "qwen3-embedding:4b" {
+			t.Fatalf("落盘 embedding 错误: %+v", saved.LLM.Embedding)
+		}
+	}
+}
+
+// TF-052：PUT /api/config embedding 非法 api_kind → 422 CONFIG_INVALID。
+func TestConfigPut_EmbeddingInvalidKind(t *testing.T) {
+	dc := config.DefaultGlobalConfig()
+	dc.UIToken = "ui-secret"
+	srv := newConfigServer(t, &dc, "")
+	body, _ := json.Marshal(map[string]any{
+		"llm": map[string]any{
+			"embedding": map[string]any{"model": "m", "api_kind": "weird"},
+		},
+	})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, uiConfigRequest(t, http.MethodPut, "/api/config", strings.NewReader(string(body))))
+	out := mustCode(t, rec, http.StatusUnprocessableEntity, "invalid embedding kind")
+	if apiCode(t, out) != "CONFIG_INVALID" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
+}
+
+// TF-052：PUT /api/config knowledge 阈值越界 → 422 CONFIG_INVALID。
+func TestConfigPut_KnowledgeThresholdOutOfRange(t *testing.T) {
+	dc := config.DefaultGlobalConfig()
+	dc.UIToken = "ui-secret"
+	srv := newConfigServer(t, &dc, "")
+	body, _ := json.Marshal(map[string]any{
+		"knowledge": map[string]any{"search_threshold": 1.5},
+	})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, uiConfigRequest(t, http.MethodPut, "/api/config", strings.NewReader(string(body))))
+	out := mustCode(t, rec, http.StatusUnprocessableEntity, "threshold out of range")
+	if apiCode(t, out) != "CONFIG_INVALID" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
+}

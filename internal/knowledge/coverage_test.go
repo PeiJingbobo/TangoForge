@@ -250,3 +250,72 @@ func TestClose(t *testing.T) {
 		t.Fatalf("list after close: %v", err)
 	}
 }
+
+func TestUpdateContent(t *testing.T) {
+	svc := newTestService(t)
+	workdir := initProject(t)
+	ctx := context.Background()
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# 原始"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// 编辑 → 写盘 + 重置索引状态。
+	if err := svc.UpdateContent(ctx, workdir, doc.ID, "# 更新后"); err != nil {
+		t.Fatalf("update content: %v", err)
+	}
+	data, _ := os.ReadFile(doc.AbsPath)
+	if string(data) != "# 更新后" {
+		t.Fatalf("写盘未更新: %s", string(data))
+	}
+	got, _ := svc.GetDocument(ctx, workdir, doc.ID)
+	if got.Status != DocStatusIndexing {
+		t.Fatalf("编辑后应标记 indexing，got %q", got.Status)
+	}
+	// 文档不存在 → NOT_FOUND。
+	if err := svc.UpdateContent(ctx, workdir, "nope", "x"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("不存在文档应 NOT_FOUND，got %v", err)
+	}
+}
+
+func TestUpdateContent_BinaryRejected(t *testing.T) {
+	svc := newTestService(t)
+	workdir := initProject(t)
+	ctx := context.Background()
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "x.png", "\x89PNG"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := svc.UpdateContent(ctx, workdir, doc.ID, "text"); !errors.Is(err, ErrDocumentInvalid) {
+		t.Fatalf("二进制编辑应 INVALID，got %v", err)
+	}
+}
+
+func TestUpdateContent_WriteFail(t *testing.T) {
+	svc := newTestService(t)
+	workdir := initProject(t)
+	ctx := context.Background()
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// 删除父目录 → 写盘失败（目录不存在）。
+	_ = os.RemoveAll(filepath.Dir(doc.AbsPath))
+	if err := svc.UpdateContent(ctx, workdir, doc.ID, "x"); err == nil {
+		t.Fatal("目录删除后写盘应失败")
+	}
+}
+
+func TestTaskListerAdapter(t *testing.T) {
+	adapter := TaskListerAdapter(func(_ context.Context, _, _ string) (any, error) {
+		return "task", nil
+	})
+	v, err := adapter.Get(context.Background(), "/w", "t1")
+	if err != nil || v != "task" {
+		t.Fatalf("adapter get: %v %v", v, err)
+	}
+}
+
+func TestServiceInterfaceConformance(t *testing.T) {
+	// 编译期断言：*service 实现全部接口方法。
+	_ = newTestService(t)
+}

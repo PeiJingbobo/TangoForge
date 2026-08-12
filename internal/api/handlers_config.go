@@ -75,6 +75,62 @@ func (s *Server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		if req.LLM.Concurrency != nil {
 			next.LLM.Concurrency = *req.LLM.Concurrency
 		}
+		// TF-046：llm.embedding 节（部分更新；model 空 = 未配置 → 向量功能禁用）。
+		if req.LLM.Embedding != nil {
+			emb := req.LLM.Embedding
+			if emb.BaseURL != nil {
+				next.LLM.Embedding.BaseURL = *emb.BaseURL
+			}
+			if emb.APIKey != nil && *emb.APIKey != "" {
+				next.LLM.Embedding.APIKey = *emb.APIKey
+			}
+			if emb.Model != nil {
+				next.LLM.Embedding.Model = *emb.Model
+			}
+			if emb.APIKind != nil {
+				next.LLM.Embedding.APIKind = *emb.APIKind
+			}
+			if emb.TimeoutSec != nil {
+				next.LLM.Embedding.TimeoutSec = *emb.TimeoutSec
+			}
+			if emb.MaxTokens != nil {
+				next.LLM.Embedding.MaxTokens = *emb.MaxTokens
+			}
+		}
+	}
+	// TF-052：知识库全局配置（部分更新；布尔指针 nil = 不修改，显式 false 关闭）。
+	if req.Knowledge != nil {
+		k := req.Knowledge
+		if k.Enabled != nil {
+			next.Knowledge.Enabled = k.Enabled
+		}
+		if k.FSNotify != nil {
+			next.Knowledge.FSNotify = k.FSNotify
+		}
+		if k.StartupScan != nil {
+			next.Knowledge.StartupScan = k.StartupScan
+		}
+		if k.DebounceMS != nil {
+			next.Knowledge.DebounceMS = *k.DebounceMS
+		}
+		if k.EmbedConcurrency != nil {
+			next.Knowledge.EmbedConcurrency = *k.EmbedConcurrency
+		}
+		if k.MaxIndexSize != nil {
+			next.Knowledge.MaxIndexSize = *k.MaxIndexSize
+		}
+		if k.VectorSearch != nil {
+			next.Knowledge.VectorSearch = k.VectorSearch
+		}
+		if k.SearchTopK != nil {
+			next.Knowledge.SearchTopK = *k.SearchTopK
+		}
+		if k.SearchThreshold != nil {
+			next.Knowledge.SearchThreshold = *k.SearchThreshold
+		}
+		if k.DefaultDocDir != nil {
+			next.Knowledge.DefaultDocDir = *k.DefaultDocDir
+		}
 	}
 
 	// 校验通过才真正保存（QA：设置实时保存但值需有效）。
@@ -99,6 +155,7 @@ func (s *Server) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 // configView 脱敏视图（GET / PUT 响应体）。
 func (s *Server) configView() configView {
 	cfg := s.currentConfig()
+	emb := cfg.LLM.Embedding
 	return configView{
 		Port:         cfg.Port,
 		RemoteAccess: cfg.RemoteAccess,
@@ -112,6 +169,26 @@ func (s *Server) configView() configView {
 			Retries:     cfg.LLM.Retries,
 			MaxTokens:   cfg.LLM.MaxTokens,
 			Concurrency: cfg.LLM.Concurrency,
+			Embedding: llmEmbeddingView{
+				BaseURL:    emb.BaseURL,
+				APIKey:     maskSecret(emb.APIKey),
+				Model:      emb.Model,
+				APIKind:    emb.APIKind,
+				TimeoutSec: emb.TimeoutSec,
+				MaxTokens:  emb.MaxTokens,
+			},
+		},
+		Knowledge: knowledgeConfigView{
+			Enabled:          cfg.Knowledge.EnabledOn(),
+			FSNotify:         cfg.Knowledge.FSNotifyOn(),
+			StartupScan:      cfg.Knowledge.StartupScanOn(),
+			DebounceMS:       cfg.Knowledge.DebounceMS,
+			EmbedConcurrency: cfg.Knowledge.EmbedConcurrency,
+			MaxIndexSize:     cfg.Knowledge.MaxIndexSize,
+			VectorSearch:     cfg.Knowledge.VectorSearchOn(),
+			SearchTopK:       cfg.Knowledge.SearchTopK,
+			SearchThreshold:  cfg.Knowledge.SearchThreshold,
+			DefaultDocDir:    cfg.Knowledge.DefaultDocDir,
 		},
 	}
 }
@@ -129,10 +206,11 @@ func maskSecret(v string) string {
 }
 
 type configView struct {
-	Port         int     `json:"port"`
-	RemoteAccess bool    `json:"remote_access"`
-	APIToken     string  `json:"api_token"`
-	LLM          llmView `json:"llm"`
+	Port         int                 `json:"port"`
+	RemoteAccess bool                `json:"remote_access"`
+	APIToken     string              `json:"api_token"`
+	LLM          llmView             `json:"llm"`
+	Knowledge    knowledgeConfigView `json:"knowledge"`
 }
 
 type llmView struct {
@@ -144,13 +222,39 @@ type llmView struct {
 	Retries     int    `json:"retries"`
 	MaxTokens   int    `json:"max_tokens"`
 	Concurrency int    `json:"concurrency"`
+	// TF-046：向量嵌入配置（独立于 chat 的 llm.embedding 节）。
+	Embedding llmEmbeddingView `json:"embedding"`
+}
+
+type llmEmbeddingView struct {
+	BaseURL    string `json:"base_url"`
+	APIKey     string `json:"api_key"`
+	Model      string `json:"model"`
+	APIKind    string `json:"api_kind"`
+	TimeoutSec int    `json:"timeout_sec"`
+	MaxTokens  int    `json:"max_tokens"`
+}
+
+// knowledgeConfigView 知识库全局配置视图（docs/KNOWLEDGE-BASE.md §4.1，TF-052）。
+type knowledgeConfigView struct {
+	Enabled          bool    `json:"enabled"`
+	FSNotify         bool    `json:"fsnotify"`
+	StartupScan      bool    `json:"startup_scan"`
+	DebounceMS       int     `json:"debounce_ms"`
+	EmbedConcurrency int     `json:"embed_concurrency"`
+	MaxIndexSize     int     `json:"max_index_size"`
+	VectorSearch     bool    `json:"vector_search"`
+	SearchTopK       int     `json:"search_top_k"`
+	SearchThreshold  float64 `json:"search_threshold"`
+	DefaultDocDir    string  `json:"default_doc_dir"`
 }
 
 type configPutReq struct {
-	Port         *int        `json:"port"`
-	RemoteAccess *bool       `json:"remote_access"`
-	APIToken     *string     `json:"api_token"`
-	LLM          *llmPutView `json:"llm"`
+	Port         *int              `json:"port"`
+	RemoteAccess *bool             `json:"remote_access"`
+	APIToken     *string           `json:"api_token"`
+	LLM          *llmPutView       `json:"llm"`
+	Knowledge    *knowledgePutView `json:"knowledge"`
 }
 
 type llmPutView struct {
@@ -162,6 +266,31 @@ type llmPutView struct {
 	Retries     *int    `json:"retries"`
 	MaxTokens   *int    `json:"max_tokens"`
 	Concurrency *int    `json:"concurrency"`
+	// TF-046：llm.embedding 节（模型/协议/超时；base_url 空=复用 chat）。
+	Embedding *llmEmbeddingPutView `json:"embedding"`
+}
+
+type llmEmbeddingPutView struct {
+	BaseURL    *string `json:"base_url"`
+	APIKey     *string `json:"api_key"`
+	Model      *string `json:"model"`
+	APIKind    *string `json:"api_kind"`
+	TimeoutSec *int    `json:"timeout_sec"`
+	MaxTokens  *int    `json:"max_tokens"`
+}
+
+// knowledgePutView 知识库全局配置 PUT 视图（布尔用 *bool：显式 false 才关闭，nil=不修改）。
+type knowledgePutView struct {
+	Enabled          *bool    `json:"enabled"`
+	FSNotify         *bool    `json:"fsnotify"`
+	StartupScan      *bool    `json:"startup_scan"`
+	DebounceMS       *int     `json:"debounce_ms"`
+	EmbedConcurrency *int     `json:"embed_concurrency"`
+	MaxIndexSize     *int     `json:"max_index_size"`
+	VectorSearch     *bool    `json:"vector_search"`
+	SearchTopK       *int     `json:"search_top_k"`
+	SearchThreshold  *float64 `json:"search_threshold"`
+	DefaultDocDir    *string  `json:"default_doc_dir"`
 }
 
 // handleConfigTestLLM 测试大模型连接（POST /api/config/test，TF-041 引导 Step 1）。

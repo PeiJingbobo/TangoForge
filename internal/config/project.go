@@ -88,7 +88,7 @@ func SaveProject(workdir string, cfg ProjectConfig) error {
 
 // UpdateProjectFile 部分更新项目配置（{workdir}/.taskboard/config.yaml，TF-032）。
 //
-// 语义：读原文件 → mutate 修改已知节（state_machine / export）→ 仅替换这两个顶层
+// 语义：读原文件 → mutate 修改已知节（state_machine / export / knowledge）→ 仅替换这三个顶层
 // key，config.yaml 中的其它未知节（未来扩展字段）原样保留；文件缺失时按默认值创建。
 // 与 SaveProject 的全量替换不同，UpdateProjectFile 适合「配置编辑页」的整写场景。
 func UpdateProjectFile(workdir string, mutate func(*ProjectConfig)) error {
@@ -131,8 +131,8 @@ func UpdateProjectFile(workdir string, mutate func(*ProjectConfig)) error {
 	return nil
 }
 
-// setProjectNode 在 yaml 文档顶层 mapping 中替换/追加 state_machine 与 export 两节
-// （未知节不动，保持原键序）。
+// setProjectNode 在 yaml 文档顶层 mapping 中替换/追加 state_machine / export / knowledge
+// 三节（未知节不动，保持原键序）。
 func setProjectNode(doc *yaml.Node, cfg ProjectConfig) error {
 	root := mappingOf(doc)
 	if root == nil {
@@ -146,8 +146,14 @@ func setProjectNode(doc *yaml.Node, cfg ProjectConfig) error {
 	if err != nil {
 		return err
 	}
+	// TF-052：knowledge 节（项目级 default_doc_dir）。
+	kbNode, err := marshalNode(cfg.Knowledge)
+	if err != nil {
+		return err
+	}
 	setMapping(root, "state_machine", smNode)
 	setMapping(root, "export", exNode)
+	setMapping(root, "knowledge", kbNode)
 	return nil
 }
 
