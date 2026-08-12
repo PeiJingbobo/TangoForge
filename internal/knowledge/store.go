@@ -31,6 +31,23 @@ type TaskLister interface {
 	Get(ctx context.Context, workdir, id string) (any, error)
 }
 
+// KnowledgeFile 知识库文件建议（parser 草稿透传；KB 为库名或空=默认库）。
+type KnowledgeFile struct {
+	Path   string `json:"path"`
+	KB     string `json:"kb,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// LinkFilesResult 批量关联结果。
+type LinkFilesResult struct {
+	// Linked 成功建立关联的文档数。
+	Linked int `json:"linked"`
+	// Dropped 路径缺失/无法读取被跳过的文件数（QA-K17：仅警告不阻断）。
+	Dropped int `json:"dropped"`
+	// InvalidKB 引用了不存在的库（整次失败返回错误，此处预留）。
+	InvalidKB int `json:"invalid_kb"`
+}
+
 // Service 知识库业务服务（三端共享：HTTP / MCP / CLI，docs/KNOWLEDGE-BASE.md §5.1）。
 //
 // 方法签名统一携带 workdir（多项目显式标识，QA Q2-B）；数据库事务边界在本层控制。
@@ -66,6 +83,10 @@ type Service interface {
 	UnlinkTask(ctx context.Context, workdir, taskID, documentID string) error
 	// TaskDocuments 任务关联的文档列表。
 	TaskDocuments(ctx context.Context, workdir, taskID string) ([]Document, error)
+	// LinkFiles 批量关联知识库文件到任务（TF-049 confirm 用，QA-K11/K17）：
+	// 逐条注册/复用 + 拷贝 + 库归属 + 建立任务关联 + 触发异步索引；
+	// 路径不存在/无法读取 → 仅警告跳过（dropped 计数返回，不阻断导入）。
+	LinkFiles(ctx context.Context, workdir string, taskIDs []string, files []KnowledgeFile, copyMode string) (LinkFilesResult, error)
 
 	// OnWrite 写操作回调（由 api 层注入审计/WS 事件）。
 	SetOnWrite(fn func(ctx context.Context, workdir, action, target string))

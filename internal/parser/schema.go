@@ -11,15 +11,35 @@
 package parser
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"tangoforge/internal/config"
+	"tangoforge/internal/knowledge"
 )
 
 // ParseResult LLM 解析结果（规范化后，作为草稿 parsed_json 持久化）。
 type ParseResult struct {
 	// Tasks 嵌套结构（Markdown 标题层级 → children），确认时递归展平。
 	Tasks []ParsedTask `json:"tasks"`
+	// KnowledgeFiles LLM 建议的应引用知识库文件（TF-049，QA-K11）。
+	// path 必填；kb 为库名（可省略 = 默认库；不存在 → 整次导入失败 KNOWLEDGE_INVALID）。
+	KnowledgeFiles []knowledge.KnowledgeFile `json:"knowledge_files,omitempty"`
+}
+
+// KnowledgeInput 导入入参的 knowledge 节（TF-049，QA-K11 扩展草稿流）。
+type KnowledgeInput struct {
+	// FilePaths 候选知识库文档（合并解析，字典序）。
+	FilePaths []string `json:"file_paths"`
+	// Directory 候选知识库目录（递归扫描 *.md/*.markdown/*.txt 等文本，字典序）。
+	Directory string `json:"directory"`
+	// KBID 目标库 id（可选；不传 = 由 LLM 输出的 kb 名决定）。
+	KBID int64 `json:"kb_id"`
+	// Copy 拷贝语义：none / copy / auto（QA-K2）。
+	Copy string `json:"copy"`
 }
 
 // ParsedTask 单个解析任务（字段语义对齐 task.Task 的子集）。
@@ -40,7 +60,8 @@ type ParsedTask struct {
 
 // LLM 输出原始结构（严格 JSON Schema 约束，§17.1）。
 type rawParseOutput struct {
-	Tasks []rawTask `json:"tasks"`
+	Tasks          []rawTask                 `json:"tasks"`
+	KnowledgeFiles []knowledge.KnowledgeFile `json:"knowledge_files"`
 }
 
 type rawTask struct {
@@ -102,8 +123,8 @@ func buildJSONSchema() string {
 }`
 }
 
-// buildUserPrompt 构造用户提示：状态机 states 注入 + 待解析文档。
-func buildUserPrompt(sm config.StateMachine, content string) string {
+// buildUserPrompt 构造用户提示：状态机 states 注入 + 候选知识库树 + 待解析文档。
+func buildUserPrompt(sm config.StateMachine, content, knowledgeTree string) string {
 	var b strings.Builder
 	b.WriteString("项目状态机状态列表（仅可使用这些状态）：\n")
 	for _, st := range sm.States {
@@ -113,9 +134,140 @@ func buildUserPrompt(sm config.StateMachine, content string) string {
 		}
 		b.WriteString(line + "\n")
 	}
+	if knowledgeTree != "" {
+		b.WriteString("\n候选知识库文件（路径 + 类型 + 摘要；请结合任务内容判断哪些应引用入库，\n")
+		b.WriteString("在输出中给出 knowledge_files，path 用候选清单中的路径，kb 用库名或省略）：\n")
+		b.WriteString(knowledgeTree)
+	}
 	b.WriteString("\n请解析以下 Markdown 任务文档：\n\n")
 	b.WriteString(content)
 	return b.String()
+}
+
+// scanTextFiles 递归扫描目录下的文本文件（*.md/*.markdown/*.txt 等），字典序。
+func scanTextFiles(dir string) ([]string, error) {
+	var out []string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".md", ".markdown", ".txt", ".text":
+			out = append(out, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// buildKnowledgeTree 构建候选知识库文件树（QA-K4：路径/层级/大小/类型 + 摘要缓存，不拼全文）。
+// 目录递归扫描文本文件；单文件列表原样保留；每文件附摘要（读取内容 → 生成摘要 ≤200 字，
+// 失败降级为仅文件名）。
+func (s *Service) buildKnowledgeTree(workdir string, k *KnowledgeInput) (string, error) {
+	var files []string
+	switch {
+	case k.Directory != "":
+		dir := filepath.Clean(k.Directory)
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(workdir, dir)
+		}
+		fs, err := scanTextFiles(dir)
+		if err != nil {
+			return "", fmt.Errorf("扫描知识库目录 %s: %v", dir, err)
+		}
+		files = fs
+	case len(k.FilePaths) > 0:
+		files = make([]string, 0, len(k.FilePaths))
+		for _, f := range k.FilePaths {
+			p := filepath.Clean(f)
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(workdir, p)
+			}
+			files = append(files, p)
+		}
+	default:
+		return "", nil
+	}
+
+	var b strings.Builder
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			continue // 不可达文件跳过（QA-K17：仅警告不阻断）
+		}
+		rel := f
+		if r, err := filepath.Rel(workdir, f); err == nil && !strings.HasPrefix(r, "..") {
+			rel = filepath.ToSlash(r)
+		}
+		typ := "text"
+		if !isTextExt(f) {
+			typ = "binary"
+		}
+		summary := ""
+		if typ == "text" {
+			summary = s.knowledgeSummary(f, info.Size())
+		}
+		line := fmt.Sprintf("- %s（%s, %d B, %s）", rel, typ, info.Size(), info.ModTime().Format("2006-01-02"))
+		if summary != "" {
+			line += " 摘要: " + summary
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String(), nil
+}
+
+// knowledgeSummary 读取文件并生成摘要（≤200 字；LLM 不可用/失败 → 空串降级）。
+func (s *Service) knowledgeSummary(path string, size int64) string {
+	if size > 1<<20 { // 1MB 以上文件不做摘要（防爆 token）
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	// 二进制内容（含 NUL）→ 不摘要。
+	if strings.ContainsRune(string(data[:min(len(data), 512)]), '\x00') {
+		return ""
+	}
+	text := string(data)
+	if len(text) > 20000 {
+		text = text[:20000]
+	}
+	if s.llmClient != nil {
+		return knowledge.GenerateSummary(context.Background(), s.llmClient, text)
+	}
+	return ""
+}
+
+// isTextExt 判断扩展名是否为文本（与 knowledge 包类型判定一致的简化版）。
+func isTextExt(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".markdown", ".txt", ".text", ".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs",
+		".yaml", ".yml", ".json", ".toml", ".html", ".css", ".sql", ".sh", ".bash", ".c", ".h",
+		".cpp", ".hpp", ".java", ".rb", ".php", ".vue", ".svelte", ".proto", ".mod", ".sum",
+		".tmpl", ".env", ".gitignore", ".lock", ".log", ".diff", ".patch", ".properties",
+		".gradle", ".swift":
+		return true
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".pdf", ".doc", ".docx",
+		".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
+		".exe", ".dll", ".so", ".dylib", ".bin", ".mp3", ".mp4", ".mov", ".wav":
+		return false
+	}
+	return true // 未知扩展名按文本
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // normalizeTags 去重 + 去空串 + 保序（与 task 包语义一致）。

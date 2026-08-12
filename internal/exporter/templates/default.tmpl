@@ -9,5 +9,6 @@ generated_at: "{{.GeneratedAt}}"
 {{end}}- 状态: {{.Status}}
 - 优先级: {{.Priority}}{{if .Tags}} | 标签: {{join .Tags ", "}}{{end}}{{if .Assignee}} | 负责人: {{.Assignee}}{{end}}
 {{if .DepTitles}}依赖: {{join .DependsOn ", "}}
+{{end}}{{if .Docs}}资料: {{join .Docs ", "}}
 {{end}}
 {{end}}

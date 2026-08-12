@@ -13,6 +13,7 @@ import (
 	"sync"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"tangoforge/internal/knowledge"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/task"
 	"time"
@@ -55,6 +56,8 @@ type ConfirmResult struct {
 	Archived   int    `json:"archived"`
 	// DroppedDeps 无法解析的依赖引用数（标题被修改/引用失效等），已忽略继续导入。
 	DroppedDeps int `json:"dropped_deps"`
+	// DroppedKnowledge 路径缺失被跳过的知识库文件数（TF-049，QA-K17：仅警告不阻断）。
+	DroppedKnowledge int `json:"dropped_knowledge"`
 }
 
 // Options Service 构造选项。
@@ -66,17 +69,21 @@ type Options struct {
 	Tasks task.Service
 	// OnEvent 导入域事件回调（draft_ready / draft_confirmed / draft_discarded / failed）。
 	OnEvent func(ctx context.Context, workdir, action, target string)
+	// Knowledge 知识库业务服务（TF-049：knowledge_files 关联入库）。
+	Knowledge knowledge.Service
 }
 
 // Service 导入解析业务服务。
 type Service struct {
-	mu      sync.Mutex
-	dbs     map[string]*sql.DB
-	fp      map[string]*db.FileFingerprint // workdir → meta.db 文件指纹（TF-001 删除重建校验）
-	logger  *slog.Logger
-	llmCfg  func() config.LLMConfig
-	tasks   task.Service
-	onEvent func(ctx context.Context, workdir, action, target string)
+	mu        sync.Mutex
+	dbs       map[string]*sql.DB
+	fp        map[string]*db.FileFingerprint // workdir → meta.db 文件指纹（TF-001 删除重建校验）
+	logger    *slog.Logger
+	llmCfg    func() config.LLMConfig
+	llmClient *llm.Client // 知识库摘要用（懒构造；nil = 摘要降级）
+	tasks     task.Service
+	knowledge knowledge.Service
+	onEvent   func(ctx context.Context, workdir, action, target string)
 }
 
 // NewService 构造解析服务。
@@ -88,13 +95,28 @@ func NewService(opts Options) *Service {
 		opts.LLM = func() config.LLMConfig { return config.DefaultLLMConfig() }
 	}
 	return &Service{
-		dbs:     make(map[string]*sql.DB),
-		fp:      make(map[string]*db.FileFingerprint),
-		logger:  opts.Logger,
-		llmCfg:  opts.LLM,
-		tasks:   opts.Tasks,
-		onEvent: opts.OnEvent,
+		dbs:       make(map[string]*sql.DB),
+		fp:        make(map[string]*db.FileFingerprint),
+		logger:    opts.Logger,
+		llmCfg:    opts.LLM,
+		tasks:     opts.Tasks,
+		knowledge: opts.Knowledge,
+		onEvent:   opts.OnEvent,
 	}
+}
+
+// ensureLLMClient 懒构造 LLM 客户端（知识库摘要用；配置不可用 → nil 降级）。
+func (s *Service) ensureLLMClient() *llm.Client {
+	if s.llmClient != nil {
+		return s.llmClient
+	}
+	cl, err := llm.New(llm.FromConfig(s.llmCfg()), s.logger)
+	if err != nil {
+		s.llmClient = nil
+		return nil
+	}
+	s.llmClient = cl
+	return cl
 }
 
 // projectDB 打开并缓存项目库连接（语义同 task.Service.projectDB）。
@@ -161,6 +183,8 @@ type ParseInput struct {
 	Directory  string   `json:"directory"`  // 目录：递归扫描 *.md/*.markdown 后合并解析（source_file=目录）
 	Content    string   `json:"content"`    // 原始内容（须配 source_file）
 	SourceFile string   `json:"source_file"`
+	// Knowledge 知识库候选（TF-049，QA-K11 扩展草稿流）：候选文档树 + 摘要注入 prompt。
+	Knowledge *KnowledgeInput `json:"knowledge,omitempty"`
 }
 
 // Parse 解析 Markdown 并生成草稿（QA P4-1 §17.1）。
@@ -234,6 +258,16 @@ func (s *Service) parseCore(ctx context.Context, workdir string, in ParseInput) 
 		return Draft{}, err
 	}
 
+	// 知识库候选（TF-049，QA-K4：结构 + 预生成摘要，不拼全文）。
+	knowledgeTree := ""
+	if in.Knowledge != nil {
+		tree, kerr := s.buildKnowledgeTree(workdir, in.Knowledge)
+		if kerr != nil {
+			return Draft{}, fmt.Errorf("%w: %v", ErrImportFailed, kerr)
+		}
+		knowledgeTree = tree
+	}
+
 	// LLM 调用（客户端断开不取消 LLM 请求：用 WithoutCancel 脱离 r.Context()，
 	// 超时由 llm.Client 的 http.Timeout 控制；修复 CLI 超时断开导致的 context canceled，2026-08-06）。
 	client, err := llm.New(llm.FromConfig(s.llmCfg()), s.logger)
@@ -242,7 +276,7 @@ func (s *Service) parseCore(ctx context.Context, workdir string, in ParseInput) 
 	}
 	raw, err := client.CompleteJSON(context.WithoutCancel(ctx), llm.Request{
 		System:      buildSystemPrompt(),
-		User:        buildUserPrompt(sm, content),
+		User:        buildUserPrompt(sm, content, knowledgeTree),
 		RequireJSON: true,
 		Schema:      buildJSONSchema(),
 	})
@@ -259,6 +293,14 @@ func (s *Service) parseCore(ctx context.Context, workdir string, in ParseInput) 
 	parsedJSON, _ := json.Marshal(parsed)
 	if len(parsed.Tasks) == 0 {
 		return Draft{}, fmt.Errorf("%w: 未解析出任何任务\nLLM 原始输出：%s", ErrImportFailed, llmRaw)
+	}
+	// knowledge_files 校验（TF-049）：path 必填；kb 名合法性留 confirm 校验
+	// （因需查库名，这里仅做结构校验：path 空 → 整次失败）。
+	for i, kf := range parsed.KnowledgeFiles {
+		if strings.TrimSpace(kf.Path) == "" {
+			return Draft{}, fmt.Errorf("%w: knowledge_files[%d] 缺少 path\nLLM 原始输出：%s",
+				ErrImportFailed, i, llmRaw)
+		}
 	}
 
 	// 写草稿。
@@ -378,6 +420,22 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 		return ConfirmResult{}, err
 	}
 
+	// TF-049：knowledge_files 关联入库（草稿生成的全部任务 + LLM 建议文档）。
+	droppedKnowledge := 0
+	if s.knowledge != nil && len(pr.KnowledgeFiles) > 0 {
+		taskIDs := make([]string, 0, len(tasks))
+		for _, t := range tasks {
+			taskIDs = append(taskIDs, t.ID)
+		}
+		kres, kerr := s.knowledge.LinkFiles(ctx, workdir, taskIDs, pr.KnowledgeFiles, "auto")
+		if kerr != nil {
+			// 库名不存在等硬错误 → 整次导入失败（QA-K11）；任务已入库但关联失败——
+			// 返回错误由调用方处理（任务已落库，关联缺失，符合「宁可报错不可臆断」）。
+			return ConfirmResult{}, fmt.Errorf("%w: knowledge_files 关联失败: %v", ErrImportFailed, kerr)
+		}
+		droppedKnowledge = kres.Dropped
+	}
+
 	// 草稿置 confirmed（仅 pending 可转，并发安全）。
 	now := time.Now().Format(time.RFC3339)
 	if _, err := conn.ExecContext(ctx,
@@ -391,11 +449,12 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 	}
 	s.emit(ctx, workdir, "import.draft_confirmed", draftID)
 	return ConfirmResult{
-		DraftID:     draftID,
-		SourceFile:  sourceFile,
-		Created:     res.Created,
-		Archived:    res.Archived,
-		DroppedDeps: dropped,
+		DraftID:          draftID,
+		SourceFile:       sourceFile,
+		Created:          res.Created,
+		Archived:         res.Archived,
+		DroppedDeps:      dropped,
+		DroppedKnowledge: droppedKnowledge,
 	}, nil
 }
 
@@ -549,7 +608,19 @@ func (s *Service) normalizeOutput(sm config.StateMachine, raw json.RawMessage) (
 	counter := 0
 	seen := make(map[string]bool)
 	normalized, err := s.normalizeTasks(sm, out.Tasks, &counter, seen)
-	return ParseResult{Tasks: normalized}, err
+	if err != nil {
+		return ParseResult{}, err
+	}
+	// knowledge_files 规范化（去空白；空 path 保留由 parseCore 整次失败校验）。
+	kfs := make([]knowledge.KnowledgeFile, 0, len(out.KnowledgeFiles))
+	for _, kf := range out.KnowledgeFiles {
+		kfs = append(kfs, knowledge.KnowledgeFile{
+			Path:   strings.TrimSpace(kf.Path),
+			KB:     strings.TrimSpace(kf.KB),
+			Reason: strings.TrimSpace(kf.Reason),
+		})
+	}
+	return ParseResult{Tasks: normalized, KnowledgeFiles: kfs}, nil
 }
 
 // normalizeTasks 递归校验规范化任务树。

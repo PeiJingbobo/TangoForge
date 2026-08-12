@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"tangoforge/internal/config"
+	"tangoforge/internal/knowledge"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/task"
 	"text/template"
@@ -55,16 +56,46 @@ type Options struct {
 	Tasks task.Service
 	// LLM 配置提供者（LLM 生成模板用；每次调用取最新支持热重载）。
 	LLM func() config.LLMConfig
+	// Knowledge 知识库业务服务（TF-049：任务关联文档路径输出；nil = 不输出资料行）。
+	Knowledge KnowledgeLister
 	// OnExport 导出完成事件（export.complete，audit + WS 由调用方注入）。
 	OnExport func(ctx context.Context, workdir, action, target string)
 }
 
+// KnowledgeLister 知识库只读接口（exporter 查询任务关联文档用）。
+type KnowledgeLister interface {
+	// TaskDocuments 返回任务关联的文档（RelPath/AbsPath 供资料行输出）。
+	TaskDocuments(ctx context.Context, workdir, taskID string) ([]knowledge.Document, error)
+}
+
+// KnowledgeDoc 知识库文档路径信息（导出资料行用，rel_path 优先）。
+type KnowledgeDoc struct {
+	RelPath string `json:"rel_path"`
+	AbsPath string `json:"abs_path"`
+}
+
+// knowledgeDocPaths 提取文档路径列表（rel_path 优先，缺省 abs_path）。
+func knowledgeDocPaths(docs []knowledge.Document) []string {
+	out := make([]string, 0, len(docs))
+	for _, d := range docs {
+		p := d.RelPath
+		if p == "" {
+			p = d.AbsPath
+		}
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // Service 导出业务服务。
 type Service struct {
-	logger   *slog.Logger
-	tasks    task.Service
-	llmCfg   func() config.LLMConfig
-	onExport func(ctx context.Context, workdir, action, target string)
+	logger    *slog.Logger
+	tasks     task.Service
+	llmCfg    func() config.LLMConfig
+	knowledge KnowledgeLister
+	onExport  func(ctx context.Context, workdir, action, target string)
 }
 
 // NewService 构造导出服务。
@@ -75,7 +106,8 @@ func NewService(opts Options) *Service {
 	if opts.LLM == nil {
 		opts.LLM = func() config.LLMConfig { return config.DefaultLLMConfig() }
 	}
-	return &Service{logger: opts.Logger, tasks: opts.Tasks, llmCfg: opts.LLM, onExport: opts.OnExport}
+	return &Service{logger: opts.Logger, tasks: opts.Tasks, llmCfg: opts.LLM,
+		knowledge: opts.Knowledge, onExport: opts.OnExport}
 }
 
 // RenderOptions 导出参数（QA P4-1 §18.2）。
@@ -98,6 +130,8 @@ type FlatTask struct {
 	// DepTitles 依赖任务的标题（与 DependsOn 一一对应；TF-039 可读性：
 	// 导出显示标题而非 UUID，parser 导入按标题解析，往返一致）。
 	DepTitles []string `json:"dep_titles,omitempty"`
+	// Docs 任务关联的知识库文档路径列表（TF-049，QA-K17/K19；渲染 `- 资料:` 行）。
+	Docs []string `json:"docs,omitempty"`
 }
 
 // Render 从任务库渲染 Markdown 并写盘（QA P4-1 §18.2）。
@@ -129,6 +163,17 @@ func (s *Service) Render(ctx context.Context, workdir string, opts RenderOptions
 	flattenTree(list.Tree, 0, &flat)
 	// TF-039：依赖 ID → 标题映射（parser 导入按标题解析，往返一致且可读）。
 	resolveDepTitles(flat)
+	// TF-049：任务关联知识库文档路径（资料行；knowledge 未接入 → 空）。
+	if s.knowledge != nil {
+		for i := range flat {
+			docs, err := s.knowledge.TaskDocuments(ctx, workdir, flat[i].ID)
+			if err != nil {
+				// 关联查询失败不阻断导出（资料行为可选信息）。
+				continue
+			}
+			flat[i].Docs = knowledgeDocPaths(docs)
+		}
+	}
 
 	// 2. 模板选择与渲染。
 	tmplText, err := s.loadTemplate(workdir, mode)
@@ -196,6 +241,7 @@ func (s *Service) GenerateTemplate(ctx context.Context, workdir string, example 
 - .Project.Name（项目名）、.GeneratedAt（时间戳 RFC3339）
 - .Tasks：[]FlatTask 展平列表，每项含 Task 全部字段（Title/Description/Status/Priority/Tags/Assignee/CreatedAt/UpdatedAt）与 Level（层级，顶层 0）
 - 依赖可读性（重要）：.DependsOn 已格式化为 Markdown 锚点链接数组（如「[子任务](#子任务)」，锚点=标题 slug），渲染依赖时请用 {{join .DependsOn ", "}}（可点击跳转文档内标题）；.DepTitles 为纯标题数组
+- 知识库资料（TF-049）：.Docs 为任务关联文档路径数组（可空），有值时输出「- 资料: {{join .Docs ", "}}」行
 
 可用函数（只能使用以下函数，不得发明其他函数名）：
 - header level title —— 输出 2+level 个 # 的标题

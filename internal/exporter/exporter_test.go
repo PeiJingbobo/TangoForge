@@ -12,6 +12,7 @@ import (
 	"strings"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"tangoforge/internal/knowledge"
 	"tangoforge/internal/llm"
 	"tangoforge/internal/task"
 	"testing"
@@ -365,5 +366,113 @@ func TestFlattenTreeLevels(t *testing.T) {
 		if out[i].Level != w {
 			t.Fatalf("out[%d].Level=%d want=%d", i, out[i].Level, w)
 		}
+	}
+}
+
+// mockKnowledgeLister 桩实现（任务 → 固定文档路径）。
+type mockKnowledgeLister struct {
+	docs map[string][]knowledge.Document
+}
+
+func (m mockKnowledgeLister) TaskDocuments(_ context.Context, _ string, taskID string) ([]knowledge.Document, error) {
+	return m.docs[taskID], nil
+}
+
+// TestRender_DocsLine TF-049：任务关联知识库文档 → 默认模板输出「- 资料:」行。
+func TestRender_DocsLine(t *testing.T) {
+	wd, ts := newEnv(t)
+	ctx := context.Background()
+	parent, err := ts.Create(ctx, wd, task.CreateInput{Title: "父任务"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := ts.Create(ctx, wd, task.CreateInput{Title: "子任务"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// knowledge lister：父任务关联 1 文档，子任务无关联。
+	kl := mockKnowledgeLister{docs: map[string][]knowledge.Document{
+		parent.ID: {{RelPath: "docs/spec/api.md", AbsPath: "/abs/docs/spec/api.md"}},
+	}}
+	svc := NewService(Options{Tasks: ts, Knowledge: kl})
+
+	res, err := svc.Render(ctx, wd, RenderOptions{TemplateMode: "default", Target: "copy", Path: filepath.Join(wd, "out.md")})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(res.Content, "资料: docs/spec/api.md") {
+		t.Fatalf("应输出资料行，got:\n%s", res.Content)
+	}
+	// 只有父任务关联文档 → 「资料:」恰好出现 1 次（子任务无关联不输出）。
+	if n := strings.Count(res.Content, "资料:"); n != 1 {
+		t.Fatalf("资料行应恰好 1 次，got %d:\n%s", n, res.Content)
+	}
+	_ = child
+}
+
+// TestRender_NoKnowledgeNilSafe TF-049：knowledge 未注入（nil）→ 不输出资料行、不报错。
+func TestRender_NoKnowledgeNilSafe(t *testing.T) {
+	wd, ts := newEnv(t)
+	ctx := context.Background()
+	if _, err := ts.Create(ctx, wd, task.CreateInput{Title: "任务"}); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(Options{Tasks: ts}) // Knowledge nil
+	res, err := svc.Render(ctx, wd, RenderOptions{TemplateMode: "default", Target: "copy", Path: filepath.Join(wd, "out.md")})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(res.Content, "资料:") {
+		t.Fatalf("knowledge nil 不应输出资料行:\n%s", res.Content)
+	}
+}
+
+// TestKnowledgeDocPaths rel_path 优先。
+func TestKnowledgeDocPaths(t *testing.T) {
+	docs := []knowledge.Document{
+		{RelPath: "rel.md", AbsPath: "/abs/rel.md"},
+		{AbsPath: "/abs/only.md"},
+		{},
+	}
+	got := knowledgeDocPaths(docs)
+	if len(got) != 2 || got[0] != "rel.md" || got[1] != "/abs/only.md" {
+		t.Fatalf("paths = %v", got)
+	}
+}
+
+// TestRender_InvalidParams 非法 template_mode / target。
+func TestRender_InvalidParams(t *testing.T) {
+	wd, ts := newEnv(t)
+	svc := newService(t, "", ts)
+	ctx := context.Background()
+	if _, err := svc.Render(ctx, wd, RenderOptions{TemplateMode: "bad"}); err == nil {
+		t.Fatal("非法 template_mode 应报错")
+	}
+	if _, err := svc.Render(ctx, wd, RenderOptions{Target: "bad"}); err == nil {
+		t.Fatal("非法 target 应报错")
+	}
+}
+
+// errKnowledgeLister 查询永远失败（Render 知识库分支容错：continue 不阻断）。
+type errKnowledgeLister struct{}
+
+func (errKnowledgeLister) TaskDocuments(_ context.Context, _ string, _ string) ([]knowledge.Document, error) {
+	return nil, errors.New("kb error")
+}
+
+// TestRender_KnowledgeErrorNotBlocking 知识库查询失败不阻断导出。
+func TestRender_KnowledgeErrorNotBlocking(t *testing.T) {
+	wd, ts := newEnv(t)
+	ctx := context.Background()
+	if _, err := ts.Create(ctx, wd, task.CreateInput{Title: "任务"}); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(Options{Tasks: ts, Knowledge: errKnowledgeLister{}})
+	res, err := svc.Render(ctx, wd, RenderOptions{TemplateMode: "default", Target: "copy", Path: filepath.Join(wd, "out.md")})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if res.Content == "" {
+		t.Fatal("应正常渲染")
 	}
 }

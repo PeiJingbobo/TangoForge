@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -401,8 +402,94 @@ func (s *service) RelinkDocument(ctx context.Context, workdir, id, newPath, copy
 	return s.getDocumentByID(ctx, conn, id)
 }
 
-// LinkTask 任务关联（§2.5，QA-K16）：task_id + document_id 或 path。
-// path 未注册 → 自动入库（注册 + 关联）；参数 copy/kb_ids 仅 path 形态生效。
+// LinkFiles 批量关联知识库文件到任务（TF-049 confirm，QA-K11/K17）：
+//
+// 遍历 knowledge_files → 解析 kb 名 → 注册/复用文档（copy 语义）→ 加入库 →
+// 与草稿生成的全部任务建立 task_documents 关联 → 返回 dropped 计数。
+// 路径不存在/无法读取 → 仅警告跳过（不阻断导入）。
+func (s *service) LinkFiles(ctx context.Context, workdir string, taskIDs []string, files []KnowledgeFile, copyMode string) (LinkFilesResult, error) {
+	res := LinkFilesResult{}
+	if len(files) == 0 {
+		return res, nil
+	}
+	conn, err := s.projectDB(ctx, workdir)
+	if err != nil {
+		return res, err
+	}
+	// 库名 → 库 id 索引（kb 空 = 默认库）。
+	kbNameToID, err := s.indexBaseNames(ctx, conn, workdir)
+	if err != nil {
+		return res, err
+	}
+	for _, kf := range files {
+		path := strings.TrimSpace(kf.Path)
+		if path == "" {
+			res.Dropped++
+			continue
+		}
+		// 解析目标库（kb 名不存在 → KNOWLEDGE_INVALID 整次失败，QA-K11）。
+		kbID, err := s.resolveKB(ctx, conn, workdir, kf.KB, kbNameToID)
+		if err != nil {
+			return res, err
+		}
+		// 注册/复用文档（路径缺失 → 跳过并计数，QA-K17）。
+		doc, err := s.RegisterDocument(ctx, workdir, path, copyMode, []int64{kbID})
+		if err != nil {
+			if errors.Is(err, ErrDocumentMissing) {
+				s.logger.Warn("knowledge: link file skipped (missing)", "path", path, "err", err)
+				res.Dropped++
+				continue
+			}
+			return res, err
+		}
+		// 与全部任务建立关联（幂等）。
+		for _, tid := range taskIDs {
+			if _, err := conn.ExecContext(ctx,
+				`INSERT OR IGNORE INTO task_documents (task_id, document_id, created_at) VALUES (?, ?, ?)`,
+				tid, doc.ID, nowRFC3339()); err != nil {
+				return res, fmt.Errorf("knowledge: link task %s: %w", tid, err)
+			}
+		}
+		res.Linked++
+		s.fireWrite(ctx, workdir, "task_linked", doc.ID)
+	}
+	return res, nil
+}
+
+// indexBaseNames 建立库名 → 库 id 索引（供 kb 名解析）。
+func (s *service) indexBaseNames(ctx context.Context, conn *sql.DB, workdir string) (map[string]int64, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT id, name FROM knowledge_bases WHERE project_id = 1`)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: list base names: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]int64{}
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("knowledge: scan base name: %w", err)
+		}
+		out[name] = id
+	}
+	return out, rows.Err()
+}
+
+// resolveKB 解析 kb 名 → 库 id（空名 = 默认库；名不存在 → KNOWLEDGE_INVALID）。
+func (s *service) resolveKB(ctx context.Context, conn *sql.DB, workdir, name string, index map[string]int64) (int64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		kb, err := s.EnsureDefaultBase(ctx, workdir)
+		if err != nil {
+			return 0, err
+		}
+		return kb.ID, nil
+	}
+	if id, ok := index[name]; ok {
+		return id, nil
+	}
+	return 0, fmt.Errorf("%w: 知识库 %q 不存在（knowledge_files 引用）", ErrKnowledgeInvalid, name)
+}
 func (s *service) LinkTask(ctx context.Context, workdir, taskID, documentID, path, copyMode string, kbIDs []int64) error {
 	if taskID == "" {
 		return NewDocumentInvalid("task_id 必填")
