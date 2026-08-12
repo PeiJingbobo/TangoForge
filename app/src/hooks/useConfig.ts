@@ -52,10 +52,47 @@ export type ConfigPatch = Omit<Partial<GlobalConfigView>, 'llm' | 'knowledge'> &
   knowledge?: Partial<GlobalConfigView['knowledge']>
 }
 
+/** 默认 embedding 视图（后端未返回该节时的兜底，兼容旧 daemon） */
+const DEFAULT_EMBEDDING = {
+  base_url: '',
+  api_key: '',
+  model: '',
+  api_kind: 'openai',
+  timeout_sec: 60,
+  max_tokens: 0,
+}
+
+/** 默认 knowledge 视图（后端未返回该节时的兜底，兼容旧 daemon） */
+const DEFAULT_KNOWLEDGE = {
+  enabled: true,
+  fsnotify: true,
+  startup_scan: true,
+  debounce_ms: 30000,
+  embed_concurrency: 1,
+  max_index_size: 524288,
+  vector_search: true,
+  search_top_k: 10,
+  search_threshold: 0.3,
+  default_doc_dir: '',
+}
+
+/** 归一化配置视图：缺失的 llm.embedding / knowledge 节补默认值（旧 daemon 兼容，防止白屏） */
+export function normalizeConfigView(data: GlobalConfigView): GlobalConfigView {
+  const llm = data.llm ?? ({} as GlobalConfigView['llm'])
+  return {
+    ...data,
+    llm: {
+      ...llm,
+      embedding: { ...DEFAULT_EMBEDDING, ...(llm.embedding ?? {}) },
+    },
+    knowledge: { ...DEFAULT_KNOWLEDGE, ...(data.knowledge ?? {}) },
+  }
+}
+
 export function useConfig() {
   return useQuery({
     queryKey: ['global-config'],
-    queryFn: () => apiRequest<GlobalConfigView>('/api/config'),
+    queryFn: async () => normalizeConfigView(await apiRequest<GlobalConfigView>('/api/config')),
     staleTime: 30_000,
   })
 }
@@ -66,7 +103,7 @@ export function useUpdateConfig() {
     mutationFn: (patch: ConfigPatch) =>
       apiRequest<GlobalConfigView>('/api/config', { method: 'PUT', body: patch }),
     onSuccess: (data) => {
-      qc.setQueryData(['global-config'], data)
+      qc.setQueryData(['global-config'], normalizeConfigView(data))
     },
   })
 }
