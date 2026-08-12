@@ -1,8 +1,14 @@
 import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { autoUpdater } from 'electron-updater'
 import type { UpdatePayload, UpdateStatus } from '../src/types/update'
+
+// electron-updater 为 CommonJS 包，而主进程产物为 ESM（package.json "type": "module"）：
+// `import { autoUpdater } from 'electron-updater'` 命名导入会被 Node ESM-CJS 互操作拒绝
+// （Named export 'autoUpdater' not found），必须在 ESM 里用默认导入再解构（TF-036 踩坑）。
+import electronUpdater from 'electron-updater'
+
+const { autoUpdater } = electronUpdater
 
 /**
  * 在线更新（TF-036，docs/CI-CD-UPDATER.md 评审版）：

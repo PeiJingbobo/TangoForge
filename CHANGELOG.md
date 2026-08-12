@@ -4,7 +4,17 @@
 
 > 版本号以 `app/package.json` 的 `version` 为唯一事实源；GitHub Release 标签须与之强一致（`release.yml` 强校验）。
 
-## [0.6.1] - 2026-08-12
+## [0.6.2] - 2026-08-12
+
+### 修复
+
+- **主进程启动崩溃（TF-036）**：`electron-updater` 为 CommonJS 包，而主进程产物为 ESM（`package.json "type": "module"`），`import { autoUpdater } from 'electron-updater'` 命名导入被 Node ESM-CJS 互操作拒绝（`Named export 'autoUpdater' not found`），启动即 Uncaught Exception。修复：改为默认导入再解构（`import electronUpdater from 'electron-updater'` + `const { autoUpdater } = electronUpdater`）。
+
+### 变更
+
+- `app/package.json` version 0.6.1 → 0.6.2。
+
+## [0.6.1] - 2026-08-12（启动即崩，未可用）
 
 ### 修复
 
