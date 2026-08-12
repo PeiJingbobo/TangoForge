@@ -106,6 +106,10 @@ jobs:
           pnpm build
 
       - name: electron-builder 打包并发布（dmg + zip + latest-mac.yml）
+        # 必须从 app/ 目录运行，electron-builder 才能加载 app/electron-builder.yml
+        # （productName=TangoForge / appId / files / extraResources）；在仓库根目录
+        # 运行会用默认配置产出 tangoforge-app.app 且依赖打包不全（TF-036 踩坑）。
+        working-directory: app
         run: pnpm exec electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -172,6 +176,8 @@ jobs:
           echo "CSC_KEY_PASSWORD=tangoforge-ci" >> "$GITHUB_ENV"
 
       - name: electron-builder 打包并发布（nsis + portable + latest.yml）
+        # 必须从 app/ 目录运行（加载 app/electron-builder.yml），见 mac job 注释。
+        working-directory: app
         run: pnpm exec electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

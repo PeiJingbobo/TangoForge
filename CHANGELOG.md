@@ -4,7 +4,17 @@
 
 > 版本号以 `app/package.json` 的 `version` 为唯一事实源；GitHub Release 标签须与之强一致（`release.yml` 强校验）。
 
-## [0.6.0] - 2026-08-12
+## [0.6.1] - 2026-08-12
+
+### 修复
+
+- **macOS 打包畸形（TF-036）**：CI 在仓库根目录运行 electron-builder，未加载 `app/electron-builder.yml`，导致产物名为 `tangoforge-app.app`、bundle id 为默认 `com.electron.tangoforge-app`、运行时依赖（electron-updater 等）打包不全、启动即崩溃。修复：mac/win 打包步骤加 `working-directory: app`，产物恢复为 `TangoForge.app`（productName）。
+
+### 变更
+
+- `app/package.json` version 0.6.0 → 0.6.1。
+
+## [0.6.0] - 2026-08-12（打包畸形，未可用）
 
 ### 修复
 
