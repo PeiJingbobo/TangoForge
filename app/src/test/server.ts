@@ -304,4 +304,24 @@ export const server = setupServer(
   http.post(`${DAEMON_BASE_URL}/api/knowledge/unlink`, () =>
     HttpResponse.json({ code: 0, data: { ok: true } }),
   ),
+  // TF-052 嵌入任务队列（默认空）。
+  http.get(`${DAEMON_BASE_URL}/api/knowledge/queue`, () =>
+    HttpResponse.json({
+      code: 0,
+      data: {
+        workdir: '/data/projects/tangoforge',
+        pending: [],
+        embedding: [],
+        done: [],
+        failed: [],
+        canceled: [],
+      },
+    }),
+  ),
+  http.post(`${DAEMON_BASE_URL}/api/knowledge/queue/cancel`, () =>
+    HttpResponse.json({ code: 0, data: { canceled: true } }),
+  ),
+  http.post(`${DAEMON_BASE_URL}/api/knowledge/queue/retry`, () =>
+    HttpResponse.json({ code: 0, data: { retried: true } }),
+  ),
 )

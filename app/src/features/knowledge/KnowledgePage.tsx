@@ -14,13 +14,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  useCancelQueueTask,
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
   useKnowledgeBases,
   useKnowledgeDocuments,
+  useKnowledgeQueue,
   useKnowledgeScan,
   useKnowledgeSearch,
   useRegisterKnowledgeDocument,
+  useRetryQueueTask,
 } from '@/hooks/useKnowledge'
 import { useProjectId } from '@/hooks/useProject'
 import { cn } from '@/lib/utils'
@@ -52,9 +55,12 @@ export function KnowledgePage() {
   const deleteBase = useDeleteKnowledgeBase(pid)
   const scan = useKnowledgeScan(pid)
   const register = useRegisterKnowledgeDocument(pid)
+  const queue = useKnowledgeQueue(pid)
+  const cancelTask = useCancelQueueTask(pid)
+  const retryTask = useRetryQueueTask(pid)
   const { data: searchRes, isFetching: searching } = useKnowledgeSearch(searchQ, { top_k: 10 }, pid)
 
-  // TF-052：添加文件批处理状态（顶部进行中状态条；后端注册后自动索引）。
+  // TF-052：添加文件批处理状态（顶部进行中状态条；后端注册后入嵌入队列）。
   const [addBatch, setAddBatch] = useState<{
     total: number
     done: number
@@ -78,15 +84,16 @@ export function KnowledgePage() {
         toast.error(`「${p}」注册失败：${e instanceof Error ? e.message : '未知错误'}`)
       }
     }
-    // 全部完成 → 批处理结束（索引继续由 scanner 后台执行）。
+    // 全部完成 → 批处理结束（嵌入由队列后台执行）。
     setAddBatch((b) => (b && b.done + b.failed >= b.total ? null : b))
   }
 
-  // 嵌入中文档计数（顶部状态条用；轮询/WS 驱动刷新）。
-  const indexingCount = useMemo(
-    () => (docList?.items ?? []).filter((d) => d.status === 'indexing').length,
-    [docList],
-  )
+  // 队列活跃任务（全局嵌入状态展示）：排队中 + 进行中。
+  const queuePending = queue.data?.pending ?? []
+  const queueEmbedding = queue.data?.embedding ?? []
+  const queueFailed = queue.data?.failed ?? []
+  const queueHasActive = queuePending.length > 0 || queueEmbedding.length > 0
+  const queueActiveCount = queuePending.length + queueEmbedding.length
 
   const docs = useMemo(() => {
     const list = docList?.items ?? []
@@ -103,16 +110,15 @@ export function KnowledgePage() {
   // TF-052：持续无进展超时提示（默认 5 分钟）。
   const [stalled, setStalled] = useState(false)
   useEffect(() => {
-    // 有进行中任务时启动 5 分钟超时；任务完成/取消后重置。
-    const working =
-      (addBatch && addBatch.done + addBatch.failed < addBatch.total) || indexingCount > 0
+    // 有进行中任务（注册批处理 或 队列活跃）时启动 5 分钟超时；任务完成/取消后重置。
+    const working = (addBatch && addBatch.done + addBatch.failed < addBatch.total) || queueHasActive
     if (!working) {
       setStalled(false)
       return
     }
     const t = setTimeout(() => setStalled(true), 5 * 60 * 1000)
     return () => clearTimeout(t)
-  }, [addBatch, indexingCount])
+  }, [addBatch, queueHasActive])
 
   const createBaseSubmit = () => {
     const name = newKBName.trim()
@@ -151,8 +157,10 @@ export function KnowledgePage() {
         </p>
       </div>
 
-      {/* TF-052：嵌入任务状态条（添加文件注册进度 + 正在嵌入文档数） */}
-      {(addBatch && addBatch.done + addBatch.failed < addBatch.total) || indexingCount > 0 ? (
+      {/* TF-052：嵌入任务状态条（队列视图：排队/进行中/失败重试/取消） */}
+      {(addBatch && addBatch.done + addBatch.failed < addBatch.total) ||
+      queueHasActive ||
+      queueFailed.length > 0 ? (
         <div
           className={`mt-3 shrink-0 rounded-xl border px-3 py-2 text-xs ${
             stalled
@@ -161,25 +169,100 @@ export function KnowledgePage() {
           }`}
         >
           <div className="flex items-center gap-2">
-            <Loader2 className="size-3.5 shrink-0 animate-spin text-primary-700" />
+            {queueHasActive || (addBatch && addBatch.done + addBatch.failed < addBatch.total) ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin text-primary-700" />
+            ) : (
+              <span className="size-3.5 shrink-0 rounded-full bg-warning-soft" />
+            )}
             <span>
               {addBatch && addBatch.done + addBatch.failed < addBatch.total
                 ? `正在添加文件 ${addBatch.done + addBatch.failed}/${addBatch.total}${
                     addBatch.failed > 0 ? `（${addBatch.failed} 失败）` : ''
                   }`
-                : '正在嵌入文档'}
-              {indexingCount > 0 && addBatch && addBatch.done + addBatch.failed < addBatch.total
+                : ''}
+              {addBatch && addBatch.done + addBatch.failed < addBatch.total && queueActiveCount > 0
                 ? ' · '
                 : ''}
-              {indexingCount > 0 ? `嵌入中 ${indexingCount} 个文档` : ''}
+              {queueActiveCount > 0
+                ? `嵌入任务 ${queuePending.length} 排队 · ${queueEmbedding.length} 进行中`
+                : ''}
               {stalled ? '（已超时，可能阻塞）' : ''}
             </span>
-            <span className="ml-auto text-[10px]">完成状态自动刷新</span>
+            {queueFailed.length > 0 && (
+              <span className="text-destructive-ink">{queueFailed.length} 失败</span>
+            )}
+            <span className="ml-auto text-[10px]">状态自动刷新</span>
           </div>
-          {/* 当前正在处理的文件 */}
-          {addBatch && addBatch.current && addBatch.done + addBatch.failed < addBatch.total && (
-            <div className="mt-1 truncate pl-5 font-mono text-[11px]" title={addBatch.current}>
-              当前：{addBatch.current}
+
+          {/* 当前处理中的文件（进行中任务） */}
+          {queueEmbedding.length > 0 && (
+            <div
+              className="mt-1 truncate pl-5 font-mono text-[11px]"
+              title={queueEmbedding[0].path}
+            >
+              正在嵌入：{queueEmbedding[0].display_name}（{queueEmbedding[0].path}）
+            </div>
+          )}
+          {/* 排队任务（前 3 个） */}
+          {queuePending.length > 0 && (
+            <div className="mt-1 truncate pl-5 font-mono text-[11px]">
+              排队中：
+              {queuePending
+                .slice(0, 3)
+                .map((t) => t.display_name)
+                .join('、')}
+              {queuePending.length > 3 ? ` 等 ${queuePending.length} 个` : ''}
+            </div>
+          )}
+          {/* 失败任务：可重试/取消 */}
+          {queueFailed.map((t) => (
+            <div key={t.doc_id} className="mt-1 flex items-center gap-2 pl-5">
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-destructive-ink">
+                {t.display_name}：{t.error ?? '失败'}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 text-[11px] text-primary-700 hover:underline"
+                onClick={() =>
+                  retryTask.mutate(t.doc_id, {
+                    onSuccess: () => toast.success(`已重新入队「${t.display_name}」`),
+                    onError: (e) => toast.error(e instanceof Error ? e.message : '重试失败'),
+                  })
+                }
+                disabled={retryTask.isPending}
+              >
+                重试
+              </button>
+              <button
+                type="button"
+                className="shrink-0 text-[11px] text-muted-foreground hover:underline"
+                onClick={() =>
+                  cancelTask.mutate(t.doc_id, {
+                    onError: (e) => toast.error(e instanceof Error ? e.message : '取消失败'),
+                  })
+                }
+              >
+                清除
+              </button>
+            </div>
+          ))}
+          {/* 取消按钮（活跃任务） */}
+          {queueActiveCount > 0 && (
+            <div className="mt-1 pl-5">
+              <button
+                type="button"
+                className="text-[11px] text-muted-foreground hover:underline"
+                onClick={() => {
+                  const target = queueEmbedding[0] ?? queuePending[0]
+                  if (target)
+                    cancelTask.mutate(target.doc_id, {
+                      onSuccess: () => toast.success('已取消嵌入任务'),
+                    })
+                }}
+                disabled={cancelTask.isPending}
+              >
+                取消全部嵌入
+              </button>
             </div>
           )}
           {stalled && (

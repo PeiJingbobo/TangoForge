@@ -298,6 +298,51 @@ func (s *Server) handleKnowledgeScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": stats})
 }
 
+// handleKnowledgeQueueGet 嵌入任务队列快照（GET /api/knowledge/queue，TF-052）。
+func (s *Server) handleKnowledgeQueueGet(w http.ResponseWriter, r *http.Request) {
+	workdir := auth.WorkdirFrom(r.Context())
+	if s.knowledgeQueue == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": knowledge.QueueSnapshot{}})
+		return
+	}
+	snap := s.knowledgeQueue.Snapshot(workdir)
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": snap})
+}
+
+// handleKnowledgeQueueCancel 取消嵌入任务（POST /api/knowledge/queue/cancel）。
+func (s *Server) handleKnowledgeQueueCancel(w http.ResponseWriter, r *http.Request) {
+	workdir := auth.WorkdirFrom(r.Context())
+	var req struct {
+		DocID string `json:"doc_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DocID == "" {
+		writeError(w, http.StatusBadRequest, "DOCUMENT_INVALID", "doc_id 必填", "")
+		return
+	}
+	if err := s.knowledgeQueue.Cancel(workdir, req.DocID); err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"canceled": true}})
+}
+
+// handleKnowledgeQueueRetry 重试嵌入任务（POST /api/knowledge/queue/retry）。
+func (s *Server) handleKnowledgeQueueRetry(w http.ResponseWriter, r *http.Request) {
+	workdir := auth.WorkdirFrom(r.Context())
+	var req struct {
+		DocID string `json:"doc_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DocID == "" {
+		writeError(w, http.StatusBadRequest, "DOCUMENT_INVALID", "doc_id 必填", "")
+		return
+	}
+	if err := s.knowledgeQueue.Retry(workdir, req.DocID); err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"retried": true}})
+}
+
 // readDiskFile 读取磁盘文件文本（上限 2MB，传输层薄封装）。
 func readDiskFile(path string) (string, error) {
 	data, err := os.ReadFile(path)

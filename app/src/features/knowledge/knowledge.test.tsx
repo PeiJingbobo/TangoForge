@@ -176,11 +176,36 @@ describe('KnowledgePage 嵌入状态（TF-052）', () => {
   })
 
   it('正在嵌入文档：列表徽标 + 顶部状态条', async () => {
+    // 队列有一个进行中任务。
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/queue`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            workdir: '/data/projects/tangoforge',
+            pending: [],
+            embedding: [
+              {
+                doc_id: 'doc-idx',
+                path: 'docs/idx.md',
+                display_name: 'idx.md',
+                status: 'embedding',
+                enqueued_at: '2026-08-13T09:00:00+08:00',
+              },
+            ],
+            done: [],
+            failed: [],
+            canceled: [],
+          },
+        }),
+      ),
+    )
     render(<KnowledgePage />, { wrapper })
     // 列表徽标「正在嵌入」。
     await waitFor(() => expect(screen.getByText('正在嵌入')).toBeInTheDocument())
-    // 顶部状态条「嵌入中 1 个文档」。
-    expect(screen.getByText(/嵌入中 1 个文档/)).toBeInTheDocument()
+    // 顶部状态条「嵌入任务 0 排队 · 1 进行中」+ 正在嵌入文件。
+    await waitFor(() => expect(screen.getByText(/嵌入任务 0 排队 · 1 进行中/)).toBeInTheDocument())
+    expect(screen.getByText(/正在嵌入：idx.md/)).toBeInTheDocument()
   })
 
   it('已嵌入文档显示「已嵌入」徽标', async () => {
@@ -271,9 +296,8 @@ describe('KnowledgePage 添加文件状态条（TF-052）', () => {
     await user.type(input, '/data/pending.md')
     await user.click(screen.getByRole('button', { name: '添加' }))
     await user.click(screen.getByRole('button', { name: '提交添加' }))
-    // 状态条显示「正在添加文件 0/1」+ 当前文件。
+    // 状态条显示「正在添加文件 0/1」。
     await waitFor(() => expect(screen.getByText(/正在添加文件 0\/1/)).toBeInTheDocument())
-    expect(screen.getByText(/当前：\/data\/pending.md/)).toBeInTheDocument()
     // 完成注册 → 状态条消失。
     deferred.resolve?.()
     await waitFor(() => expect(screen.queryByText(/正在添加文件/)).not.toBeInTheDocument())
@@ -336,5 +360,98 @@ describe('KnowledgePage 库过滤（TF-052 修复：选中库后列表可见）'
     await user.click(kbItem)
     await waitFor(() => expect(screen.getByText('kb.md')).toBeInTheDocument())
     expect(captured.query?.get('filter[kb_id]')).toBe('1')
+  })
+})
+
+describe('KnowledgePage 队列失败重试（TF-052）', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tangoforge' })
+    // 队列含 1 个失败任务。
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/queue`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            workdir: '/data/projects/tangoforge',
+            pending: [],
+            embedding: [],
+            done: [],
+            failed: [
+              {
+                doc_id: 'doc-fail',
+                path: 'docs/fail.md',
+                display_name: 'fail.md',
+                status: 'failed',
+                error: 'embedding 失败',
+                enqueued_at: '2026-08-13T09:00:00+08:00',
+              },
+            ],
+            canceled: [],
+          },
+        }),
+      ),
+    )
+  })
+
+  it('失败任务展示 + 点击重试 → POST queue/retry', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let retried = false
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/knowledge/queue/retry`, () => {
+        retried = true
+        return HttpResponse.json({ code: 0, data: { retried: true } })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<KnowledgePage />, { wrapper })
+    // 失败任务展示。
+    await waitFor(() => expect(screen.getByText(/fail.md/)).toBeInTheDocument())
+    expect(screen.getByText(/1 失败/)).toBeInTheDocument()
+    // 点击重试。
+    await user.click(screen.getByRole('button', { name: /重试/ }))
+    await waitFor(() => expect(retried).toBe(true))
+    expect(toastSpy).toBeCalled()
+    toastSpy.mockRestore()
+  })
+
+  it('进行中任务显示取消按钮 → POST queue/cancel', async () => {
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/queue`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            workdir: '/data/projects/tangoforge',
+            pending: [],
+            embedding: [
+              {
+                doc_id: 'doc-emb',
+                path: 'docs/emb.md',
+                display_name: 'emb.md',
+                status: 'embedding',
+                enqueued_at: '2026-08-13T09:00:00+08:00',
+              },
+            ],
+            done: [],
+            failed: [],
+            canceled: [],
+          },
+        }),
+      ),
+    )
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let canceled = false
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/knowledge/queue/cancel`, () => {
+        canceled = true
+        return HttpResponse.json({ code: 0, data: { canceled: true } })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<KnowledgePage />, { wrapper })
+    await waitFor(() => expect(screen.getByText(/取消全部嵌入/)).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /取消全部嵌入/ }))
+    await waitFor(() => expect(canceled).toBe(true))
+    expect(toastSpy).toBeCalled()
+    toastSpy.mockRestore()
   })
 })

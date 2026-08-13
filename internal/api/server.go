@@ -58,9 +58,10 @@ type Server struct {
 	parserSvc *parser.Service
 	// TF-019 导出服务（Markdown 渲染 + LLM 模板生成）。
 	exporterSvc *exporter.Service
-	// TF-050 知识库业务服务 + 文件扫描器。
+	// TF-050 知识库业务服务 + 文件扫描器 + 嵌入任务队列。
 	knowledgeSvc     knowledge.Service
 	knowledgeScanner *knowledge.Scanner
+	knowledgeQueue   *knowledge.Queue
 	// TF-016 远程 MCP HTTP 传输（/mcp，惰性初始化一次）。
 	mcpOnce    sync.Once
 	mcpHandler http.Handler
@@ -150,10 +151,17 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, 
 	s.knowledgeSvc.SetEmbeddingConfig(s.embeddingConfig())
 	// Scanner（daemon 启动时由 Start + RegisterWorkdir 接入）。
 	s.knowledgeScanner = knowledge.NewScanner(knowSvc, s.currentConfig().Knowledge, s.embeddingConfig(), logger)
-	// TF-052：新文档注册成功 → scanner 立即索引（不依赖 fsnotify 目录是否已 watch）。
-	s.knowledgeSvc.SetOnDocumentRegistered(func(_ context.Context, workdir, docID string) {
-		s.knowledgeScanner.IndexNow(workdir, docID)
+	// TF-052：嵌入任务队列（统一排队 + 状态 + 重试/取消；WS 事件驱动前端刷新）。
+	s.knowledgeQueue = knowledge.NewQueue(knowSvc, s.currentConfig().Knowledge, s.embeddingConfig(), logger)
+	s.knowledgeQueue.SetOnWrite(func(ctx context.Context, workdir, action, target string) {
+		hub.Publish(workdir, action, map[string]any{"id": target})
 	})
+	// 新文档注册成功 → 入嵌入队列（不依赖 fsnotify 目录是否已 watch）。
+	s.knowledgeSvc.SetOnDocumentRegistered(func(_ context.Context, workdir string, d knowledge.Document) {
+		s.knowledgeQueue.Enqueue(workdir, d.ID, d.Path, d.DisplayName)
+	})
+	// 手动扫描也入队（扫描变化检测后交给队列执行，保证状态一致）。
+	// （scanner 内部 indexIfChanged 直接索引；此处仅注册触发走队列。）
 
 	s.parserSvc = parser.NewService(parser.Options{
 		Logger: logger,
@@ -222,6 +230,9 @@ func (s *Server) Close() error {
 	}
 	if s.knowledgeScanner != nil {
 		s.knowledgeScanner.Stop()
+	}
+	if s.knowledgeQueue != nil {
+		s.knowledgeQueue.Close()
 	}
 	if s.knowledgeSvc != nil {
 		if err := s.knowledgeSvc.Close(); err != nil && firstErr == nil {
@@ -448,6 +459,9 @@ func (s *Server) Handler() http.Handler {
 				r.Post("/unlink", s.perm("knowledge.write", s.handleKnowledgeUnlink))
 				r.Get("/search", s.perm("knowledge.read", s.handleKnowledgeSearch))
 				r.Post("/scan", s.perm("knowledge.index", s.handleKnowledgeScan))
+				r.Get("/queue", s.perm("knowledge.read", s.handleKnowledgeQueueGet))
+				r.Post("/queue/cancel", s.perm("knowledge.write", s.handleKnowledgeQueueCancel))
+				r.Post("/queue/retry", s.perm("knowledge.write", s.handleKnowledgeQueueRetry))
 				r.Get("/tasks/{taskId}", s.perm("knowledge.read", s.handleKnowledgeTaskDocuments))
 			})
 		})

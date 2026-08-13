@@ -266,3 +266,73 @@ export function useTaskDocuments(taskId: string | undefined, project?: string) {
     enabled: !!pid && !!taskId,
   })
 }
+
+/** 嵌入任务队列（TF-052 增强：排队/进行中/完成/失败 + 取消/重试） */
+export interface KnowledgeQueueSnapshot {
+  workdir: string
+  pending: KnowledgeQueueTask[]
+  embedding: KnowledgeQueueTask[]
+  done: KnowledgeQueueTask[]
+  failed: KnowledgeQueueTask[]
+  canceled: KnowledgeQueueTask[]
+}
+
+export interface KnowledgeQueueTask {
+  doc_id: string
+  path: string
+  display_name: string
+  status: 'pending' | 'embedding' | 'done' | 'failed' | 'canceled'
+  error?: string
+  enqueued_at: string
+  started_at?: string
+  finished_at?: string
+}
+
+/** 队列快照（WS queue_updated + 轮询刷新；有活跃任务时轮询） */
+export function useKnowledgeQueue(project?: string) {
+  const pid = useProjectId(project)
+  return useQuery({
+    queryKey: [...qk.knowledge(pid ?? ''), 'queue'],
+    queryFn: () => apiRequest<KnowledgeQueueSnapshot>('/api/knowledge/queue', { project: pid }),
+    enabled: !!pid,
+    refetchInterval: (query) => {
+      const s = query.state.data
+      const active = (s?.pending?.length ?? 0) > 0 || (s?.embedding?.length ?? 0) > 0
+      return active ? 1500 : false
+    },
+  })
+}
+
+/** 取消嵌入任务 */
+export function useCancelQueueTask(project?: string) {
+  const pid = useProjectId(project)
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (docID: string) =>
+      apiRequest<{ canceled: boolean }>('/api/knowledge/queue/cancel', {
+        method: 'POST',
+        project: pid,
+        body: { doc_id: docID },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.knowledge(pid ?? '') })
+    },
+  })
+}
+
+/** 重试嵌入任务 */
+export function useRetryQueueTask(project?: string) {
+  const pid = useProjectId(project)
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (docID: string) =>
+      apiRequest<{ retried: boolean }>('/api/knowledge/queue/retry', {
+        method: 'POST',
+        project: pid,
+        body: { doc_id: docID },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.knowledge(pid ?? '') })
+    },
+  })
+}

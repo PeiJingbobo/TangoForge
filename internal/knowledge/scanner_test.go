@@ -328,9 +328,9 @@ func TestIndexNow_TriggersImmediateIndex(t *testing.T) {
 
 	// 模拟 api 层接线：注册成功回调 → scanner.IndexNow 立即索引。
 	var indexed string
-	svc.SetOnDocumentRegistered(func(_ context.Context, _ string, docID string) {
-		indexed = docID
-		sc.IndexNow(workdir, docID)
+	svc.SetOnDocumentRegistered(func(_ context.Context, _ string, d Document) {
+		indexed = d.ID
+		sc.IndexNow(workdir, d.ID)
 	})
 
 	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
