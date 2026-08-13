@@ -42,7 +42,7 @@ export function useKnowledgeDocuments(
     enabled: !!pid,
     // TF-052：存在正在嵌入（indexing）文档时每 2s 轮询，展示嵌入完成进度。
     refetchInterval: (query) => {
-      const hasIndexing = query.state.data?.items.some((d) => d.status === 'indexing')
+      const hasIndexing = query.state.data?.items?.some((d) => d.status === 'indexing') ?? false
       return hasIndexing ? 2000 : false
     },
   })
