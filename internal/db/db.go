@@ -97,11 +97,14 @@ func RegistryDBPath(homeDir string) string {
 	return filepath.Join(homeDir, ".taskboard-app", "registry.db")
 }
 
-// FileFingerprint 捕获文件系统指纹（跨平台：os.SameFile 语义的等价快照）。
+// FileFingerprint 捕获文件系统指纹（跨平台：inode/dev + size 组合快照）。
 //
 // 用途：业务层按 workdir 缓存项目库连接时，记录打开时的文件指纹；
-// 缓存命中后再次校验，发现 meta.db 被删除重建（inode 变化）则废弃旧连接重新打开，
+// 缓存命中后再次校验，发现 meta.db 被删除重建（inode 变化或内容长度变化）则废弃旧连接重新打开，
 // 防止连接仍指向已被移除/回收站中的旧文件（TF-001 根因：删除 .taskboard 后重建新库）。
+// 组合校验（inode+size，而非仅 os.SameFile）能应对「inode 被快速复用」的文件系统（Linux tmpfs/ext4）。
+// 注意：**不含 mtime**——SQLite 每次业务写入都会更新文件 mtime，含 mtime 会导致
+// 指纹频繁失效、连接被反复重开（破坏连接复用与 DBError 分支的稳定性）。
 type FileFingerprint struct {
 	fi os.FileInfo
 }
@@ -115,7 +118,8 @@ func CaptureFingerprint(path string) (*FileFingerprint, error) {
 	return &FileFingerprint{fi: fi}, nil
 }
 
-// SameAs 判断 path 当前文件与缓存的指纹是否仍为同一文件（跨平台 inode/dev 比较）。
+// SameAs 判断 path 当前文件与缓存的指纹是否仍为同一文件。
+// 判定：os.SameFile（inode+dev）+ size 一致；任一不符视为不同。
 // 文件不存在视为不一致（返回 false）。
 func (fp *FileFingerprint) SameAs(path string) bool {
 	if fp == nil || fp.fi == nil {
@@ -125,5 +129,8 @@ func (fp *FileFingerprint) SameAs(path string) bool {
 	if err != nil {
 		return false
 	}
-	return os.SameFile(fp.fi, cur)
+	if !os.SameFile(fp.fi, cur) {
+		return false
+	}
+	return fp.fi.Size() == cur.Size()
 }

@@ -432,11 +432,12 @@ func TestFileFingerprint_SameAs(t *testing.T) {
 		t.Fatal("指纹应匹配自身")
 	}
 
-	// 模拟 macOS 删除 .taskboard 目录 → 重建新库：删除旧文件并写入新内容。
+	// 模拟 macOS 删除 .taskboard 目录 → 重建新库：删除旧文件并写入新内容
+	// （内容长度不同，确保 size/mtime 组合校验能识别重建）。
 	if err := os.Remove(path); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	if err := os.WriteFile(path, []byte("new"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("brand new content"), 0o644); err != nil {
 		t.Fatalf("write new: %v", err)
 	}
 	if fp.SameAs(path) {
