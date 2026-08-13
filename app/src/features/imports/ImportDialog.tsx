@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useImportTasks } from '@/hooks/useImports'
+import { getProjectId } from '@/hooks/useProject'
 
 /**
  * 导入对话框（TF-027）：Markdown 解析入口。
@@ -34,7 +35,7 @@ export function ImportDialog({ onOpenChange }: ImportDialogProps) {
       toast.info('当前为非桌面环境，请手动输入路径')
       return
     }
-    const files = await window.tangoforge.dialog.selectFiles()
+    const files = await window.tangoforge.dialog.selectFiles(getProjectId() ?? undefined)
     if (files && files.length > 0) setPaths((prev) => [...new Set([...prev, ...files])])
   }
 
@@ -43,7 +44,7 @@ export function ImportDialog({ onOpenChange }: ImportDialogProps) {
       toast.info('当前为非桌面环境，请手动输入路径')
       return
     }
-    const d = await window.tangoforge.dialog.selectDirectory()
+    const d = await window.tangoforge.dialog.selectDirectory(getProjectId() ?? undefined)
     if (d) setDir(d)
   }
 

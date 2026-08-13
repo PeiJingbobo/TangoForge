@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { FolderOpen, Loader2, Plus } from 'lucide-react'
 import { useCompleteOnboarding, useProjectCheck, useProjects } from '@/hooks/useProjects'
 import { useProjectStore } from '@/stores/project'
+import { getProjectId } from '@/hooks/useProject'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
@@ -70,7 +71,7 @@ export function WorkspacePage() {
       toast.info('当前为非桌面环境，请输入目录路径')
       return
     }
-    const dir = await window.tangoforge.dialog.selectDirectory()
+    const dir = await window.tangoforge.dialog.selectDirectory(getProjectId() ?? undefined)
     if (dir) await handleDir(dir)
   }
 

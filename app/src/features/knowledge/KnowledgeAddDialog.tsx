@@ -46,7 +46,7 @@ export function KnowledgeAddDialog({
       toast.info('当前为非桌面环境，请手动输入路径')
       return
     }
-    const files = await window.tangoforge.dialog.selectFiles()
+    const files = await window.tangoforge.dialog.selectFiles(project || undefined)
     if (files && files.length > 0) setPaths((prev) => [...new Set([...prev, ...files])])
   }
 
@@ -55,7 +55,7 @@ export function KnowledgeAddDialog({
       toast.info('当前为非桌面环境，请手动输入路径')
       return
     }
-    const dir = await window.tangoforge.dialog.selectDirectory()
+    const dir = await window.tangoforge.dialog.selectDirectory(project || undefined)
     if (dir) setPaths((prev) => [...new Set([...prev, dir])])
   }
 

@@ -24,15 +24,15 @@ const IMPORT_RESULT = {
 }
 
 function mockDialog() {
+  const selectFiles = vi.fn(async () => ['/data/a.md', '/data/b.md'])
+  const selectDirectory = vi.fn(async () => '/data/projects/backlog')
   Object.defineProperty(window, 'tangoforge', {
     value: {
-      dialog: {
-        selectFiles: vi.fn(async () => ['/data/a.md', '/data/b.md']),
-        selectDirectory: vi.fn(async () => '/data/projects/backlog'),
-      },
+      dialog: { selectFiles, selectDirectory },
     },
     configurable: true,
   })
+  return { selectFiles, selectDirectory }
 }
 
 describe('ImportDialog（文件/目录选择器）', () => {
@@ -97,5 +97,25 @@ describe('ImportDialog（文件/目录选择器）', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '选择 Markdown 文件' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ImportDialog 默认路径（TF-053 体验优化：默认打开当前项目根目录）', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tf' })
+  })
+  afterEach(() => {
+    Object.defineProperty(window, 'tangoforge', { value: undefined, configurable: true })
+    vi.restoreAllMocks()
+  })
+
+  it('选择文件/目录时默认路径 = 当前项目根目录', async () => {
+    const { selectFiles, selectDirectory } = mockDialog()
+    const user = userEvent.setup()
+    render(<ImportDialog onOpenChange={() => {}} />, { wrapper })
+    await user.click(screen.getByRole('button', { name: '选择 Markdown 文件' }))
+    expect(selectFiles).toHaveBeenCalledWith('/data/projects/tf')
+    await user.click(screen.getByRole('button', { name: '选择目录' }))
+    expect(selectDirectory).toHaveBeenCalledWith('/data/projects/tf')
   })
 })

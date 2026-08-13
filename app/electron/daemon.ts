@@ -245,22 +245,24 @@ function setWsProject(project: string | null): void {
   sock.connect()
 }
 
-/** 系统目录选择器（项目导入）：取消返回 null */
-async function selectDirectory(): Promise<string | null> {
+/** 系统目录选择器（默认打开路径 = 调用方传入的 defaultPath，如当前项目根目录）：取消返回 null */
+async function selectDirectory(defaultPath?: string): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow() ?? undefined
   const result = await dialog.showOpenDialog(win as BrowserWindow, {
-    title: '选择项目目录',
+    title: '选择目录',
     properties: ['openDirectory', 'createDirectory'],
+    defaultPath,
   })
   return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
-/** 系统文件选择器（Markdown 导入，多选）：取消返回 null */
-async function selectFiles(): Promise<string[] | null> {
+/** 系统文件选择器（Markdown 导入，多选；默认打开路径 = 调用方传入的 defaultPath）：取消返回 null */
+async function selectFiles(defaultPath?: string): Promise<string[] | null> {
   const win = BrowserWindow.getFocusedWindow() ?? undefined
   const result = await dialog.showOpenDialog(win as BrowserWindow, {
-    title: '选择 Markdown 文件',
+    title: '选择文件',
     properties: ['openFile', 'multiSelections'],
+    defaultPath,
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown'] },
       { name: '全部文件', extensions: ['*'] },
@@ -306,8 +308,10 @@ export function registerDaemonIpc(): void {
     setWsProject(project)
     return true
   })
-  ipcMain.handle('dialog:selectDirectory', () => selectDirectory())
-  ipcMain.handle('dialog:selectFiles', () => selectFiles())
+  ipcMain.handle('dialog:selectDirectory', (_e, defaultPath?: string) =>
+    selectDirectory(defaultPath),
+  )
+  ipcMain.handle('dialog:selectFiles', (_e, defaultPath?: string) => selectFiles(defaultPath))
   ipcMain.handle('shell:revealPath', (_e, path: string) => revealPath(path))
   ipcMain.handle('shell:openPath', (_e, path: string) => openPath(path))
 }

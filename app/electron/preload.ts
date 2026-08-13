@@ -35,10 +35,12 @@ const api = {
     },
   },
   dialog: {
-    /** 系统目录选择器；取消返回 null */
-    selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory'),
-    /** 系统文件选择器（Markdown 多选）；取消返回 null */
-    selectFiles: (): Promise<string[] | null> => ipcRenderer.invoke('dialog:selectFiles'),
+    /** 系统目录选择器；defaultPath 为默认打开路径（如当前项目根目录）；取消返回 null */
+    selectDirectory: (defaultPath?: string): Promise<string | null> =>
+      ipcRenderer.invoke('dialog:selectDirectory', defaultPath),
+    /** 系统文件选择器（多选）；defaultPath 为默认打开路径；取消返回 null */
+    selectFiles: (defaultPath?: string): Promise<string[] | null> =>
+      ipcRenderer.invoke('dialog:selectFiles', defaultPath),
   },
   /** 系统文件操作（TF-035 右键菜单「在文件夹中打开」） */
   shell: {

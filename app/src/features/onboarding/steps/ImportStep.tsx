@@ -40,7 +40,7 @@ export function ImportStep({
       toast.error('文件选择仅桌面版可用（Web 预览请粘贴内容）')
       return
     }
-    const files = await shell.selectFiles()
+    const files = await shell.selectFiles(workdir)
     if (!files || files.length === 0) return
     setPaths((prev) => [...new Set([...prev, ...files])])
   }
@@ -51,7 +51,7 @@ export function ImportStep({
       toast.error('目录选择仅桌面版可用')
       return
     }
-    const d = await shell.selectDirectory()
+    const d = await shell.selectDirectory(workdir)
     if (!d) return
     setDir(d)
   }
