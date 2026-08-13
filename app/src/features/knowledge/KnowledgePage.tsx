@@ -16,6 +16,7 @@ import { useProjectId } from '@/hooks/useProject'
 import { cn } from '@/lib/utils'
 import type { KnowledgeBase, KnowledgeDocument } from '@/types/models'
 import { KnowledgeDocumentDrawer } from '@/features/knowledge/KnowledgeDocumentDrawer'
+import { KnowledgeAddDialog } from '@/features/knowledge/KnowledgeAddDialog'
 
 /**
  * 知识库页（/project/:id/knowledge，TF-052，docs/KNOWLEDGE-BASE.md §10.2）：
@@ -31,6 +32,7 @@ export function KnowledgePage() {
   const [q, setQ] = useState('')
   const [searchQ, setSearchQ] = useState('')
   const [docId, setDocId] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
   const [newKBName, setNewKBName] = useState('')
   const createBase = useCreateKnowledgeBase(pid)
   const deleteBase = useDeleteKnowledgeBase(pid)
@@ -172,6 +174,10 @@ export function KnowledgePage() {
               <option value="failed">失败</option>
               <option value="indexing">索引中</option>
             </select>
+            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAddOpen(true)}>
+              <Plus className="size-3.5" />
+              添加文件
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -277,6 +283,10 @@ export function KnowledgePage() {
             if (!o) setDocId(null)
           }}
         />
+      )}
+
+      {addOpen && (
+        <KnowledgeAddDialog open={addOpen} onOpenChange={setAddOpen} project={pid ?? ''} />
       )}
     </div>
   )

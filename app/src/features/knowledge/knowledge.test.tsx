@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 import { KnowledgePage } from './KnowledgePage'
 import { TaskKnowledgeSection } from './TaskKnowledgeSection'
+import { KnowledgeAddDialog } from './KnowledgeAddDialog'
 import { useProjectStore } from '@/stores/project'
 import { server } from '@/test/server'
 import { DAEMON_BASE_URL } from '@/api/client'
@@ -92,5 +93,67 @@ describe('TaskKnowledgeSection', () => {
     await waitFor(() => expect(toastSpy).toBeCalled())
     toastSpy.mockRestore()
     vi.restoreAllMocks()
+  })
+})
+
+describe('KnowledgeAddDialog（TF-053 添加文件）', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tangoforge' })
+  })
+
+  it('渲染 + 手动添加路径 + 提交注册', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let postBody: unknown = null
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/knowledge/documents`, async ({ request }) => {
+        postBody = await request.json()
+        return HttpResponse.json(
+          {
+            code: 0,
+            data: {
+              id: 'doc-new',
+              display_name: 'manual.md',
+              path: 'manual.md',
+              abs_path: '/data/projects/tangoforge/manual.md',
+              rel_path: 'manual.md',
+              type: 'text',
+              status: 'ok',
+              embedded: 0,
+              history: [],
+            },
+          },
+          { status: 201 },
+        )
+      }),
+    )
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <KnowledgeAddDialog open onOpenChange={() => {}} project="/data/projects/tangoforge" />,
+      { wrapper },
+    )
+    // 手动输入路径。
+    const input = screen.getByPlaceholderText(/磁盘路径/)
+    await user.type(input, '/data/docs/manual.md')
+    await user.click(screen.getByRole('button', { name: '添加' }))
+    expect(screen.getByText('/data/docs/manual.md')).toBeInTheDocument()
+    // 提交。
+    await user.click(screen.getByRole('button', { name: '提交添加' }))
+    await waitFor(() => expect(toastSpy).toBeCalled())
+    const body = postBody as { path?: string; kb_ids?: number[] }
+    expect(body.path).toBe('/data/docs/manual.md')
+    toastSpy.mockRestore()
+    rerender(
+      <KnowledgeAddDialog open onOpenChange={() => {}} project="/data/projects/tangoforge" />,
+    )
+  })
+
+  it('无路径时提交按钮禁用', async () => {
+    render(
+      <KnowledgeAddDialog open onOpenChange={() => {}} project="/data/projects/tangoforge" />,
+      {
+        wrapper,
+      },
+    )
+    expect(screen.getByRole('button', { name: '提交添加' })).toBeDisabled()
   })
 })
