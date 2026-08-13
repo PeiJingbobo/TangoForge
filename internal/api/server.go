@@ -68,6 +68,14 @@ type Server struct {
 	httpSrv  *http.Server
 	lnMu     sync.Mutex
 	listener net.Listener
+
+	// TF-053 守护进程生命周期控制：空闲重启（请求 daemon 在完成当前任务后重启）。
+	restartMu sync.Mutex
+	// restartIntent 空闲重启意图：非空 = 已请求，值为新 daemon 二进制路径（APP 提供）。
+	// 由 main 的退出循环读取（RequestRestart 只是标记，Shutdown 等待活跃请求完成）。
+	restartIntent string
+	// onRestartRequested 空闲重启回调（main 注入：标记后由主循环 Shutdown → 重生）。
+	onRestartRequested func(binPath string)
 }
 
 // NewServer 构造 HTTP 服务并自组装业务依赖。
@@ -349,6 +357,14 @@ func (s *Server) Handler() http.Handler {
 			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
 			r.Get("/", s.handleSkillTemplateGet)
 			r.Put("/", s.handleSkillTemplatePut)
+		})
+
+		// TF-053 守护进程生命周期控制：豁免 X-Project（daemon 级，与项目无关）。
+		// GET version 免鉴权（版本探测）；POST restart 仅 UI（handler 内二次校验）。
+		r.Route("/daemon", func(r chi.Router) {
+			r.Use(auth.IdentifyMiddleware(s.currentConfigPtr))
+			r.Get("/version", s.handleDaemonVersion)
+			r.Post("/restart", s.handleDaemonRestart)
 		})
 
 		// 主业务组：X-Project → 来源识别 → 动作权限。

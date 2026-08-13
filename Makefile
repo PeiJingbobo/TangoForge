@@ -6,6 +6,11 @@
 GO      ?= go
 GOLANGCI ?= golangci-lint
 
+# 版本号：与 app/package.json 一致（TF-053 版本比对；release.yml 已做 tag==version 强校验）。
+# 注入到 internal/version.Version；未取到（如无 node）回退 dev。
+VERSION ?= $(shell node -p "require('./app/package.json').version" 2>/dev/null || echo dev)
+LDFLAGS := -X tangoforge/internal/version.Version=$(VERSION)
+
 .PHONY: all fmt vet lint test test-cover test-integration build build-daemon build-cli build-all dev check
 
 all: check
@@ -41,10 +46,10 @@ test-integration:
 build: build-daemon build-cli
 
 build-daemon:
-	$(GO) build -o bin/tangoforge-daemon ./cmd/daemon
+	$(GO) build -ldflags '$(LDFLAGS)' -o bin/tangoforge-daemon ./cmd/daemon
 
 build-cli:
-	$(GO) build -o bin/tangoforge ./cmd/cli
+	$(GO) build -ldflags '$(LDFLAGS)' -o bin/tangoforge ./cmd/cli
 
 ## 交叉编译 6 产物：Windows / macOS / Linux × x64 / arm64，全部 CGO_ENABLED=0（docs/TECHNICAL.md §1.3）
 build-all:
@@ -54,8 +59,8 @@ build-all:
 	    ext=""; \
 	    [ "$$os" = "windows" ] && ext=".exe"; \
 	    echo ">> $$os/$$arch"; \
-	    CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -o bin/release/tangoforge-$$os-$$arch$$ext ./cmd/daemon && \
-	    CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -o bin/release/tangoforge-cli-$$os-$$arch$$ext ./cmd/cli || exit 1; \
+	    CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -ldflags '$(LDFLAGS)' -o bin/release/tangoforge-$$os-$$arch$$ext ./cmd/daemon && \
+	    CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -ldflags '$(LDFLAGS)' -o bin/release/tangoforge-cli-$$os-$$arch$$ext ./cmd/cli || exit 1; \
 	  done; \
 	done
 	@echo "✓ 6 产物构建完成（bin/release）"

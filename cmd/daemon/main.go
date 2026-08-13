@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 	"tangoforge/internal/api"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
+	"tangoforge/internal/version"
 	"time"
 )
 
@@ -36,7 +38,12 @@ func main() {
 	}
 
 	configPath := flag.String("config", config.GlobalConfigPath(home), "全局配置文件路径（默认 ~/.taskboard-app/config.yaml）")
+	showVersion := flag.Bool("version", false, "打印版本并退出")
 	flag.Parse()
+	if *showVersion {
+		fmt.Printf("tangoforge-daemon %s\n", version.String())
+		return
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
@@ -92,6 +99,17 @@ func run(ctx context.Context, logger *slog.Logger, configPath string) error {
 	// 5.1 知识库扫描器：注册全部已导入项目 + 启动扫描/监听（TF-048/050）。
 	srv.StartKnowledgeScanner()
 
+	// 5.2 空闲重启（TF-053）：APP 检测 daemon 版本不匹配 → POST /api/daemon/restart。
+	// 收到意图后：Shutdown（等待进行中请求完成，不打断 CLI 调用）→ 用 APP 提供的新二进制
+	// 自我重生 → 退出旧进程。callback 仅通知主循环（handler 内同步调用，缓冲 channel 不阻塞）。
+	restartCh := make(chan string, 1)
+	srv.SetRestartCallback(func(binPath string) {
+		select {
+		case restartCh <- binPath:
+		default:
+		}
+	})
+
 	// 6. 全局配置热重载：remote_access 立即生效 + 端口动态重绑（失败保留旧端口）。
 	stopWatch, err := config.WatchGlobal(configPath, func(next config.GlobalConfig) {
 		srv.SetConfig(&next)
@@ -120,6 +138,21 @@ func run(ctx context.Context, logger *slog.Logger, configPath string) error {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			return srv.Shutdown(shutdownCtx)
+		case binPath := <-restartCh:
+			// TF-053 空闲重启：Shutdown 等待进行中的请求完成（不打断 CLI 调用），
+			// 随后用 APP 提供的新二进制路径自我重生并退出。
+			logger.Info("restart requested, waiting for in-flight requests", "bin", binPath)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				logger.Warn("graceful shutdown incomplete", "err", err)
+			}
+			cancel()
+			if err := spawnDaemon(binPath, configPath); err != nil {
+				logger.Error("spawn new daemon failed; keeping current process", "bin", binPath, "err", err)
+				continue
+			}
+			logger.Info("new daemon spawned, exiting")
+			return nil
 		case err := <-errCh:
 			if err != nil {
 				// 真实监听错误；热重载时旧监听器返回 net.ErrClosed，已被 Serve 归一化为 nil。
@@ -133,6 +166,28 @@ func run(ctx context.Context, logger *slog.Logger, configPath string) error {
 			mainServeDone = true
 		}
 	}
+}
+
+// spawnDaemon 以新二进制路径拉起新守护进程（detached 自我重生，TF-053）。
+// 旧进程已 Shutdown 释放端口，新进程监听同一地址无冲突。
+// 平台差异（Setsid / CREATE_NEW_PROCESS_GROUP）见 spawn_unix.go / spawn_windows.go。
+func spawnDaemon(binPath, configPath string) error {
+	args := []string{}
+	if configPath != "" {
+		args = append(args, "-config", configPath)
+	}
+	cmd := exec.Command(binPath, args...)
+	detach(cmd)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start new daemon %s: %w", binPath, err)
+	}
+	// 不等待子进程（daemon 常驻，父进程即将退出）。
+	if err := cmd.Process.Release(); err != nil {
+		return fmt.Errorf("release new daemon process: %w", err)
+	}
+	return nil
 }
 
 // acquirePIDFile 写入自身 PID 文件（供运维与 CLI 排查；端口占用检测为单实例锁第二道防线）。

@@ -97,8 +97,10 @@ jobs:
       - name: 编译内嵌 daemon/CLI（darwin/arm64，CGO_ENABLED=0）
         run: |
           mkdir -p bin
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o bin/tangoforge-daemon ./cmd/daemon
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o bin/tangoforge ./cmd/cli
+          VERSION="$(node -p "require('./app/package.json').version")"
+          LDFLAGS="-X tangoforge/internal/version.Version=${VERSION}"
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "${LDFLAGS}" -o bin/tangoforge-daemon ./cmd/daemon
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "${LDFLAGS}" -o bin/tangoforge ./cmd/cli
 
       - name: 安装依赖 + 构建前端
         run: |
@@ -137,8 +139,10 @@ jobs:
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          go build -o bin/tangoforge-daemon.exe ./cmd/daemon
-          go build -o bin/tangoforge.exe ./cmd/cli
+          $VERSION = node -p "require('./app/package.json').version"
+          $LDFLAGS = "-X tangoforge/internal/version.Version=$VERSION"
+          go build -ldflags $LDFLAGS -o bin/tangoforge-daemon.exe ./cmd/daemon
+          go build -ldflags $LDFLAGS -o bin/tangoforge.exe ./cmd/cli
 
       - name: 安装依赖 + 构建前端
         run: |

@@ -13,10 +13,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"tangoforge/internal/version"
 )
 
-// version 通过 -ldflags "-X main.version=..." 注入。
-var version = "dev"
+// version 通过 -ldflags "-X tangoforge/internal/version.Version=..." 注入（Makefile LDFLAGS 统一注入）。
+var buildVersion = version.String()
 
 func main() {
 	if len(os.Args) < 2 {
@@ -29,7 +30,7 @@ func main() {
 
 	switch cmd {
 	case "version", "-v", "--version":
-		fmt.Printf("tangoforge %s\n", version)
+		fmt.Printf("tangoforge %s\n", buildVersion)
 	case "help", "-h", "--help":
 		usage()
 	case "mcp":

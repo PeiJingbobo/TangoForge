@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import WS from 'ws'
 import { EventSocket, type RawSocket } from '../src/lib/event-socket'
+import { shouldRestartDaemon } from '../src/lib/daemon-version'
 import type { WSEvent } from '../src/types/models'
 
 /**
@@ -58,10 +59,78 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 let spawned: ChildProcess | null = null
 
+/* ---------- 版本探测 + 空闲重启（TF-053） ---------- */
+
+/** daemon 版本探测（GET /api/daemon/version，免鉴权）；失败返回 null */
+async function fetchDaemonVersion(): Promise<string | null> {
+  try {
+    const res = await fetch(`${DAEMON_BASE_URL}/api/daemon/version`, {
+      signal: AbortSignal.timeout(800),
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { data?: { version?: string } }
+    return body.data?.version ?? null
+  } catch {
+    return null
+  }
+}
+
+/** 请求 daemon 空闲重启（POST /api/daemon/restart，UI 身份）；返回是否已接受 */
+async function requestDaemonRestart(binPath: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${DAEMON_BASE_URL}/api/daemon/restart`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bin_path: binPath }),
+      signal: AbortSignal.timeout(2000),
+    })
+    return res.status === 202
+  } catch {
+    return false
+  }
+}
+
+/** 等待 daemon 完成重启并重新可用（旧进程退出 → 新进程就绪），超时返回 false */
+async function waitForDaemonRestart(timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  // 阶段 1：等待旧进程退出（ping 失败）。
+  while (Date.now() < deadline) {
+    if (!(await isDaemonAlive())) break
+    await sleep(200)
+  }
+  // 阶段 2：等待新进程就绪（ping 成功 + 版本匹配）。
+  while (Date.now() < deadline) {
+    if (await isDaemonAlive()) return true
+    await sleep(200)
+  }
+  return false
+}
+
+/**
+ * 版本匹配检测：daemon 版本与 APP 版本不一致 → 请求空闲重启。
+ * 仅在**打包版**启用（dev 下 daemon 是 `make build` 的本地产物，版本 dev，
+ * 与 APP package.json 版本不一致是常态，不触发重启）。
+ * 返回 true = daemon 已就绪（无需重启 / 已重启完成）。
+ */
+async function ensureVersionMatch(): Promise<boolean> {
+  if (!app.isPackaged) return true
+  const required = app.getVersion()
+  const running = await fetchDaemonVersion()
+  if (!shouldRestartDaemon(required, running)) return true
+
+  const bin = resolveDaemonPath()
+  if (!bin) return false
+  const ok = await requestDaemonRestart(bin)
+  if (!ok) return false
+  return waitForDaemonRestart(20_000)
+}
+
 /** 探活 → 拉起 → 等待 Health Check；返回是否可用 */
 export async function ensureDaemonRunning(): Promise<boolean> {
   if (await isDaemonAlive()) {
-    return true
+    // 版本不匹配 → 空闲重启（新 daemon 自我重生后由本函数再次探活确认）。
+    if (await ensureVersionMatch()) return true
+    return isDaemonAlive()
   }
 
   const bin = resolveDaemonPath()
