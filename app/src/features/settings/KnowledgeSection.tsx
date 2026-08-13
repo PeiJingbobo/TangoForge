@@ -1,14 +1,17 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Database, Info } from 'lucide-react'
+import { CheckCircle2, Database, Info, Loader2, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import {
   useConfig,
   useUpdateConfig,
+  useTestEmbedding,
   isConfigInvalid,
+  isEmbeddingTestFailed,
   type GlobalConfigView,
 } from '@/hooks/useConfig'
 
@@ -21,8 +24,14 @@ import {
 export function KnowledgeSection() {
   const { data } = useConfig()
   const updateConfig = useUpdateConfig()
+  const testEmbedding = useTestEmbedding()
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [draft, setDraft] = useState<GlobalConfigView | null>(null)
+  const [testResult, setTestResult] = useState<{
+    ok: boolean
+    dim?: number
+    message?: string
+  } | null>(null)
 
   if (!data) return <p className="text-sm text-muted-foreground">配置加载失败。</p>
   const saved = draft ?? data
@@ -63,6 +72,35 @@ export function KnowledgeSection() {
   }
   const setEmb = (field: keyof typeof emb, value: unknown) => {
     patch({ ...saved, llm: { ...saved.llm, embedding: { ...emb, [field]: value } } })
+  }
+
+  /** 测试当前（草稿/已保存）embedding 配置是否可用 */
+  const runEmbeddingTest = () => {
+    setTestResult(null)
+    testEmbedding.mutate(
+      {
+        base_url: emb.base_url,
+        api_key: emb.api_key,
+        model: emb.model,
+        api_kind: emb.api_kind,
+      },
+      {
+        onSuccess: (res) => setTestResult({ ok: true, dim: res.dim }),
+        onError: (err) => {
+          setTestResult({
+            ok: false,
+            message: err instanceof Error ? err.message : '连接失败',
+          })
+          if (isEmbeddingTestFailed(err)) {
+            toast.error('Embedding 连接测试失败', {
+              description: err instanceof Error ? err.message : undefined,
+            })
+          } else {
+            toast.error(err instanceof Error ? err.message : '测试失败')
+          }
+        },
+      },
+    )
   }
 
   return (
@@ -150,13 +188,53 @@ export function KnowledgeSection() {
         <div className="text-sm font-medium">向量嵌入（llm.embedding）</div>
         <div>
           <Label htmlFor="cfg-emb-model">Embedding 模型</Label>
-          <Input
-            id="cfg-emb-model"
-            value={emb.model}
-            onChange={(e) => setEmb('model', e.target.value)}
-            placeholder="nomic-embed-text / text-embedding-3-small（留空 = 禁用向量）"
-            className="mt-1.5 text-sm"
-          />
+          <div className="mt-1.5 flex items-center gap-2">
+            <Input
+              id="cfg-emb-model"
+              value={emb.model}
+              onChange={(e) => setEmb('model', e.target.value)}
+              placeholder="nomic-embed-text / text-embedding-3-small（留空 = 禁用向量）"
+              className="flex-1 text-sm"
+            />
+            {/* TF-053 体验：测试当前 embedding 配置是否可用 */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={runEmbeddingTest}
+              disabled={testEmbedding.isPending}
+            >
+              {testEmbedding.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Database className="size-3.5" />
+              )}
+              测试连接
+            </Button>
+          </div>
+          {/* 测试结果反馈 */}
+          {testResult && (
+            <p
+              className={
+                testResult.ok
+                  ? 'mt-1.5 flex items-center gap-1.5 text-xs text-success-ink'
+                  : 'mt-1.5 flex items-center gap-1.5 text-xs text-destructive-ink'
+              }
+            >
+              {testResult.ok ? (
+                <>
+                  <CheckCircle2 className="size-3.5" />
+                  连接可用（向量维度 {testResult.dim}）
+                </>
+              ) : (
+                <>
+                  <XCircle className="size-3.5" />
+                  {testResult.message}
+                </>
+              )}
+            </p>
+          )}
         </div>
         <div>
           <Label>协议类型</Label>

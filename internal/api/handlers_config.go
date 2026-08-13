@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"tangoforge/internal/auth"
 	"tangoforge/internal/config"
@@ -349,6 +350,68 @@ func (s *Server) handleConfigTestLLM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]bool{"ok": true}})
+}
+
+// handleConfigTestEmbedding 测试向量嵌入连接（POST /api/config/test-embedding，TF-053 体验）。
+//
+// 语义：
+//   - 仅 UI（配置含密钥）；豁免 X-Project（全局配置）；
+//   - body 为**暂存** llm.embedding 配置（未保存，表单测试先测后存）：
+//     {base_url, api_key, model, api_kind}（缺省字段沿用已保存配置，api_key 为空 → 复用 LLM key）；
+//   - 复用 llm.Embedding 发一条最小请求（"ping"），成功 → {ok:true, dim, model}；
+//     失败 → 422 EMBEDDING_TEST_FAILED + 人类可读原因（不含密钥）。
+func (s *Server) handleConfigTestEmbedding(w http.ResponseWriter, r *http.Request) {
+	actor := auth.ActorFrom(r.Context())
+	if actor.Class != auth.ClassUI {
+		writeError(w, http.StatusForbidden, "PERMISSION_DENIED",
+			"测试向量嵌入仅允许 UI 操作（回环 + X-UI-Token）", actor.Class)
+		return
+	}
+	var req struct {
+		BaseURL *string `json:"base_url"`
+		APIKey  *string `json:"api_key"`
+		Model   *string `json:"model"`
+		APIKind *string `json:"api_kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "TASK_INVALID", "请求体 JSON 解析失败", err.Error())
+		return
+	}
+	// 从当前保存配置构造运行配置，body 字段覆盖（测试未保存的草稿值）。
+	cfg := s.currentConfig()
+	ec := llm.EmbeddingFromConfig(cfg.LLM)
+	if req.BaseURL != nil {
+		ec.BaseURL = strings.TrimSpace(*req.BaseURL)
+	}
+	if req.APIKey != nil && *req.APIKey != "" {
+		ec.APIKey = *req.APIKey
+	}
+	if req.Model != nil {
+		ec.Model = strings.TrimSpace(*req.Model)
+	}
+	if req.APIKind != nil {
+		ec.Kind = llm.EmbeddingKind(strings.TrimSpace(*req.APIKind))
+	}
+	if ec.APIKey == "" {
+		ec.APIKey = os.Getenv("DEEPSEEK_API_KEY")
+	}
+
+	// 单条最小请求。
+	vec, err := llm.Embedding(r.Context(), ec, "ping")
+	if err != nil {
+		msg := "连接失败"
+		switch {
+		case errors.Is(err, llm.ErrEmbeddingNotConfigured):
+			msg = "Embedding 未完整配置（model / base_url 缺失）"
+		case errors.Is(err, llm.ErrEmbeddingFailed):
+			msg = "Embedding 调用失败（检查 base_url / api_kind / 模型可用性）"
+		}
+		writeError(w, http.StatusUnprocessableEntity, "EMBEDDING_TEST_FAILED", msg, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]any{
+		"ok": true, "dim": len(vec), "model": ec.Model,
+	}})
 }
 
 // llmErrorText 将 LLM 错误转为简洁人类可读文本（不含密钥）。

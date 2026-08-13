@@ -349,6 +349,8 @@ func (s *Server) Handler() http.Handler {
 			r.Put("/", s.handleConfigPut)
 			// TF-041 引导：LLM 连接测试（暂存配置，仅 UI）。
 			r.Post("/test", s.handleConfigTestLLM)
+			// TF-053 体验：向量嵌入连接测试（暂存配置，仅 UI）。
+			r.Post("/test-embedding", s.handleConfigTestEmbedding)
 		})
 
 		// 全局 Skill 模板组（QA-S4）：豁免 X-Project（模板存于全局技能库，与项目无关）；

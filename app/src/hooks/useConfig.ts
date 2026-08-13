@@ -128,3 +128,25 @@ export function useTestLLM() {
 export function isLLMTestFailed(err: unknown): boolean {
   return err instanceof ApiError && err.code === 'LLM_TEST_FAILED'
 }
+
+/**
+ * 向量嵌入连接测试（TF-053 体验）：POST /api/config/test-embedding（仅 UI）。
+ * 用暂存/当前 embedding 配置发一条最小请求，成功返回向量维度。
+ */
+export interface EmbeddingTestResult {
+  ok: boolean
+  dim: number
+  model: string
+}
+
+export function useTestEmbedding() {
+  return useMutation({
+    mutationFn: (cfg: { base_url?: string; api_key?: string; model?: string; api_kind?: string }) =>
+      apiRequest<EmbeddingTestResult>('/api/config/test-embedding', { method: 'POST', body: cfg }),
+  })
+}
+
+/** 测试失败错误识别（422 EMBEDDING_TEST_FAILED） */
+export function isEmbeddingTestFailed(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'EMBEDDING_TEST_FAILED'
+}

@@ -217,3 +217,45 @@ describe('SettingsPage 知识库 tab 协议差异（TF-053 体验优化）', () 
     expect(screen.getByText(/OpenAI 兼容：请求/)).toBeInTheDocument()
   })
 })
+
+describe('SettingsPage 知识库 tab embedding 测试按钮（TF-053 体验）', () => {
+  beforeEach(() => {
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/config`, () =>
+        HttpResponse.json({ code: 0, data: GLOBAL_CONFIG }),
+      ),
+    )
+  })
+
+  it('测试连接成功 → 显示维度', async () => {
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/config/test-embedding`, () =>
+        HttpResponse.json({ code: 0, data: { ok: true, dim: 2560, model: 'qwen3-embedding:4b' } }),
+      ),
+    )
+    render(<SettingsPage />, { wrapper })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: '知识库' }))
+    await user.click(screen.getByRole('button', { name: /测试连接/ }))
+    await waitFor(() => expect(screen.getByText(/连接可用（向量维度 2560）/)).toBeInTheDocument())
+  })
+
+  it('测试连接失败 → 显示错误', async () => {
+    const toastSpy = vi.spyOn(toast, 'error').mockImplementation(() => '')
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/config/test-embedding`, () =>
+        HttpResponse.json(
+          { code: 'EMBEDDING_TEST_FAILED', message: '连接失败: HTTP 500' },
+          { status: 422 },
+        ),
+      ),
+    )
+    render(<SettingsPage />, { wrapper })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: '知识库' }))
+    await user.click(screen.getByRole('button', { name: /测试连接/ }))
+    await waitFor(() => expect(screen.getByText(/连接失败/)).toBeInTheDocument())
+    expect(toastSpy).toBeCalled()
+    toastSpy.mockRestore()
+  })
+})

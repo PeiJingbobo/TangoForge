@@ -367,3 +367,54 @@ func TestConfigPut_KnowledgeThresholdOutOfRange(t *testing.T) {
 		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
 	}
 }
+
+// TF-053：POST /api/config/test-embedding 测试向量嵌入连接（成功 → ok + dim）。
+func TestConfigTestEmbedding_OK(t *testing.T) {
+	// mock openai embeddings 端点。
+	mux := http.NewServeMux()
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	cfg := config.DefaultGlobalConfig()
+	cfg.UIToken = "ui-secret"
+	srv2 := newConfigServer(t, &cfg, "")
+	body, _ := json.Marshal(map[string]string{
+		"base_url": srv.URL, "model": "test-embed", "api_kind": "openai",
+	})
+	rec := uiReq(t, srv2, http.MethodPost, "/api/config/test-embedding", "", string(body))
+	out := mustCode(t, rec, http.StatusOK, "embedding test ok")
+	if !strings.Contains(out, `"ok":true`) || !strings.Contains(out, `"dim":3`) {
+		t.Fatalf("响应应含 ok+dim: %s", out)
+	}
+}
+
+// TF-053：POST /api/config/test-embedding 未配置 → 422 EMBEDDING_TEST_FAILED。
+func TestConfigTestEmbedding_NotConfigured(t *testing.T) {
+	cfg := config.DefaultGlobalConfig()
+	cfg.UIToken = "ui-secret"
+	srv := newConfigServer(t, &cfg, "")
+	// 空 model + 空 base_url → 未配置。
+	rec := uiReq(t, srv, http.MethodPost, "/api/config/test-embedding", "", `{"model":""}`)
+	out := mustCode(t, rec, http.StatusUnprocessableEntity, "embedding test not configured")
+	if apiCode(t, out) != "EMBEDDING_TEST_FAILED" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
+}
+
+// TF-053：POST /api/config/test-embedding agent → 403。
+func TestConfigTestEmbedding_AgentDenied(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+	rec := doAPI(srv.Handler(), http.MethodPost, "/api/config/test-embedding", `{"model":"m"}`, func(h http.Header) {
+		h.Set("X-Actor", "human")
+		h.Set("Content-Type", "application/json")
+	})
+	out := mustCode(t, rec, http.StatusForbidden, "agent embedding test")
+	if apiCode(t, out) != "PERMISSION_DENIED" {
+		t.Fatalf("code=%s body=%s", apiCode(t, out), out)
+	}
+}
