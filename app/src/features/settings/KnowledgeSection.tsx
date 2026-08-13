@@ -176,6 +176,22 @@ export function KnowledgeSection() {
               </Badge>
             ))}
           </div>
+          {/* 协议差异说明（TF-053 体验优化） */}
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {emb.api_kind === 'ollama' ? (
+              <>
+                本地 Ollama：请求 <span className="font-mono">{'{base}/api/embed'}</span>，
+                无需鉴权；模型如 <span className="font-mono">nomic-embed-text</span> /{' '}
+                <span className="font-mono">qwen3-embedding</span>。
+              </>
+            ) : (
+              <>
+                OpenAI 兼容：请求 <span className="font-mono">{'{base}/embeddings'}</span>， 需要
+                API Key（Bearer 鉴权）；模型如{' '}
+                <span className="font-mono">text-embedding-3-small</span>。
+              </>
+            )}
+          </p>
         </div>
         <div>
           <Label htmlFor="cfg-emb-base">Embedding 接口地址</Label>
@@ -183,7 +199,11 @@ export function KnowledgeSection() {
             id="cfg-emb-base"
             value={emb.base_url}
             onChange={(e) => setEmb('base_url', e.target.value)}
-            placeholder="留空 = 复用 LLM base_url"
+            placeholder={
+              emb.api_kind === 'ollama'
+                ? 'http://localhost:11434（留空 = 复用 LLM base_url）'
+                : '如 https://api.deepseek.com（留空 = 复用 LLM base_url）'
+            }
             className="mt-1.5 font-mono text-sm"
           />
         </div>
@@ -194,9 +214,17 @@ export function KnowledgeSection() {
             type="password"
             value={emb.api_key}
             onChange={(e) => setEmb('api_key', e.target.value)}
-            placeholder="留空 = 复用 LLM api_key"
+            placeholder={
+              emb.api_kind === 'ollama' ? 'Ollama 本地免鉴权，可留空' : '留空 = 复用 LLM api_key'
+            }
+            disabled={emb.api_kind === 'ollama'}
             className="mt-1.5"
           />
+          {emb.api_kind === 'ollama' && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ollama 为本地服务，请求不携带鉴权头，无需填写 API Key。
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor="cfg-emb-timeout">请求超时（秒）</Label>

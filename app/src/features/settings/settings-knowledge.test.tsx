@@ -186,3 +186,34 @@ describe('ProjectSettingsPage 知识库节（TF-052）', () => {
     toastSpy.mockRestore()
   })
 })
+
+describe('SettingsPage 知识库 tab 协议差异（TF-053 体验优化）', () => {
+  beforeEach(() => {
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/config`, () =>
+        HttpResponse.json({ code: 0, data: GLOBAL_CONFIG }),
+      ),
+    )
+  })
+
+  it('ollama：显示本地免鉴权说明 + API Key 禁用', async () => {
+    render(<SettingsPage />, { wrapper })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: '知识库' }))
+    // ollama（默认 api_kind）→ placeholder 免鉴权提示 + 差异说明 + API Key 禁用。
+    expect(screen.getByPlaceholderText(/Ollama 本地免鉴权，可留空/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Embedding API Key')).toBeDisabled()
+    // 差异说明含「本地 Ollama」。
+    await waitFor(() => expect(screen.getByText(/本地 Ollama/)).toBeInTheDocument())
+  })
+
+  it('切换到 openai：API Key 可编辑 + 复用 LLM 提示', async () => {
+    render(<SettingsPage />, { wrapper })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: '知识库' }))
+    await user.click(screen.getByRole('button', { name: 'openai' }))
+    expect(screen.getByLabelText('Embedding API Key')).toBeEnabled()
+    expect(screen.getByPlaceholderText(/留空 = 复用 LLM api_key/)).toBeInTheDocument()
+    expect(screen.getByText(/OpenAI 兼容：请求/)).toBeInTheDocument()
+  })
+})
