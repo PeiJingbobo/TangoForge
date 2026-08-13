@@ -4,6 +4,34 @@
 
 > 版本号以 `app/package.json` 的 `version` 为唯一事实源；GitHub Release 标签须与之强一致（`release.yml` 强校验）。
 
+## [0.7.0] - 2026-08-13
+
+### 新增
+
+- **知识库（M7 / TF-044~TF-052）**：命名多库 + 文档引用注册表 + 任务关联 + 语义索引。
+  - 数据模型与迁移 v5/v6：`knowledge_bases / knowledge_documents / knowledge_base_documents / task_documents / knowledge_chunks` 5 表 + `archived` 列；项目初始化自动创建默认库。
+  - 文档注册/复用/拷贝（`auto` / `copy` / `none`）、relink 历史、解除引用、二进制仅注册。
+  - 语义索引：Markdown 标题分块 → LLM 摘要（≤200 字，hash 缓存）→ 向量嵌入（OpenAI / Ollama 双协议）→ 纯 Go 余弦检索（topK + 命中片段 + kb/阈值过滤）。
+  - 文件扫描与防抖：fsnotify 监听 + 启动扫描 + 手动扫描；注册即自动索引（修复「注册后永不索引」）；模型漂移自动重嵌；嵌入任务队列（排队/进行中/失败重试/取消 + WS 实时推送）。
+  - 归档/还原：归档后从默认列表/检索隐藏，任务引用与文件保留。
+  - 三端等价：`/api/knowledge/*` HTTP 端点 + MCP 8 工具（list / search / read / link / unlink / relink / scan / edit）+ CLI `knowledge` 子命令。
+  - 前端：任务详情「资料」区、知识库页（库/文档/检索/扫描/添加文件/归档视图）、文档抽屉（阅读/编辑/relink）、设置页「知识库」tab（含 QA-K23 向量开关置灰 + 连接测试按钮）。
+  - 导入草稿流 `knowledge_files`（LLM 建议关联）+ 导出「资料」行（往返一致）。
+- **守护进程空闲重启（TF-053）**：APP 启动检测 daemon 版本与自身不匹配 → `POST /api/daemon/restart` → `http.Server.Shutdown` 等待进行中请求完成（不打断 CLI）→ 用新二进制自我重生（跨平台 setsid / CREATE_NEW_PROCESS_GROUP）；`GET /api/daemon/version` 免鉴权版本探测；版本经 Makefile/release.yml 从 `app/package.json` 注入。
+- **文件/目录选择器默认打开当前项目根目录**：导入、知识库添加文件、引导导入等 4 处调用点统一。
+
+### 变更
+
+- `app/package.json` version 0.6.5 → 0.7.0。
+- `internal/task` 权限动作新增 `knowledge.read / knowledge.write / knowledge.index`（默认只读 read；存量项目经客户端授权后生效）。
+- README 新增「知识库」章节与核心特性/常用场景条目。
+
+### 修复
+
+- CI golangci-lint 36 项问题（revive / gofumpt / errcheck / staticcheck / unused）。
+- `FileFingerprint` 改用 inode+size 组合校验（修复 CI 上删除重建后 inode 快速复用导致指纹失效误判）。
+- 知识库：嵌入前置 `indexing` 中间态（列表「正在嵌入」徽标 + 顶部进度条）、扫描补嵌入有 hash 未嵌入文档、选中库改后端 `filter[kb_id]` 过滤、注册顺序化修复状态条停滞、refetchInterval 空数据防御。
+
 ## [0.6.5] - 2026-08-12
 
 ### 修复

@@ -22,6 +22,7 @@ TangoForge 把「任务池 · 状态机 · 导入导出 · Agent 协作」打包
 - [架构总览](#架构总览)
 - [快速开始](#快速开始)
 - [AI Agent 接入（详细教程）](#ai-agent-接入详细教程)
+- [知识库（Knowledge Base）](#知识库knowledge-base)
 - [CLI 全局注册](#cli-全局注册)
 - [开发者指南](#开发者指南)
 - [目录结构](#目录结构)
@@ -68,6 +69,7 @@ open "/Applications/TangoForge.app"
 
 - **本地优先 · 数据自持**：SQLite（WAL）+ 本地守护进程，数据全部落在你指定的工作目录（`.taskboard/`），无云端、无账号、无订阅。
 - **任务管理**：看板拖拽流转、树形导航、状态机动态列、依赖关系（无环校验）、归档/还原回收站、Markdown 导入导出（草稿审阅后确认）。
+- **知识库（v0.7.0）**：文档引用注册表 + 任务关联 + 语义索引——为任务关联资料（Markdown/代码/文本），LLM 摘要 + 向量嵌入（OpenAI / Ollama 双协议），纯 Go 余弦检索「输入问题 → 命中文档与片段」，文件变化自动重索引，归档后任务引用与文件仍保留。
 - **Agent 三通道**：MCP（stdio / HTTP）、REST API、CLI —— 同一业务层实现，行为完全一致，多端等价。
 - **受控权限**：UI 全权；Agent 默认**只读**，写操作需在客户端按项目显式授权（细粒度 action 开关）。
 - **Skills 技能包**：为 Claude Code / Cursor / Copilot / WorkBuddy 等宿主一键安装可发现的技能包（SKILL.md）。
@@ -119,6 +121,7 @@ open "/Applications/TangoForge.app"
 - **导航**：树形任务列表，按状态/标签/关键词过滤。
 - **全景图**：依赖关系可视化（`parent` / `depends_on` 边）。
 - **导入/导出**：Markdown ↔ 任务库，导入走草稿审阅流。
+- **知识库**：任务详情「资料」区添加/阅读/编辑/归档关联文档；知识库页按库浏览文档、向量语义检索、手动扫描、添加文件（支持系统选择器 / 手动路径）。
 
 ---
 
@@ -146,7 +149,7 @@ tangoforge mcp --project /path/to/project
 }
 ```
 
-MCP 工具集（v1 固定，均带 `project` 必填参数）：任务（read / list / create / update / archive / restore）、项目（list / import / init / create）、导入导出（preview / confirm / discard / export）、状态机（get / update）、Skill（info / install / status / uninstall）、权限（list）、全景图（graph）、指南（guide，免鉴权）。
+MCP 工具集（v1 固定，均带 `project` 必填参数）：任务（read / list / create / update / archive / restore）、项目（list / import / init / create）、导入导出（preview / confirm / discard / export）、状态机（get / update）、Skill（info / install / status / uninstall）、权限（list）、全景图（graph）、知识库（list / search / read / link / unlink / relink / scan / edit）、指南（guide，免鉴权）。
 
 ### 方式二：CLI（等价 HTTP）
 
@@ -161,11 +164,16 @@ tangoforge tasks create --project /path/to/project --title "接入 Agent" --stat
 tangoforge import preview --project /path/to/project --file roadmap.md
 tangoforge import confirm --project /path/to/project --draft <id>
 
+# 知识库：向量检索 / 关联任务文档 / 添加文件 / 扫描
+tangoforge knowledge search --project /path/to/project --q "数据库迁移方案"
+tangoforge knowledge link --project /path/to/project --task_id <id> --path docs/spec.md
+tangoforge knowledge scan --project /path/to/project
+
 # 查看系统使用说明书
 tangoforge guide
 ```
 
-完整命令面：`tangoforge --help`（version / mcp / projects / tasks / import / export / graph / state-machine / skills / permission / audit / guide）。
+完整命令面：`tangoforge --help`（version / mcp / projects / tasks / import / export / graph / state-machine / skills / permission / audit / knowledge / guide）。
 
 ### 方式三：HTTP API（守护进程 127.0.0.1:19810）
 
@@ -187,6 +195,41 @@ curl -H "X-Project: /path/to/project" http://127.0.0.1:19810/api/tasks
 | 让 Agent 创建新需求 | 创建任务（需 `task.create` 授权） |
 | 让 Agent 批量导入需求文档 | `import preview` → 人工确认 → `import confirm` |
 | 让 Agent 维护任务板 | 状态流转 / 归档 / 依赖调整（需对应 action 授权） |
+| 让 Agent 检索知识库 | `knowledge search` → 命中文档与片段（需 `knowledge.read`） |
+| 让 Agent 关联任务资料 | `knowledge link`（需 `knowledge.write`） |
+
+---
+
+## 知识库（Knowledge Base）
+
+> v0.7.0 引入。知识库 = **文档引用注册表 + 任务关联 + 语义索引**——不复制原文，以磁盘文件为唯一真实源；向量/摘要索引使任务资料可被**语义检索**。
+
+### 核心概念
+
+- **命名多库**：默认库（项目初始化自动创建）+ 自定义库（如 `spec` / `dev`）；一个文档可同时归属多个库。
+- **文档注册与复用**：按 `abs_path` 唯一注册，重复注册自动复用同一记录（多库/多任务共享一份向量）。
+- **拷贝语义**：`auto`（项目内原样引用、项目外自动拷贝进默认文档目录）/ `copy`（一律拷贝）/ `none`（原样引用外部路径）。
+- **任务关联**：任务 ↔ 文档（`task_documents`）；任务详情「资料」区直接添加/阅读/编辑/归档。
+- **语义索引**：Markdown 标题分块 → LLM 摘要（≤200 字）→ 向量嵌入 → 纯 Go 余弦检索（topK + 命中片段）。
+- **自动重索引**：fsnotify 监听 + 启动扫描 + 手动扫描；模型漂移检测自动全量重嵌；嵌入任务队列（排队/进行中/失败可重试/可取消）。
+- **归档**：从默认列表/检索隐藏，任务引用与文件保留；「归档」视图可还原。
+
+### Embedding 配置（设置 → 知识库）
+
+向量检索依赖 `llm.embedding` 配置（支持 OpenAI 兼容与 Ollama 双协议）：
+
+| 项 | 说明 |
+|----|------|
+| 模型 | OpenAI：`text-embedding-3-small` 等；Ollama：`nomic-embed-text` / `qwen3-embedding` 等 |
+| 协议 | `openai`（`POST {base}/embeddings`，需 API Key）/ `ollama`（`POST {base}/api/embed`，本地免鉴权） |
+| 接口地址 | 留空 = 复用 LLM `base_url`（Ollama 通常填 `http://localhost:11434`） |
+| 测试连接 | 设置页「测试连接」按钮验证当前配置可用性（返回向量维度） |
+
+> 未配置 Embedding 模型时，文档仍可注册/摘要，但**向量搜索自动禁用**（设置页置灰提示）。
+
+### HTTP 端点（/api/knowledge/*）
+
+`bases`（库 CRUD）、`documents`（注册/详情/阅读/编辑/relink/解除/**归档/还原**）、`link` / `unlink`（任务关联）、`search`（向量检索）、`queue`（嵌入任务队列 + 取消/重试）、`scan`（手动扫描）。权限：`knowledge.read`（默认只读）、`knowledge.write`、`knowledge.index`。
 
 ---
 
