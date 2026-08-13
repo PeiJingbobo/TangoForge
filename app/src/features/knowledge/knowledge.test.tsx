@@ -279,3 +279,62 @@ describe('KnowledgePage 添加文件状态条（TF-052）', () => {
     await waitFor(() => expect(screen.queryByText(/正在添加文件/)).not.toBeInTheDocument())
   })
 })
+
+describe('KnowledgePage 库过滤（TF-052 修复：选中库后列表可见）', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tangoforge' })
+  })
+
+  it('选中默认库 → 请求带 filter[kb_id] 且展示该库文件', async () => {
+    const user = userEvent.setup()
+    const captured: { query: URLSearchParams | null } = { query: null }
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/documents`, ({ request }) => {
+        const url = new URL(request.url)
+        captured.query = url.searchParams
+        // 带 kb 过滤时只返回该库文档。
+        const kb = url.searchParams.get('filter[kb_id]')
+        if (kb) {
+          return HttpResponse.json({
+            code: 0,
+            data: {
+              items: [
+                {
+                  id: 'doc-kb',
+                  project_id: 1,
+                  path: 'docs/kb.md',
+                  abs_path: '/data/projects/tangoforge/docs/kb.md',
+                  rel_path: 'docs/kb.md',
+                  origin_path: '',
+                  display_name: 'kb.md',
+                  type: 'text',
+                  size: 10,
+                  mtime: '2026-08-13T09:00:00+08:00',
+                  content_hash: 'h',
+                  summary: '',
+                  status: 'ok',
+                  embedded: 1,
+                  embedding_model: 'm',
+                  index_error: '',
+                  history: [],
+                  created_at: '2026-08-13T09:00:00+08:00',
+                  updated_at: '2026-08-13T09:00:00+08:00',
+                },
+              ],
+              total: 1,
+              page: 0,
+              size: 50,
+            },
+          })
+        }
+        return HttpResponse.json({ code: 0, data: { items: [], total: 0, page: 0, size: 50 } })
+      }),
+    )
+    render(<KnowledgePage />, { wrapper })
+    // 选中默认库（库列表项按钮）→ 请求带 filter[kb_id]=1，列表展示 kb.md。
+    const kbItem = await screen.findByText('默认库')
+    await user.click(kbItem)
+    await waitFor(() => expect(screen.getByText('kb.md')).toBeInTheDocument())
+    expect(captured.query?.get('filter[kb_id]')).toBe('1')
+  })
+})

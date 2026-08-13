@@ -35,8 +35,6 @@ import { KnowledgeAddDialog } from '@/features/knowledge/KnowledgeAddDialog'
  */
 export function KnowledgePage() {
   const pid = useProjectId()
-  const { data: bases, isLoading: basesLoading } = useKnowledgeBases(pid)
-  const { data: docList, isLoading: docsLoading } = useKnowledgeDocuments(undefined, pid)
   const [selectedKB, setSelectedKB] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [q, setQ] = useState('')
@@ -44,6 +42,12 @@ export function KnowledgePage() {
   const [docId, setDocId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [newKBName, setNewKBName] = useState('')
+  const { data: bases, isLoading: basesLoading } = useKnowledgeBases(pid)
+  // 选中库时用后端 filter[kb_id] 过滤（列表接口不返回 kb_ids，本地过滤会全空）。
+  const { data: docList, isLoading: docsLoading } = useKnowledgeDocuments(
+    selectedKB ? { kb_id: selectedKB } : undefined,
+    pid,
+  )
   const createBase = useCreateKnowledgeBase(pid)
   const deleteBase = useDeleteKnowledgeBase(pid)
   const scan = useKnowledgeScan(pid)
@@ -58,28 +62,24 @@ export function KnowledgePage() {
     current: string | null
   } | null>(null)
 
-  const submitAdd = (paths: string[], kbId: number, copy: string) => {
+  const submitAdd = async (paths: string[], kbId: number, copy: string) => {
     const kbIds = kbId > 0 ? [kbId] : undefined
     setAddBatch({ total: paths.length, done: 0, failed: 0, current: paths[0] ?? null })
-    paths.forEach((p, i) => {
-      // 更新当前处理中的文件（顺序推进：该文件注册完成即切换到下一个）。
-      if (i > 0) {
-        setAddBatch((b) => (b && b.current === paths[i - 1] ? { ...b, current: p } : b))
+    // 顺序注册：同一 mutation 并发多次会覆盖 onSuccess（React Query 行为），
+    // 改为逐个 await，每个完成后推进 current/进度。
+    for (let i = 0; i < paths.length; i++) {
+      const p = paths[i]
+      setAddBatch((b) => (b ? { ...b, current: p } : b))
+      try {
+        await register.mutateAsync({ path: p, copy, kb_ids: kbIds })
+        setAddBatch((b) => (b ? { ...b, done: b.done + 1 } : b))
+      } catch (e) {
+        setAddBatch((b) => (b ? { ...b, failed: b.failed + 1 } : b))
+        toast.error(`「${p}」注册失败：${e instanceof Error ? e.message : '未知错误'}`)
       }
-      register.mutate(
-        { path: p, copy, kb_ids: kbIds },
-        {
-          onSuccess: () => {
-            setAddBatch((b) => (b ? { ...b, done: b.done + 1 } : b))
-          },
-          onError: (e) => {
-            setAddBatch((b) => (b ? { ...b, failed: b.failed + 1 } : b))
-            if (i === paths.length - 1)
-              toast.error(`「${p}」注册失败：${e instanceof Error ? e.message : '未知错误'}`)
-          },
-        },
-      )
-    })
+    }
+    // 全部完成 → 批处理结束（索引继续由 scanner 后台执行）。
+    setAddBatch((b) => (b && b.done + b.failed >= b.total ? null : b))
   }
 
   // 嵌入中文档计数（顶部状态条用；轮询/WS 驱动刷新）。
@@ -90,15 +90,15 @@ export function KnowledgePage() {
 
   const docs = useMemo(() => {
     const list = docList?.items ?? []
+    // kb 过滤由后端 filter[kb_id] 完成；此处仅做状态/关键词本地过滤。
     return list.filter(
       (d) =>
-        (!selectedKB || d.kb_ids?.includes(selectedKB)) &&
         (!statusFilter || d.status === statusFilter) &&
         (!q ||
           d.display_name.toLowerCase().includes(q.toLowerCase()) ||
           d.path.toLowerCase().includes(q.toLowerCase())),
     )
-  }, [docList, selectedKB, statusFilter, q])
+  }, [docList, statusFilter, q])
 
   // TF-052：持续无进展超时提示（默认 5 分钟）。
   const [stalled, setStalled] = useState(false)
