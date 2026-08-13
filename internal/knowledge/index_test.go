@@ -312,3 +312,53 @@ func TestSearch_MissingMark(t *testing.T) {
 		t.Fatalf("应标注 missing: %+v", res)
 	}
 }
+
+// TF-052：IndexDocument 成功/失败推送 WS 事件（document_updated / index_failed）。
+func TestIndexDocument_EmitsEvents(t *testing.T) {
+	var actions []string
+	svc := NewService(Options{Logger: discardLogger()})
+	svc.SetOnWrite(func(_ context.Context, _ string, action, _ string) {
+		actions = append(actions, action)
+	})
+	workdir := initProject(t)
+	ctx := context.Background()
+
+	// 无 embedding 配置 → 仅注册（不推送 document_updated，因为未嵌入）。
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// 配 embedding → 嵌入成功推 document_updated。
+	svc.SetEmbeddingConfig(mockEmbedFixed(t))
+	if _, err := svc.IndexDocument(ctx, workdir, doc.ID, IndexOptions{Embedding: svc.(*service).embCfg}); err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	// 嵌入失败 → index_failed。
+	doc2, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "b.md", "# b"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register2: %v", err)
+	}
+	srv500 := httptest_500()
+	t.Cleanup(srv500.Close)
+	svc.SetEmbeddingConfig(&llm.EmbeddingConfig{BaseURL: srv500.URL, Model: "m", Kind: llm.EmbedOpenAI})
+	if _, err := svc.IndexDocument(ctx, workdir, doc2.ID, IndexOptions{Embedding: svc.(*service).embCfg}); err == nil {
+		t.Fatal("嵌入失败应报错")
+	}
+
+	hasUpdated := false
+	hasFailed := false
+	for _, a := range actions {
+		if a == "document_updated" {
+			hasUpdated = true
+		}
+		if a == "index_failed" {
+			hasFailed = true
+		}
+	}
+	if !hasUpdated {
+		t.Fatalf("嵌入成功应推送 document_updated，got %v", actions)
+	}
+	if !hasFailed {
+		t.Fatalf("嵌入失败应推送 index_failed，got %v", actions)
+	}
+}

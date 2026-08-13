@@ -206,6 +206,7 @@ func (s *service) IndexDocument(ctx context.Context, workdir, docID string, opts
 				return res, fmt.Errorf("knowledge: mark failed: %w", uerr)
 			}
 			s.logger.Warn("knowledge: embed chunk failed", "id", docID, "seq", i, "err", err)
+			s.fireIndexFailed(ctx, workdir, docID)
 			return res, fmt.Errorf("knowledge: embed chunk %d: %w", i, err)
 		}
 		if _, err := conn.ExecContext(ctx, `
@@ -224,7 +225,14 @@ func (s *service) IndexDocument(ctx context.Context, workdir, docID string, opts
 		return res, fmt.Errorf("knowledge: finalize doc: %w", err)
 	}
 	res.Embedded = true
+	// WS 推送（TF-052 实时刷新）：文档状态变更 → 前端失效列表/详情。
+	s.fireWrite(ctx, workdir, "document_updated", docID)
 	return res, nil
+}
+
+// fireIndexFailed 推送嵌入失败事件（前端「正在嵌入」状态可即时转为失败徽标）。
+func (s *service) fireIndexFailed(ctx context.Context, workdir, docID string) {
+	s.fireWrite(ctx, workdir, "index_failed", docID)
 }
 
 // overLimitNote 生成超限说明（index_error 字段语义）。

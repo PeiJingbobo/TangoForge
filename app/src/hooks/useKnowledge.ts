@@ -21,7 +21,7 @@ export function useKnowledgeBases(project?: string) {
   })
 }
 
-/** 文档列表（kb/status/q 过滤） */
+/** 文档列表（kb/status/q 过滤；有 indexing 文档时轮询刷新以展示嵌入进度） */
 export function useKnowledgeDocuments(
   filter?: { kb_id?: number; status?: string; q?: string },
   project?: string,
@@ -40,6 +40,11 @@ export function useKnowledgeDocuments(
         },
       }),
     enabled: !!pid,
+    // TF-052：存在正在嵌入（indexing）文档时每 2s 轮询，展示嵌入完成进度。
+    refetchInterval: (query) => {
+      const hasIndexing = query.state.data?.items.some((d) => d.status === 'indexing')
+      return hasIndexing ? 2000 : false
+    },
   })
 }
 

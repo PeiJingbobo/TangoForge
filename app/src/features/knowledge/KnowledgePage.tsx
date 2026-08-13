@@ -1,6 +1,15 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { FileText, Library, Plus, RefreshCw, ScanSearch, Search, Trash2 } from 'lucide-react'
+import {
+  FileText,
+  Library,
+  Loader2,
+  Plus,
+  RefreshCw,
+  ScanSearch,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,6 +20,7 @@ import {
   useKnowledgeDocuments,
   useKnowledgeScan,
   useKnowledgeSearch,
+  useRegisterKnowledgeDocument,
 } from '@/hooks/useKnowledge'
 import { useProjectId } from '@/hooks/useProject'
 import { cn } from '@/lib/utils'
@@ -37,7 +47,42 @@ export function KnowledgePage() {
   const createBase = useCreateKnowledgeBase(pid)
   const deleteBase = useDeleteKnowledgeBase(pid)
   const scan = useKnowledgeScan(pid)
+  const register = useRegisterKnowledgeDocument(pid)
   const { data: searchRes, isFetching: searching } = useKnowledgeSearch(searchQ, { top_k: 10 }, pid)
+
+  // TF-052：添加文件批处理状态（顶部进行中状态条；后端注册后自动索引）。
+  const [addBatch, setAddBatch] = useState<{
+    total: number
+    done: number
+    failed: number
+    paths: string[]
+  } | null>(null)
+
+  const submitAdd = (paths: string[], kbId: number, copy: string) => {
+    const kbIds = kbId > 0 ? [kbId] : undefined
+    setAddBatch({ total: paths.length, done: 0, failed: 0, paths })
+    paths.forEach((p, i) => {
+      register.mutate(
+        { path: p, copy, kb_ids: kbIds },
+        {
+          onSuccess: () => {
+            setAddBatch((b) => (b ? { ...b, done: b.done + 1 } : b))
+          },
+          onError: (e) => {
+            setAddBatch((b) => (b ? { ...b, failed: b.failed + 1 } : b))
+            if (i === paths.length - 1)
+              toast.error(`「${p}」注册失败：${e instanceof Error ? e.message : '未知错误'}`)
+          },
+        },
+      )
+    })
+  }
+
+  // 嵌入中文档计数（顶部状态条用；轮询/WS 驱动刷新）。
+  const indexingCount = useMemo(
+    () => (docList?.items ?? []).filter((d) => d.status === 'indexing').length,
+    [docList],
+  )
 
   const docs = useMemo(() => {
     const list = docList?.items ?? []
@@ -87,6 +132,27 @@ export function KnowledgePage() {
           文档引用注册表 + 任务关联 + 语义索引（摘要/向量）；原文以磁盘为唯一真实源。
         </p>
       </div>
+
+      {/* TF-052：嵌入任务状态条（添加文件注册进度 + 正在嵌入文档数） */}
+      {(addBatch && addBatch.done + addBatch.failed < addBatch.total) || indexingCount > 0 ? (
+        <div className="mt-3 shrink-0 rounded-xl border border-divider bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Loader2 className="size-3.5 shrink-0 animate-spin text-primary-700" />
+            <span>
+              {addBatch && addBatch.done + addBatch.failed < addBatch.total
+                ? `正在添加文件 ${addBatch.done + addBatch.failed}/${addBatch.total}${
+                    addBatch.failed > 0 ? `（${addBatch.failed} 失败）` : ''
+                  }`
+                : '正在嵌入文档'}
+              {indexingCount > 0 && addBatch && addBatch.done + addBatch.failed < addBatch.total
+                ? ' · '
+                : ''}
+              {indexingCount > 0 ? `嵌入中 ${indexingCount} 个文档` : ''}
+            </span>
+            <span className="ml-auto text-[10px]">完成状态自动刷新</span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid min-h-0 flex-1 gap-4 lg:grid-cols-[240px_1fr]">
         {/* 左：库列表 */}
@@ -288,7 +354,12 @@ export function KnowledgePage() {
       )}
 
       {addOpen && (
-        <KnowledgeAddDialog open={addOpen} onOpenChange={setAddOpen} project={pid ?? ''} />
+        <KnowledgeAddDialog
+          open={addOpen}
+          onOpenChange={setAddOpen}
+          project={pid ?? ''}
+          onSubmit={submitAdd}
+        />
       )}
     </div>
   )
@@ -322,30 +393,34 @@ function DocCard({ doc, onClick }: { doc: KnowledgeDocument; onClick: () => void
 }
 
 export function StatusBadge({ status, embedded }: { status: string; embedded: number }) {
-  return (
-    <>
-      {status === 'missing' && (
-        <span className="rounded bg-warning-soft px-1 text-[10px] text-warning-ink">缺失</span>
-      )}
-      {status === 'failed' && (
-        <span className="rounded bg-destructive-soft px-1 text-[10px] text-destructive-ink">
-          失败
-        </span>
-      )}
-      {status === 'indexing' && (
-        <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">索引中</span>
-      )}
-      {status === 'ok' && embedded === 1 && (
-        <span className="rounded bg-success-soft px-1 text-[10px] text-success-ink">已嵌入</span>
-      )}
-      {status === 'ok' && embedded === 0 && (
+  // 嵌入状态四态（TF-052）：未嵌入 / 正在嵌入 / 已嵌入 / 嵌入失败。
+  if (status === 'ok' || status === 'indexing') {
+    if (status === 'indexing' || (status === 'ok' && embedded === 0)) {
+      // 正在嵌入（indexing）→ 蓝色；未嵌入（ok + embedded=0）→ 灰色。
+      return status === 'indexing' ? (
+        <span className="rounded bg-primary-50 px-1 text-[10px] text-primary-700">正在嵌入</span>
+      ) : (
         <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">未嵌入</span>
-      )}
-      {status === 'ok' && embedded === 2 && (
+      )
+    }
+    if (embedded === 2) {
+      return (
         <span className="rounded bg-destructive-soft px-1 text-[10px] text-destructive-ink">
           嵌入失败
         </span>
-      )}
-    </>
-  )
+      )
+    }
+    return <span className="rounded bg-success-soft px-1 text-[10px] text-success-ink">已嵌入</span>
+  }
+  if (status === 'missing') {
+    return <span className="rounded bg-warning-soft px-1 text-[10px] text-warning-ink">缺失</span>
+  }
+  if (status === 'failed') {
+    return (
+      <span className="rounded bg-destructive-soft px-1 text-[10px] text-destructive-ink">
+        失败
+      </span>
+    )
+  }
+  return null
 }

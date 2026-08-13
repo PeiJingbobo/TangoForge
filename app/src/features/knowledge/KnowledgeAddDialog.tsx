@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { FileUp, FolderOpen, Loader2, X } from 'lucide-react'
-import { ApiError } from '@/api/client'
+import { FileUp, FolderOpen, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,30 +13,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useKnowledgeBases, useRegisterKnowledgeDocument } from '@/hooks/useKnowledge'
+import { useKnowledgeBases } from '@/hooks/useKnowledge'
 import type { KnowledgeBase } from '@/types/models'
 
 /**
- * 知识库「添加文件」对话框（TF-053 体验补全）：
+ * 知识库「添加文件」对话框（TF-052 体验补全）：
  * 系统文件选择器多选（Electron）/ 手动路径兜底；可选目标库与拷贝语义。
- * 逐文件注册（后端 abs_path 唯一复用；外部文件按 copy 语义处理），成功 → 触发索引。
+ * 点击「添加」立即关闭，注册任务交给 KnowledgePage（onSubmit）在顶部显示进行中状态条，
+ * 后端 abs_path 唯一复用；外部文件按 copy 语义处理，注册后自动索引。
  */
 export function KnowledgeAddDialog({
   open,
   onOpenChange,
   project,
+  onSubmit,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
   project: string
+  onSubmit: (paths: string[], kbId: number, copy: string) => void
 }) {
   const { data: bases, isLoading: basesLoading } = useKnowledgeBases(project)
-  const register = useRegisterKnowledgeDocument(project)
   const [paths, setPaths] = useState<string[]>([])
   const [manualPath, setManualPath] = useState('')
   const [kbId, setKbId] = useState<number>(0) // 0 = 默认库
   const [copy, setCopy] = useState('auto')
-  const [busy, setBusy] = useState(false)
 
   const hasDialog = Boolean(window.tangoforge?.dialog)
 
@@ -73,41 +73,10 @@ export function KnowledgeAddDialog({
       toast.info('请先选择或填写文件路径')
       return
     }
-    setBusy(true)
-    // 逐文件注册（后端 abs_path 唯一复用；合并结果提示）。
-    let done = 0
-    let failed = 0
-    const maybeFinish = (count: number) => {
-      if (count < paths.length) return
-      setBusy(false)
-      if (failed === 0) {
-        toast.success(`已添加 ${done} 个文件到知识库（将自动索引）`)
-        setPaths([])
-        onOpenChange(false)
-      } else if (done > 0) {
-        toast.warning(`已添加 ${done} 个，${failed} 个失败`)
-        setPaths([])
-        onOpenChange(false)
-      }
-    }
-    paths.forEach((p, i) => {
-      register.mutate(
-        { path: p, copy, kb_ids: kbId > 0 ? [kbId] : undefined },
-        {
-          onSuccess: () => {
-            done++
-            maybeFinish(done + failed)
-          },
-          onError: (e) => {
-            failed++
-            const msg =
-              e instanceof ApiError ? e.message : e instanceof Error ? e.message : '注册失败'
-            if (i === paths.length - 1) toast.error(`「${p}」注册失败：${msg}`)
-            maybeFinish(done + failed)
-          },
-        },
-      )
-    })
+    // 立即关闭对话框；注册任务由 KnowledgePage 后台执行（顶部显示进行中状态条）。
+    onSubmit([...paths], kbId, copy)
+    setPaths([])
+    onOpenChange(false)
   }
 
   return (
@@ -142,12 +111,17 @@ export function KnowledgeAddDialog({
               value={manualPath}
               onChange={(e) => setManualPath(e.target.value)}
               placeholder="磁盘路径（绝对或相对项目目录）"
-              className="flex-1 font-mono text-xs"
+              className="min-w-0 flex-1 font-mono text-xs"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') addManualPath()
               }}
             />
-            <Button size="sm" onClick={addManualPath} disabled={!manualPath.trim()}>
+            <Button
+              size="sm"
+              className="shrink-0"
+              onClick={addManualPath}
+              disabled={!manualPath.trim()}
+            >
               添加
             </Button>
           </div>
@@ -223,20 +197,11 @@ export function KnowledgeAddDialog({
 
           {/* 提交 */}
           <div className="flex justify-end gap-2 border-t border-divider pt-3">
-            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button
-              size="sm"
-              onClick={submit}
-              disabled={paths.length === 0 || busy}
-              aria-label="提交添加"
-            >
-              {busy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <FileUp className="size-3.5" />
-              )}
+            <Button size="sm" onClick={submit} disabled={paths.length === 0} aria-label="提交添加">
+              <FileUp className="size-3.5" />
               添加 {paths.length > 0 ? `（${paths.length}）` : ''}
             </Button>
           </div>

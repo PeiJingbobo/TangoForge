@@ -101,34 +101,17 @@ describe('KnowledgeAddDialog（TF-053 添加文件）', () => {
     useProjectStore.setState({ project: '/data/projects/tangoforge' })
   })
 
-  it('渲染 + 手动添加路径 + 提交注册', async () => {
-    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
-    let postBody: unknown = null
-    server.use(
-      http.post(`${DAEMON_BASE_URL}/api/knowledge/documents`, async ({ request }) => {
-        postBody = await request.json()
-        return HttpResponse.json(
-          {
-            code: 0,
-            data: {
-              id: 'doc-new',
-              display_name: 'manual.md',
-              path: 'manual.md',
-              abs_path: '/data/projects/tangoforge/manual.md',
-              rel_path: 'manual.md',
-              type: 'text',
-              status: 'ok',
-              embedded: 0,
-              history: [],
-            },
-          },
-          { status: 201 },
-        )
-      }),
-    )
+  it('渲染 + 手动添加路径 + 提交委托 onSubmit 并关闭', async () => {
+    const onOpenChange = vi.fn()
+    const onSubmit = vi.fn()
     const user = userEvent.setup()
-    const { rerender } = render(
-      <KnowledgeAddDialog open onOpenChange={() => {}} project="/data/projects/tangoforge" />,
+    render(
+      <KnowledgeAddDialog
+        open
+        onOpenChange={onOpenChange}
+        project="/data/projects/tangoforge"
+        onSubmit={onSubmit}
+      />,
       { wrapper },
     )
     // 手动输入路径。
@@ -136,24 +119,109 @@ describe('KnowledgeAddDialog（TF-053 添加文件）', () => {
     await user.type(input, '/data/docs/manual.md')
     await user.click(screen.getByRole('button', { name: '添加' }))
     expect(screen.getByText('/data/docs/manual.md')).toBeInTheDocument()
-    // 提交。
+    // 提交 → 委托 onSubmit + 立即关闭。
     await user.click(screen.getByRole('button', { name: '提交添加' }))
-    await waitFor(() => expect(toastSpy).toBeCalled())
-    const body = postBody as { path?: string; kb_ids?: number[] }
-    expect(body.path).toBe('/data/docs/manual.md')
-    toastSpy.mockRestore()
-    rerender(
-      <KnowledgeAddDialog open onOpenChange={() => {}} project="/data/projects/tangoforge" />,
-    )
+    expect(onSubmit).toHaveBeenCalledWith(['/data/docs/manual.md'], 0, 'auto')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('无路径时提交按钮禁用', async () => {
     render(
-      <KnowledgeAddDialog open onOpenChange={() => {}} project="/data/projects/tangoforge" />,
+      <KnowledgeAddDialog
+        open
+        onOpenChange={() => {}}
+        project="/data/projects/tangoforge"
+        onSubmit={() => {}}
+      />,
       {
         wrapper,
       },
     )
     expect(screen.getByRole('button', { name: '提交添加' })).toBeDisabled()
+  })
+})
+
+describe('KnowledgePage 嵌入状态（TF-052）', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tangoforge' })
+    const indexingDoc = {
+      id: 'doc-idx',
+      project_id: 1,
+      path: 'docs/idx.md',
+      abs_path: '/data/projects/tangoforge/docs/idx.md',
+      rel_path: 'docs/idx.md',
+      origin_path: '',
+      display_name: 'idx.md',
+      type: 'text',
+      size: 10,
+      mtime: '2026-08-13T09:00:00+08:00',
+      content_hash: '',
+      summary: '',
+      status: 'indexing',
+      embedded: 0,
+      embedding_model: '',
+      index_error: '',
+      history: [],
+      created_at: '2026-08-13T09:00:00+08:00',
+      updated_at: '2026-08-13T09:00:00+08:00',
+    }
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/documents`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: { items: [indexingDoc], total: 1, page: 0, size: 50 },
+        }),
+      ),
+    )
+  })
+
+  it('正在嵌入文档：列表徽标 + 顶部状态条', async () => {
+    render(<KnowledgePage />, { wrapper })
+    // 列表徽标「正在嵌入」。
+    await waitFor(() => expect(screen.getByText('正在嵌入')).toBeInTheDocument())
+    // 顶部状态条「嵌入中 1 个文档」。
+    expect(screen.getByText(/嵌入中 1 个文档/)).toBeInTheDocument()
+  })
+
+  it('已嵌入文档显示「已嵌入」徽标', async () => {
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/documents`, () =>
+        HttpResponse.json({
+          code: 0,
+          data: {
+            items: [
+              {
+                id: 'doc-ok',
+                project_id: 1,
+                path: 'docs/a.md',
+                abs_path: '/data/projects/tangoforge/docs/a.md',
+                rel_path: 'docs/a.md',
+                origin_path: '',
+                display_name: 'a.md',
+                type: 'text',
+                size: 10,
+                mtime: '2026-08-13T09:00:00+08:00',
+                content_hash: 'h',
+                summary: '',
+                status: 'ok',
+                embedded: 1,
+                embedding_model: 'm',
+                index_error: '',
+                history: [],
+                created_at: '2026-08-13T09:00:00+08:00',
+                updated_at: '2026-08-13T09:00:00+08:00',
+              },
+            ],
+            total: 1,
+            page: 0,
+            size: 50,
+          },
+        }),
+      ),
+    )
+    render(<KnowledgePage />, { wrapper })
+    await waitFor(() => expect(screen.getByText('已嵌入')).toBeInTheDocument())
+    // 无 indexing → 无顶部状态条。
+    expect(screen.queryByText(/嵌入中/)).not.toBeInTheDocument()
   })
 })
