@@ -81,7 +81,7 @@ export function KnowledgeAddDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="min-w-0 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>添加文件到知识库</DialogTitle>
           <DialogDescription>
@@ -89,7 +89,7 @@ export function KnowledgeAddDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {/* 文件选择 */}
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={pickFiles} disabled={!hasDialog}>
@@ -106,7 +106,7 @@ export function KnowledgeAddDialog({
           </div>
 
           {/* 手动路径 */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Input
               value={manualPath}
               onChange={(e) => setManualPath(e.target.value)}
@@ -128,13 +128,15 @@ export function KnowledgeAddDialog({
 
           {/* 已选路径列表 */}
           {paths.length > 0 && (
-            <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-divider p-2">
+            <div className="max-h-44 min-w-0 space-y-1 overflow-x-hidden overflow-y-auto rounded-xl border border-divider p-2">
               {paths.map((p) => (
                 <div
                   key={p}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent"
+                  className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent"
                 >
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{p}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs" title={p}>
+                    {p}
+                  </span>
                   <button
                     type="button"
                     onClick={() => removePath(p)}

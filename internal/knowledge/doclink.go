@@ -202,6 +202,8 @@ func (s *service) RegisterDocument(ctx context.Context, workdir, path, copyMode 
 	}
 	s.logger.Info("knowledge document registered", "workdir", workdir, "id", doc.ID, "abs", doc.AbsPath)
 	s.fireWrite(ctx, workdir, "document_added", doc.ID)
+	// TF-052：注册成功 → 立即触发索引（scanner 防抖处理，避免 fsnotify 未监听该目录）。
+	s.fireDocumentRegistered(ctx, workdir, doc.ID)
 	return doc, nil
 }
 

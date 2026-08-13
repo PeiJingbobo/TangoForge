@@ -137,7 +137,10 @@ func (s *Scanner) scanAll(ctx context.Context, trigger string) ScanStats {
 		}
 		for _, d := range docs.Items {
 			stats.Total++
-			res, err := s.indexIfChanged(ctx, wd, d, trigger)
+			// 单文档索引超时保护（TF-052：默认 5 分钟）。
+			ictx, cancel := context.WithTimeout(ctx, indexTimeout)
+			res, err := s.indexIfChanged(ictx, wd, d, trigger)
+			cancel()
 			if err != nil {
 				stats.Failed++
 				s.logger.Warn("knowledge: scan index failed", "doc", d.ID, "err", err)
@@ -371,11 +374,19 @@ func (s *Scanner) flushPendingFor(ctx context.Context, workdir string) {
 		if err != nil {
 			continue
 		}
-		if _, err := s.indexIfChanged(ctx, workdir, d, "fsnotify"); err != nil {
+		// 单文档索引超时保护（TF-052：默认 5 分钟，防止卡死阻塞后续文档）。
+		ictx, cancel := context.WithTimeout(ctx, indexTimeout)
+		res, err := s.indexIfChanged(ictx, workdir, d, "fsnotify")
+		cancel()
+		if err != nil {
 			s.logger.Warn("knowledge: fsnotify index failed", "doc", docID, "err", err)
 		}
+		_ = res
 	}
 }
+
+// indexTimeout 单文档索引超时（摘要 + 逐 chunk 嵌入串行；默认 5 分钟）。
+const indexTimeout = 5 * time.Minute
 
 // indexIfChanged 变化检测（mtime+size 快速比对 → sha256 确认）→ 重建摘要与向量。
 func (s *Scanner) indexIfChanged(ctx context.Context, workdir string, d Document, trigger string) (IndexResult, error) {
@@ -464,4 +475,21 @@ func (s *Scanner) RefreshWatchDirs() {
 			_ = s.watcher.Add(dir)
 		}
 	}
+}
+
+// IndexNow 立即索引单文档（TF-052：注册/relink/编辑后主动触发，
+// 不依赖 fsnotify 事件；内部 singleflight 保证同一项目串行不重复）。
+// 异步执行：调用立即返回，索引在后台进行（前端轮询/WS 反映进度）。
+func (s *Scanner) IndexNow(workdir, docID string) {
+	clean := filepath.Clean(workdir)
+	ctx := context.Background()
+	// 登记 pending（按 docID，走 flushPendingFor 的 singleflight 串行路径），
+	// 异步触发（不阻塞注册调用方）。
+	s.mu.Lock()
+	if s.pending[clean] == nil {
+		s.pending[clean] = map[string]time.Time{}
+	}
+	s.pending[clean][docID] = time.Now()
+	s.mu.Unlock()
+	go s.flushPendingFor(ctx, clean)
 }

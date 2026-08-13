@@ -110,6 +110,9 @@ type Service interface {
 	SetOnWrite(fn func(ctx context.Context, workdir, action, target string))
 	// SetEmbeddingConfig 设置向量检索用 embedding 配置（TF-047；daemon 启动时注入）。
 	SetEmbeddingConfig(cfg *llm.EmbeddingConfig)
+	// SetOnDocumentRegistered 注入新文档注册回调（TF-052：scanner 立即索引，
+	// 避免依赖 fsnotify 目录未 watch 导致永不索引）。
+	SetOnDocumentRegistered(fn func(ctx context.Context, workdir, docID string))
 	// SummarizeAndCache 生成摘要并按 content_hash 缓存（TF-046；llmClient nil 时跳过）。
 	SummarizeAndCache(ctx context.Context, workdir, docID, contentHash, text string) (string, error)
 	// IndexDocument 文档索引流水线（TF-047：分块 + 摘要 + 嵌入 + 写 chunks）。
@@ -154,6 +157,9 @@ type service struct {
 	llmClient *llm.Client
 	embCfg    *llm.EmbeddingConfig // 向量检索用 embedding 配置（nil = 检索不可用，QA-K23）
 	onWrite   func(ctx context.Context, workdir, action, target string)
+	// onDocumentRegistered 新文档注册成功回调（api 层注入 → scanner 立即索引；
+	// 修复「注册后依赖 fsnotify 但目录未 watch → 永不索引」的问题，TF-052）。
+	onDocumentRegistered func(ctx context.Context, workdir, docID string)
 }
 
 // NewService 构造知识库服务。
@@ -178,6 +184,18 @@ func (s *service) SetOnWrite(fn func(ctx context.Context, workdir, action, targe
 // SetEmbeddingConfig 设置向量检索用 embedding 配置（TF-047；nil = 检索返回未配置错误）。
 func (s *service) SetEmbeddingConfig(cfg *llm.EmbeddingConfig) {
 	s.embCfg = cfg
+}
+
+// SetOnDocumentRegistered 注入新文档注册回调（api 层 → scanner 立即索引）。
+func (s *service) SetOnDocumentRegistered(fn func(ctx context.Context, workdir, docID string)) {
+	s.onDocumentRegistered = fn
+}
+
+// fireDocumentRegistered 触发注册回调（不阻塞；scanner 内部防抖/串行）。
+func (s *service) fireDocumentRegistered(ctx context.Context, workdir, docID string) {
+	if s.onDocumentRegistered != nil {
+		s.onDocumentRegistered(ctx, workdir, docID)
+	}
 }
 
 // fireWrite 触发写操作回调（不阻塞业务）。

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   FileText,
@@ -55,13 +55,17 @@ export function KnowledgePage() {
     total: number
     done: number
     failed: number
-    paths: string[]
+    current: string | null
   } | null>(null)
 
   const submitAdd = (paths: string[], kbId: number, copy: string) => {
     const kbIds = kbId > 0 ? [kbId] : undefined
-    setAddBatch({ total: paths.length, done: 0, failed: 0, paths })
+    setAddBatch({ total: paths.length, done: 0, failed: 0, current: paths[0] ?? null })
     paths.forEach((p, i) => {
+      // 更新当前处理中的文件（顺序推进：该文件注册完成即切换到下一个）。
+      if (i > 0) {
+        setAddBatch((b) => (b && b.current === paths[i - 1] ? { ...b, current: p } : b))
+      }
       register.mutate(
         { path: p, copy, kb_ids: kbIds },
         {
@@ -95,6 +99,20 @@ export function KnowledgePage() {
           d.path.toLowerCase().includes(q.toLowerCase())),
     )
   }, [docList, selectedKB, statusFilter, q])
+
+  // TF-052：持续无进展超时提示（默认 5 分钟）。
+  const [stalled, setStalled] = useState(false)
+  useEffect(() => {
+    // 有进行中任务时启动 5 分钟超时；任务完成/取消后重置。
+    const working =
+      (addBatch && addBatch.done + addBatch.failed < addBatch.total) || indexingCount > 0
+    if (!working) {
+      setStalled(false)
+      return
+    }
+    const t = setTimeout(() => setStalled(true), 5 * 60 * 1000)
+    return () => clearTimeout(t)
+  }, [addBatch, indexingCount])
 
   const createBaseSubmit = () => {
     const name = newKBName.trim()
@@ -135,7 +153,13 @@ export function KnowledgePage() {
 
       {/* TF-052：嵌入任务状态条（添加文件注册进度 + 正在嵌入文档数） */}
       {(addBatch && addBatch.done + addBatch.failed < addBatch.total) || indexingCount > 0 ? (
-        <div className="mt-3 shrink-0 rounded-xl border border-divider bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <div
+          className={`mt-3 shrink-0 rounded-xl border px-3 py-2 text-xs ${
+            stalled
+              ? 'border-warning-200 bg-warning-soft text-warning-ink'
+              : 'border-divider bg-muted/40 text-muted-foreground'
+          }`}
+        >
           <div className="flex items-center gap-2">
             <Loader2 className="size-3.5 shrink-0 animate-spin text-primary-700" />
             <span>
@@ -148,9 +172,21 @@ export function KnowledgePage() {
                 ? ' · '
                 : ''}
               {indexingCount > 0 ? `嵌入中 ${indexingCount} 个文档` : ''}
+              {stalled ? '（已超时，可能阻塞）' : ''}
             </span>
             <span className="ml-auto text-[10px]">完成状态自动刷新</span>
           </div>
+          {/* 当前正在处理的文件 */}
+          {addBatch && addBatch.current && addBatch.done + addBatch.failed < addBatch.total && (
+            <div className="mt-1 truncate pl-5 font-mono text-[11px]" title={addBatch.current}>
+              当前：{addBatch.current}
+            </div>
+          )}
+          {stalled && (
+            <div className="mt-1 pl-5 text-[11px]">
+              超过 5 分钟未完成，请检查守护进程 / embedding 配置（Ollama 是否运行、模型是否可用）。
+            </div>
+          )}
         </div>
       ) : null}
 

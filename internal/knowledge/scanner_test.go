@@ -315,3 +315,44 @@ func waitFor(t *testing.T, cond func() bool) {
 	}
 	t.Fatal("waitFor 超时")
 }
+
+// TF-052：注册文档 → SetOnDocumentRegistered 回调触发（scanner.IndexNow 立即索引）。
+func TestIndexNow_TriggersImmediateIndex(t *testing.T) {
+	svc := NewService(Options{Logger: discardLogger()})
+	svc.SetEmbeddingConfig(mockEmbedFixed(t))
+	workdir := initProject(t)
+	ctx := context.Background()
+
+	sc := newTestScanner(t, svc, svc.(*service).embCfg, 0)
+	sc.RegisterWorkdir(workdir)
+
+	// 模拟 api 层接线：注册成功回调 → scanner.IndexNow 立即索引。
+	var indexed string
+	svc.SetOnDocumentRegistered(func(_ context.Context, _ string, docID string) {
+		indexed = docID
+		sc.IndexNow(workdir, docID)
+	})
+
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if indexed != doc.ID {
+		t.Fatalf("回调未触发: indexed=%q", indexed)
+	}
+	// IndexNow 异步索引 → 等待 embedded=1。
+	waitFor(t, func() bool {
+		d, err := svc.GetDocument(ctx, workdir, doc.ID)
+		return err == nil && d.Embedded == EmbedYes
+	})
+}
+
+// TF-052：SetOnDocumentRegistered 未设置 → 注册不 panic（nil 安全）。
+func TestRegisterDocument_NoCallbackNilSafe(t *testing.T) {
+	svc := newTestService(t)
+	workdir := initProject(t)
+	if _, err := svc.RegisterDocument(context.Background(), workdir,
+		writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+}

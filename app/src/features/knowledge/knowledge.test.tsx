@@ -225,3 +225,57 @@ describe('KnowledgePage 嵌入状态（TF-052）', () => {
     expect(screen.queryByText(/嵌入中/)).not.toBeInTheDocument()
   })
 })
+
+describe('KnowledgePage 添加文件状态条（TF-052）', () => {
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tangoforge' })
+  })
+
+  it('添加文件后顶部状态条显示当前处理中的文件', async () => {
+    // 注册慢响应（挂起），使批处理停留在进行中。
+    const deferred: { resolve: (() => void) | null } = { resolve: null }
+    server.use(
+      http.post(
+        `${DAEMON_BASE_URL}/api/knowledge/documents`,
+        () =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          new Promise<any>((resolve) => {
+            deferred.resolve = () =>
+              resolve(
+                HttpResponse.json(
+                  {
+                    code: 0,
+                    data: {
+                      id: 'doc-pending',
+                      display_name: 'pending.md',
+                      path: '/data/pending.md',
+                      abs_path: '/data/pending.md',
+                      rel_path: '',
+                      type: 'text',
+                      status: 'ok',
+                      embedded: 0,
+                      history: [],
+                    },
+                  },
+                  { status: 201 },
+                ),
+              )
+          }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(<KnowledgePage />, { wrapper })
+    // 打开添加对话框 → 手动路径 → 提交。
+    await user.click(screen.getByRole('button', { name: /添加文件/ }))
+    const input = await screen.findByPlaceholderText(/磁盘路径/)
+    await user.type(input, '/data/pending.md')
+    await user.click(screen.getByRole('button', { name: '添加' }))
+    await user.click(screen.getByRole('button', { name: '提交添加' }))
+    // 状态条显示「正在添加文件 0/1」+ 当前文件。
+    await waitFor(() => expect(screen.getByText(/正在添加文件 0\/1/)).toBeInTheDocument())
+    expect(screen.getByText(/当前：\/data\/pending.md/)).toBeInTheDocument()
+    // 完成注册 → 状态条消失。
+    deferred.resolve?.()
+    await waitFor(() => expect(screen.queryByText(/正在添加文件/)).not.toBeInTheDocument())
+  })
+})

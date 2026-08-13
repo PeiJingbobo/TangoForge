@@ -150,6 +150,10 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, 
 	s.knowledgeSvc.SetEmbeddingConfig(s.embeddingConfig())
 	// Scanner（daemon 启动时由 Start + RegisterWorkdir 接入）。
 	s.knowledgeScanner = knowledge.NewScanner(knowSvc, s.currentConfig().Knowledge, s.embeddingConfig(), logger)
+	// TF-052：新文档注册成功 → scanner 立即索引（不依赖 fsnotify 目录是否已 watch）。
+	s.knowledgeSvc.SetOnDocumentRegistered(func(_ context.Context, workdir, docID string) {
+		s.knowledgeScanner.IndexNow(workdir, docID)
+	})
 
 	s.parserSvc = parser.NewService(parser.Options{
 		Logger: logger,
