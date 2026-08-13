@@ -10,7 +10,7 @@ TangoForge 把「任务池 · 状态机 · 导入导出 · Agent 协作」打包
 [![GitHub Release](https://img.shields.io/github/v/release/PeiJingbobo/TangoForge?color=blue)](https://github.com/PeiJingbobo/TangoForge/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
 
-![TangoForge 看板界面](https://github.com/PeiJingbobo/TangoForge/raw/main/app/src/assets/screenshots/kanban.png)
+![TangoForge 看板界面](https://tangoforge.pei.cool/assets/screenshots/overview-dark.png)
 <!-- TODO: 补充看板页面截图，保存到 app/src/assets/screenshots/kanban.png 后替换上方 URL 即生效 -->
 
 ---
