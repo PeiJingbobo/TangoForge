@@ -356,3 +356,30 @@ func TestRegisterDocument_NoCallbackNilSafe(t *testing.T) {
 		t.Fatalf("register: %v", err)
 	}
 }
+
+// TF-052：有 hash 但未嵌入的文档，扫描时补嵌入（修复「永不嵌入」）。
+func TestScanner_ReIndexNotEmbedded(t *testing.T) {
+	svc := NewService(Options{Logger: discardLogger()})
+	svc.SetEmbeddingConfig(mockEmbedFixed(t))
+	workdir := initProject(t)
+	ctx := context.Background()
+
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// 模拟：hash 已写但嵌入失败/中断（embedded=0、status=ok）。
+	conn := mustProjectDB(t, svc, workdir)
+	if _, err := conn.Exec(`UPDATE knowledge_documents SET content_hash='stale', embedded=0, status='ok' WHERE id=?`, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+	sc := newTestScanner(t, svc, svc.(*service).embCfg, 0)
+	sc.RegisterWorkdir(workdir)
+	if _, err := sc.Scan(ctx); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	d, _ := svc.GetDocument(ctx, workdir, doc.ID)
+	if d.Embedded != EmbedYes {
+		t.Fatalf("扫描后应补嵌入: %+v", d)
+	}
+}

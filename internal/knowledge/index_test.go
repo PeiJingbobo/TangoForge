@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"tangoforge/internal/llm"
 )
@@ -361,4 +362,55 @@ func TestIndexDocument_EmitsEvents(t *testing.T) {
 	if !hasFailed {
 		t.Fatalf("嵌入失败应推送 index_failed，got %v", actions)
 	}
+}
+
+// TF-052：IndexDocument 嵌入前先置 status=indexing（前端「正在嵌入」中间态）。
+func TestIndexDocument_SetsIndexingFirst(t *testing.T) {
+	// 慢 embedding（延迟响应），确保能在完成前观察到 indexing 状态。
+	mux := http.NewServeMux()
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	emb := &llm.EmbeddingConfig{BaseURL: srv.URL, Model: "m", Kind: llm.EmbedOpenAI}
+
+	svc := NewService(Options{Logger: discardLogger()})
+	svc.SetEmbeddingConfig(emb)
+	workdir := initProject(t)
+	ctx := context.Background()
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	go func() {
+		_, _ = svc.IndexDocument(ctx, workdir, doc.ID, IndexOptions{Embedding: emb})
+	}()
+	// 等待进入嵌入（status=indexing）。
+	deadline := time.Now().Add(2 * time.Second)
+	sawIndexing := false
+	for time.Now().Before(deadline) {
+		d, err := svc.GetDocument(ctx, workdir, doc.ID)
+		if err == nil && d.Status == DocStatusIndexing {
+			sawIndexing = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !sawIndexing {
+		t.Fatal("嵌入前应可见 indexing 中间态")
+	}
+	// 等待完成 → ok + embedded=1。
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		d, err := svc.GetDocument(ctx, workdir, doc.ID)
+		if err == nil && d.Embedded == EmbedYes {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("嵌入未完成")
 }

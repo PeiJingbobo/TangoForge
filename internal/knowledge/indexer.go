@@ -190,6 +190,14 @@ func (s *service) IndexDocument(ctx context.Context, workdir, docID string, opts
 	}
 
 	// 逐 chunk 嵌入（串行，singleflight 由调用方保证）。
+	// 先标记「正在嵌入」（TF-052：前端列表徽标 + 顶部状态条依赖 status=indexing 轮询/WS）。
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE knowledge_documents SET status = ?, updated_at = ? WHERE id = ?`,
+		DocStatusIndexing, nowRFC3339(), docID); err != nil {
+		return res, fmt.Errorf("knowledge: mark indexing: %w", err)
+	}
+	// 推送状态变更 → 前端即时刷新（列表显示「正在嵌入」、顶部显示进度条）。
+	s.fireWrite(ctx, workdir, "document_updated", docID)
 	// 先清空旧向量（重索引幂等）。
 	if _, err := conn.ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE document_id = ?`, docID); err != nil {
 		return res, fmt.Errorf("knowledge: clear old chunks: %w", err)

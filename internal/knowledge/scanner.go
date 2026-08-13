@@ -408,6 +408,11 @@ func (s *Scanner) indexIfChanged(ctx context.Context, workdir string, d Document
 			}
 			return s.indexDocument(workdir, d, sha256Hex(data), false)
 		}
+		// 有 hash 但未嵌入（如嵌入失败/中断遗留）→ 补嵌入。
+		if d.Embedded != EmbedYes {
+			s.logger.Info("knowledge: doc has hash but not embedded, re-indexing", "doc", d.ID)
+			return s.indexDocument(workdir, d, d.ContentHash, false)
+		}
 		// 无变化 → 模型漂移检测（embedding_model 变更 → 全量重嵌）。
 		if s.modelDrifted(d) {
 			s.logger.Info("knowledge: embedding model drift, re-embedding", "doc", d.ID)
