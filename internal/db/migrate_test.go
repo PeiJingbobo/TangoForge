@@ -168,8 +168,8 @@ func TestMigrate_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("current version: %v", err)
 	}
-	if v1 != v2 || v2 != 5 {
-		t.Errorf("version should stay 5 after idempotent migrate, got %d -> %d", v1, v2)
+	if v1 != v2 || v2 != 6 {
+		t.Errorf("version should stay 6 after idempotent migrate, got %d -> %d", v1, v2)
 	}
 }
 
@@ -443,5 +443,53 @@ func TestFileFingerprint_SameAs(t *testing.T) {
 	missing := filepath.Join(dir, "nope.db")
 	if fp.SameAs(missing) {
 		t.Fatal("文件不存在应 SameAs=false")
+	}
+}
+
+// TF-052：v6 迁移为 knowledge_documents 增加 archived 列（归档语义）。
+func TestMigrate_V6AddArchivedColumn(t *testing.T) {
+	conn := openMem(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, conn, ProjectMigrations); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	assertColumns(t, conn, "knowledge_documents", "id", "project_id", "path", "abs_path", "display_name", "archived")
+	// 默认值：插入不带 archived → 0。
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO knowledge_documents (id, project_id, path, abs_path, display_name, created_at, updated_at)
+		 VALUES ('d1', 1, 'a.md', '/a.md', 'a', 'x', 'x')`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	var archived int
+	if err := conn.QueryRow(`SELECT archived FROM knowledge_documents WHERE id='d1'`).Scan(&archived); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if archived != 0 {
+		t.Fatalf("archived 默认应为 0，got %d", archived)
+	}
+	// 回退后 archived 列消失（v5 结构无 archived）。
+	if err := MigrateDown(ctx, conn, ProjectMigrations, 5); err != nil {
+		t.Fatalf("down to 5: %v", err)
+	}
+	var cols []string
+	rows, err := conn.Query(`PRAGMA table_info(knowledge_documents)`)
+	if err != nil {
+		t.Fatalf("pragma: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			t.Fatalf("scan col: %v", err)
+		}
+		cols = append(cols, name)
+	}
+	for _, c := range cols {
+		if c == "archived" {
+			t.Fatal("down 后 archived 列应被移除")
+		}
 	}
 }

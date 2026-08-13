@@ -624,6 +624,13 @@ func (s *service) ListDocuments(ctx context.Context, workdir string, f DocumentF
 
 	var conds []string
 	var args []any
+	// TF-052 归档过滤：nil/默认 → 仅未归档；true → 仅归档。
+	switch {
+	case f.Archived == nil || !*f.Archived:
+		conds = append(conds, `d.archived = 0`)
+	case *f.Archived:
+		conds = append(conds, `d.archived = 1`)
+	}
 	if f.KBID > 0 {
 		conds = append(conds, `d.id IN (SELECT document_id FROM knowledge_base_documents WHERE kb_id = ?)`)
 		args = append(args, f.KBID)
@@ -718,3 +725,42 @@ func isUniqueViolation(err error) bool {
 
 // timeRFC3339 时间格式（与 nowRFC3339 一致的 RFC3339 本地时区）。
 const timeRFC3339 = "2006-01-02T15:04:05Z07:00"
+
+// ArchiveDocument 归档文档（TF-052，QA 2026-08-13）：
+// 从默认列表/检索/扫描隐藏，但任务引用（task_documents）与磁盘文件保留可访问。
+// 幂等：已归档再归档不报错。写操作 → 审计/WS 事件 document_archived。
+func (s *service) ArchiveDocument(ctx context.Context, workdir, id string) error {
+	conn, err := s.projectDB(ctx, workdir)
+	if err != nil {
+		return err
+	}
+	if _, err := s.getDocumentByID(ctx, conn, id); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE knowledge_documents SET archived = 1, updated_at = ? WHERE id = ?`,
+		nowRFC3339(), id); err != nil {
+		return fmt.Errorf("knowledge: archive document %s: %w", id, err)
+	}
+	s.fireWrite(ctx, workdir, "document_archived", id)
+	return nil
+}
+
+// RestoreDocument 还原归档文档（TF-052）：重新出现在列表/检索中，任务引用与文件保持。
+// 幂等：未归档文档再还原不报错（仅确保 archived=0）。
+func (s *service) RestoreDocument(ctx context.Context, workdir, id string) error {
+	conn, err := s.projectDB(ctx, workdir)
+	if err != nil {
+		return err
+	}
+	if _, err := s.getDocumentByID(ctx, conn, id); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE knowledge_documents SET archived = 0, updated_at = ? WHERE id = ?`,
+		nowRFC3339(), id); err != nil {
+		return fmt.Errorf("knowledge: restore document %s: %w", id, err)
+	}
+	s.fireWrite(ctx, workdir, "document_restored", id)
+	return nil
+}

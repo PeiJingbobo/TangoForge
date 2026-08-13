@@ -454,6 +454,8 @@ func (s *Server) Handler() http.Handler {
 				r.Get("/documents/{id}/content", s.perm("knowledge.read", s.handleKnowledgeDocumentContentGet))
 				r.Put("/documents/{id}/content", s.perm("knowledge.write", s.handleKnowledgeDocumentContentPut))
 				r.Post("/documents/{id}/relink", s.perm("knowledge.write", s.handleKnowledgeDocumentRelink))
+				r.Post("/documents/{id}/archive", s.perm("knowledge.write", s.handleKnowledgeDocumentArchive))
+				r.Post("/documents/{id}/restore", s.perm("knowledge.write", s.handleKnowledgeDocumentRestore))
 				r.Delete("/documents/{id}", s.perm("knowledge.write", s.handleKnowledgeDocumentDelete))
 				r.Post("/link", s.perm("knowledge.write", s.handleKnowledgeLink))
 				r.Post("/unlink", s.perm("knowledge.write", s.handleKnowledgeUnlink))

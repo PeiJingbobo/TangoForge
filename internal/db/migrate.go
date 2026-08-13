@@ -404,6 +404,62 @@ var ProjectMigrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// v6（TF-052 归档）：knowledge_documents 增加 archived 列。
+		// 归档语义：文档从默认列表/检索/扫描隐藏，但任务引用（task_documents）与文件保留可访问。
+		Version: 6,
+		Name:    "add_document_archived",
+		Up: func(ctx context.Context, tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx,
+				`ALTER TABLE knowledge_documents ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return err
+			}
+			return nil
+		},
+		Down: func(ctx context.Context, tx *sql.Tx) error {
+			// SQLite 不支持 DROP COLUMN；重建表回退到 v5 结构（无 archived 列）。
+			stmts := []string{
+				`CREATE TABLE knowledge_documents_v5 (
+					id             TEXT PRIMARY KEY,
+					project_id     INTEGER NOT NULL DEFAULT 1,
+					path           TEXT NOT NULL,
+					abs_path       TEXT NOT NULL,
+					rel_path       TEXT,
+					origin_path    TEXT,
+					display_name   TEXT NOT NULL,
+					type           TEXT NOT NULL DEFAULT 'text',
+					size           INTEGER NOT NULL DEFAULT 0,
+					mtime          TEXT,
+					content_hash   TEXT,
+					summary        TEXT NOT NULL DEFAULT '',
+					status         TEXT NOT NULL DEFAULT 'ok',
+					embedded       INTEGER NOT NULL DEFAULT 0,
+					embedding_model TEXT,
+					index_error    TEXT,
+					history        TEXT NOT NULL DEFAULT '[]',
+					created_at     TEXT NOT NULL,
+					updated_at     TEXT NOT NULL
+				)`,
+				`INSERT INTO knowledge_documents_v5 (id, project_id, path, abs_path, rel_path, origin_path,
+					display_name, type, size, mtime, content_hash, summary, status, embedded,
+					embedding_model, index_error, history, created_at, updated_at)
+					SELECT id, project_id, path, abs_path, rel_path, origin_path,
+					display_name, type, size, mtime, content_hash, summary, status, embedded,
+					embedding_model, index_error, history, created_at, updated_at
+					FROM knowledge_documents`,
+				`DROP TABLE knowledge_documents`,
+				`ALTER TABLE knowledge_documents_v5 RENAME TO knowledge_documents`,
+				`CREATE UNIQUE INDEX idx_kd_abs ON knowledge_documents(project_id, abs_path)`,
+				`CREATE INDEX idx_kd_status ON knowledge_documents(status)`,
+			}
+			for _, stmt := range stmts {
+				if _, err := tx.ExecContext(ctx, stmt); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // Migrate 将数据库向上迁移至迁移集合中的最新版本。

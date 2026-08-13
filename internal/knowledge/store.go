@@ -92,6 +92,10 @@ type Service interface {
 	UpdateContent(ctx context.Context, workdir, id, content string) error
 	// DeleteDocument 解除引用（删文档 + chunks + 边）。
 	DeleteDocument(ctx context.Context, workdir, id string) error
+	// ArchiveDocument 归档文档（TF-052：从列表/检索隐藏，任务引用与文件保留）。
+	ArchiveDocument(ctx context.Context, workdir, id string) error
+	// RestoreDocument 还原归档文档。
+	RestoreDocument(ctx context.Context, workdir, id string) error
 	// RelinkDocument 重新链接 {new_path, copy}（更新路径 + history + 重置重建索引，QA-K15）。
 	RelinkDocument(ctx context.Context, workdir, id, newPath, copyMode string) (Document, error)
 
@@ -128,8 +132,10 @@ type DocumentFilter struct {
 	KBID   int64  // 0 = 全部
 	Status string // 空 = 全部
 	Q      string // 匹配 display_name/path/abs_path
-	Page   int
-	Size   int
+	// Archived 归档过滤（TF-052）：nil = 仅未归档（默认）；true = 仅归档；false = 仅未归档。
+	Archived *bool
+	Page     int
+	Size     int
 }
 
 // DocumentListResult 文档列表结果。
@@ -448,12 +454,12 @@ func scanDocument(scanner interface{ Scan(...any) error }) (Document, error) {
 	var d Document
 	var relPath, originPath, mTime, contentHash, summary, status, embedModel, indexErr sql.NullString
 	var size int64
-	var embedded int
+	var embedded, archived int
 	var history string
 	var created, updated string
 	err := scanner.Scan(&d.ID, &d.ProjectID, &d.Path, &d.AbsPath, &relPath, &originPath, &d.DisplayName,
 		&d.Type, &size, &mTime, &contentHash, &summary, &status, &embedded, &embedModel, &indexErr,
-		&history, &created, &updated)
+		&history, &created, &updated, &archived)
 	if err != nil {
 		return Document{}, err
 	}
@@ -470,6 +476,7 @@ func scanDocument(scanner interface{ Scan(...any) error }) (Document, error) {
 	d.Embedded = embedded
 	d.EmbeddingModel = embedModel.String
 	d.IndexError = indexErr.String
+	d.Archived = archived != 0
 	d.CreatedAt = created
 	d.UpdatedAt = updated
 	if history != "" {
@@ -478,9 +485,9 @@ func scanDocument(scanner interface{ Scan(...any) error }) (Document, error) {
 	return d, nil
 }
 
-// documentColumns 文档表查询列（与 scanDocument 对齐）。
+// documentColumns 文档表查询列（与 scanDocument 对齐；archived 位于末尾）。
 const documentColumns = `id, project_id, path, abs_path, rel_path, origin_path, display_name,
-	type, size, mtime, content_hash, summary, status, embedded, embedding_model, index_error, history, created_at, updated_at`
+	type, size, mtime, content_hash, summary, status, embedded, embedding_model, index_error, history, created_at, updated_at, archived`
 
 // qualifiedDocumentColumns 返回带表别名前缀的文档列清单（联表查询消歧义用）。
 func qualifiedDocumentColumns(alias string) string {

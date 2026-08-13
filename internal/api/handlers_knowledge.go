@@ -95,6 +95,11 @@ func (s *Server) handleKnowledgeDocumentsGet(w http.ResponseWriter, r *http.Requ
 		Status: q.Get("filter[status]"),
 		Q:      q.Get("q"),
 	}
+	// TF-052 归档过滤：filter[archived]=true/false。
+	if v := q.Get("filter[archived]"); v != "" {
+		val := v == "true" || v == "1"
+		f.Archived = &val
+	}
 	if kb := q.Get("filter[kb_id]"); kb != "" {
 		f.KBID, _ = strconv.ParseInt(kb, 10, 64)
 	}
@@ -216,6 +221,28 @@ func (s *Server) handleKnowledgeDocumentDelete(w http.ResponseWriter, r *http.Re
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]any{"id": id}})
+}
+
+// handleKnowledgeDocumentArchive 归档文档（POST /api/knowledge/documents/:id/archive，TF-052）。
+func (s *Server) handleKnowledgeDocumentArchive(w http.ResponseWriter, r *http.Request) {
+	workdir := auth.WorkdirFrom(r.Context())
+	id := chi.URLParam(r, "id")
+	if err := s.knowledgeSvc.ArchiveDocument(r.Context(), workdir, id); err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]any{"id": id, "archived": true}})
+}
+
+// handleKnowledgeDocumentRestore 还原归档文档（POST /api/knowledge/documents/:id/restore，TF-052）。
+func (s *Server) handleKnowledgeDocumentRestore(w http.ResponseWriter, r *http.Request) {
+	workdir := auth.WorkdirFrom(r.Context())
+	id := chi.URLParam(r, "id")
+	if err := s.knowledgeSvc.RestoreDocument(r.Context(), workdir, id); err != nil {
+		writeBizError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"code": 0, "data": map[string]any{"id": id, "archived": false}})
 }
 
 // ---- 任务关联 ----

@@ -193,3 +193,66 @@ func writeTestFile(t *testing.T, workdir, rel, content string) string {
 	}
 	return abs
 }
+
+// TF-052：归档 → 默认列表隐藏 + 归档列表可见 + 任务引用保留 + 还原。
+func TestAPI_Knowledge_ArchiveRestore(t *testing.T) {
+	srv := newAPIServer(t, nil)
+	defer func() { _ = srv.Close() }()
+	dir := importProjectViaAPI(t, srv)
+
+	// 建任务 + 注册文档 + 关联。
+	rec := uiReq(t, srv, http.MethodPost, "/api/tasks", dir, `{"title":"t"}`)
+	body := mustCode(t, rec, http.StatusCreated, "create task")
+	var taskResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(body), &taskResp)
+
+	abs := writeTestFile(t, dir, "docs/a.md", "# a")
+	rec = uiReq(t, srv, http.MethodPost, "/api/knowledge/documents", dir,
+		fmt.Sprintf(`{"path":%q}`, abs))
+	body = mustCode(t, rec, http.StatusCreated, "register")
+	var docResp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal([]byte(body), &docResp)
+	rec = uiReq(t, srv, http.MethodPost, "/api/knowledge/link", dir,
+		fmt.Sprintf(`{"task_id":%q,"document_id":%q}`, taskResp.Data.ID, docResp.Data.ID))
+	mustCode(t, rec, http.StatusOK, "link")
+
+	// 归档。
+	rec = uiReq(t, srv, http.MethodPost, "/api/knowledge/documents/"+docResp.Data.ID+"/archive", dir, "")
+	mustCode(t, rec, http.StatusOK, "archive")
+
+	// 默认列表隐藏。
+	rec = uiReq(t, srv, http.MethodGet, "/api/knowledge/documents", dir, "")
+	body = mustCode(t, rec, http.StatusOK, "list default")
+	if strings.Contains(body, "a.md") {
+		t.Fatalf("归档后默认列表应隐藏: %s", body)
+	}
+	// 归档列表可见。
+	rec = uiReq(t, srv, http.MethodGet, "/api/knowledge/documents?filter[archived]=true", dir, "")
+	body = mustCode(t, rec, http.StatusOK, "list archived")
+	if !strings.Contains(body, "a.md") || !strings.Contains(body, `"archived":true`) {
+		t.Fatalf("归档列表应含 a.md: %s", body)
+	}
+	// 任务引用保留（任务详情内嵌文档）。
+	rec = uiReq(t, srv, http.MethodGet, "/api/tasks/"+taskResp.Data.ID, dir, "")
+	body = mustCode(t, rec, http.StatusOK, "task detail")
+	if !strings.Contains(body, "a.md") {
+		t.Fatalf("归档后任务引用应保留: %s", body)
+	}
+
+	// 还原 → 重新可见。
+	rec = uiReq(t, srv, http.MethodPost, "/api/knowledge/documents/"+docResp.Data.ID+"/restore", dir, "")
+	mustCode(t, rec, http.StatusOK, "restore")
+	rec = uiReq(t, srv, http.MethodGet, "/api/knowledge/documents", dir, "")
+	body = mustCode(t, rec, http.StatusOK, "list after restore")
+	if !strings.Contains(body, "a.md") {
+		t.Fatalf("还原后应重新可见: %s", body)
+	}
+}

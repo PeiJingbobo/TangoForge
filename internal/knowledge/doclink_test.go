@@ -463,3 +463,99 @@ func TestListDocuments_Filters(t *testing.T) {
 		t.Fatalf("missing filter wrong: %+v", res)
 	}
 }
+
+func TestArchiveRestoreDocument(t *testing.T) {
+	svc := newTestServiceWithTasks(t, fakeTaskLister{})
+	workdir := initProject(t)
+	ctx := context.Background()
+
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# a"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := svc.LinkTask(ctx, workdir, "task-1", doc.ID, "", CopyAuto, nil); err != nil {
+		t.Fatalf("link: %v", err)
+	}
+
+	// 归档 → 默认列表隐藏，但详情/任务引用/文件保留。
+	if err := svc.ArchiveDocument(ctx, workdir, doc.ID); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	res, _ := svc.ListDocuments(ctx, workdir, DocumentFilter{})
+	if res.Total != 0 {
+		t.Fatalf("归档后默认列表应隐藏，got %d", res.Total)
+	}
+	// 归档列表可见。
+	arch, _ := svc.ListDocuments(ctx, workdir, DocumentFilter{Archived: testBoolPtr(true)})
+	if arch.Total != 1 || !arch.Items[0].Archived {
+		t.Fatalf("归档列表应含 1 个归档文档: %+v", arch)
+	}
+	// 详情仍可读 + 任务引用保留。
+	got, err := svc.GetDocument(ctx, workdir, doc.ID)
+	if err != nil {
+		t.Fatalf("归档后详情应可读: %v", err)
+	}
+	if !got.Archived || got.TaskCount != 1 {
+		t.Fatalf("归档后详情 archived/taskCount: %+v", got)
+	}
+	taskDocs, _ := svc.TaskDocuments(ctx, workdir, "task-1")
+	if len(taskDocs) != 1 {
+		t.Fatalf("归档后任务引用应保留: %+v", taskDocs)
+	}
+	// 文件可访问。
+	if _, err := os.Stat(doc.AbsPath); err != nil {
+		t.Fatalf("归档后文件应可访问: %v", err)
+	}
+
+	// 还原 → 重新出现在默认列表。
+	if err := svc.RestoreDocument(ctx, workdir, doc.ID); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	res2, _ := svc.ListDocuments(ctx, workdir, DocumentFilter{})
+	if res2.Total != 1 || res2.Items[0].Archived {
+		t.Fatalf("还原后应重新可见: %+v", res2)
+	}
+
+	// 幂等：重复归档/还原不报错。
+	if err := svc.ArchiveDocument(ctx, workdir, doc.ID); err != nil {
+		t.Fatalf("re-archive: %v", err)
+	}
+	if err := svc.RestoreDocument(ctx, workdir, doc.ID); err != nil {
+		t.Fatalf("re-restore: %v", err)
+	}
+	// 不存在文档 → NOT_FOUND。
+	if err := svc.ArchiveDocument(ctx, workdir, "nope"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("归档不存在文档应 NOT_FOUND，got %v", err)
+	}
+	if err := svc.RestoreDocument(ctx, workdir, "nope"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("还原不存在文档应 NOT_FOUND，got %v", err)
+	}
+}
+
+func TestSearch_ExcludesArchived(t *testing.T) {
+	svc := newTestService(t)
+	svc.SetEmbeddingConfig(mockEmbedFixed(t))
+	workdir := initProject(t)
+	ctx := context.Background()
+
+	doc, err := svc.RegisterDocument(ctx, workdir, writeFile(t, workdir, "a.md", "# 内容"), CopyAuto, nil)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := svc.IndexDocument(ctx, workdir, doc.ID, IndexOptions{Embedding: svc.(*service).embCfg}); err != nil {
+		t.Fatalf("index: %v", err)
+	}
+	// 归档前检索命中。
+	res, _ := svc.Search(ctx, workdir, SearchQuery{Q: "内容"})
+	if res.Total != 1 {
+		t.Fatalf("归档前应命中: %d", res.Total)
+	}
+	// 归档后检索排除。
+	if err := svc.ArchiveDocument(ctx, workdir, doc.ID); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	res2, _ := svc.Search(ctx, workdir, SearchQuery{Q: "内容"})
+	if res2.Total != 0 {
+		t.Fatalf("归档后检索应排除: %d", res2.Total)
+	}
+}

@@ -82,3 +82,6 @@ func mustProjectDB(t *testing.T, svc Service, workdir string) *sql.DB {
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn
 }
+
+// testBoolPtr 返回 bool 指针（测试辅助）。
+func testBoolPtr(v bool) *bool { return &v }

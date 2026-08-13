@@ -94,7 +94,7 @@ func (s *service) Search(ctx context.Context, workdir string, q SearchQuery) (Se
 		       d.created_at, d.updated_at
 		FROM knowledge_chunks c
 		JOIN knowledge_documents d ON d.id = c.document_id
-		WHERE d.embedded = 1 AND d.status != 'failed'`+kbFilter, args...)
+		WHERE d.embedded = 1 AND d.status != 'failed' AND d.archived = 0`+kbFilter, args...)
 	if err != nil {
 		return SearchResult{}, fmt.Errorf("knowledge: search scan: %w", err)
 	}

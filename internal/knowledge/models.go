@@ -19,25 +19,28 @@ type KnowledgeBase struct {
 //
 // 唯一性：同一项目内按 abs_path 唯一（idx_kd_abs）；多库/多任务共享同一记录与同一份向量。
 type Document struct {
-	ID             string        `json:"id"`
-	ProjectID      int64         `json:"project_id"`
-	Path           string        `json:"path"`        // 引用路径（相对 workdir 或绝对，原始形态）
-	AbsPath        string        `json:"abs_path"`    // 规范化绝对路径（唯一键）
-	RelPath        string        `json:"rel_path"`    // 相对 workdir 路径（项目内时）
-	OriginPath     string        `json:"origin_path"` // 外部文件拷贝前的原始绝对路径
-	DisplayName    string        `json:"display_name"`
-	Type           string        `json:"type"`  // text / binary
-	Size           int64         `json:"size"`  // 字节
-	MTime          string        `json:"mtime"` // RFC3339（文件修改时间）
-	ContentHash    string        `json:"content_hash"`
-	Summary        string        `json:"summary"`
-	Status         string        `json:"status"`          // ok / missing / indexing / failed
-	Embedded       int           `json:"embedded"`        // 0 未嵌入 / 1 已嵌入 / 2 失败
-	EmbeddingModel string        `json:"embedding_model"` // 生成向量时的模型（漂移检测）
-	IndexError     string        `json:"index_error"`
-	History        []PathHistory `json:"history"` // JSON：[{path, relinked_at}]
-	CreatedAt      string        `json:"created_at"`
-	UpdatedAt      string        `json:"updated_at"`
+	ID             string `json:"id"`
+	ProjectID      int64  `json:"project_id"`
+	Path           string `json:"path"`        // 引用路径（相对 workdir 或绝对，原始形态）
+	AbsPath        string `json:"abs_path"`    // 规范化绝对路径（唯一键）
+	RelPath        string `json:"rel_path"`    // 相对 workdir 路径（项目内时）
+	OriginPath     string `json:"origin_path"` // 外部文件拷贝前的原始绝对路径
+	DisplayName    string `json:"display_name"`
+	Type           string `json:"type"`  // text / binary
+	Size           int64  `json:"size"`  // 字节
+	MTime          string `json:"mtime"` // RFC3339（文件修改时间）
+	ContentHash    string `json:"content_hash"`
+	Summary        string `json:"summary"`
+	Status         string `json:"status"`          // ok / missing / indexing / failed
+	Embedded       int    `json:"embedded"`        // 0 未嵌入 / 1 已嵌入 / 2 失败
+	EmbeddingModel string `json:"embedding_model"` // 生成向量时的模型（漂移检测）
+	IndexError     string `json:"index_error"`
+	// Archived 归档标记（TF-052）：归档后从默认列表/检索/扫描隐藏，
+	// 任务引用（task_documents）与文件保留可访问。
+	Archived  bool          `json:"archived"`
+	History   []PathHistory `json:"history"` // JSON：[{path, relinked_at}]
+	CreatedAt string        `json:"created_at"`
+	UpdatedAt string        `json:"updated_at"`
 	// 详情扩展（非表字段）：关联任务数 / 所属库列表。
 	TaskCount int     `json:"task_count,omitempty"`
 	KBs       []int64 `json:"kb_ids,omitempty"`

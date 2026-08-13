@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
+  Archive,
   FileText,
   Library,
   Loader2,
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  useArchiveKnowledgeDocument,
   useCancelQueueTask,
   useCreateKnowledgeBase,
   useDeleteKnowledgeBase,
@@ -23,6 +25,7 @@ import {
   useKnowledgeScan,
   useKnowledgeSearch,
   useRegisterKnowledgeDocument,
+  useRestoreKnowledgeDocument,
   useRetryQueueTask,
 } from '@/hooks/useKnowledge'
 import { useProjectId } from '@/hooks/useProject'
@@ -45,16 +48,20 @@ export function KnowledgePage() {
   const [docId, setDocId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [newKBName, setNewKBName] = useState('')
+  // TF-052 归档视图：false = 默认列表（未归档）；true = 归档视图。
+  const [showArchived, setShowArchived] = useState(false)
   const { data: bases, isLoading: basesLoading } = useKnowledgeBases(pid)
   // 选中库时用后端 filter[kb_id] 过滤（列表接口不返回 kb_ids，本地过滤会全空）。
   const { data: docList, isLoading: docsLoading } = useKnowledgeDocuments(
-    selectedKB ? { kb_id: selectedKB } : undefined,
+    { kb_id: selectedKB ?? undefined, archived: showArchived },
     pid,
   )
   const createBase = useCreateKnowledgeBase(pid)
   const deleteBase = useDeleteKnowledgeBase(pid)
   const scan = useKnowledgeScan(pid)
   const register = useRegisterKnowledgeDocument(pid)
+  const archiveDoc = useArchiveKnowledgeDocument(pid)
+  const restoreDoc = useRestoreKnowledgeDocument(pid)
   const queue = useKnowledgeQueue(pid)
   const cancelTask = useCancelQueueTask(pid)
   const retryTask = useRetryQueueTask(pid)
@@ -383,6 +390,15 @@ export function KnowledgePage() {
               <Plus className="size-3.5" />
               添加文件
             </Button>
+            <Button
+              variant={showArchived ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              <Archive className="size-3.5" />
+              {showArchived ? '返回文档' : '归档'}
+            </Button>
           </div>
 
           {/* 检索框 */}
@@ -448,12 +464,30 @@ export function KnowledgePage() {
                 </div>
               ) : docs.length === 0 ? (
                 <div className="grid place-items-center py-16 text-sm text-muted-foreground">
-                  暂无文档 — 在任务详情「添加资料」或下方注册
+                  {showArchived ? '暂无归档文档' : '暂无文档 — 在任务详情「添加资料」或下方注册'}
                 </div>
               ) : (
                 <div className="space-y-2">
                   {docs.map((d) => (
-                    <DocCard key={d.id} doc={d} onClick={() => setDocId(d.id)} />
+                    <DocCard
+                      key={d.id}
+                      doc={d}
+                      showArchived={showArchived}
+                      onClick={() => setDocId(d.id)}
+                      onArchive={(id) =>
+                        archiveDoc.mutate(id, {
+                          onSuccess: () =>
+                            toast.success('已归档（任务引用与文件保留，可在「归档」视图还原）'),
+                          onError: (e) => toast.error(e instanceof Error ? e.message : '归档失败'),
+                        })
+                      }
+                      onRestore={(id) =>
+                        restoreDoc.mutate(id, {
+                          onSuccess: () => toast.success('已还原'),
+                          onError: (e) => toast.error(e instanceof Error ? e.message : '还原失败'),
+                        })
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -484,30 +518,65 @@ export function KnowledgePage() {
   )
 }
 
-function DocCard({ doc, onClick }: { doc: KnowledgeDocument; onClick: () => void }) {
+function DocCard({
+  doc,
+  showArchived,
+  onArchive,
+  onRestore,
+  onClick,
+}: {
+  doc: KnowledgeDocument
+  showArchived: boolean
+  onArchive: (id: string) => void
+  onRestore: (id: string) => void
+  onClick: () => void
+}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl border border-divider px-3 py-2.5 text-left transition-colors hover:bg-accent"
-    >
-      <FileText className="size-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{doc.display_name}</span>
-          <StatusBadge status={doc.status} embedded={doc.embedded} />
+    <div className="flex w-full items-center gap-3 rounded-xl border border-divider px-3 py-2.5 text-left transition-colors hover:bg-accent">
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <FileText className="size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium">{doc.display_name}</span>
+            <StatusBadge status={doc.status} embedded={doc.embedded} />
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+            {doc.path}
+          </div>
+          {doc.summary && (
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{doc.summary}</p>
+          )}
         </div>
-        <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-          {doc.path}
-        </div>
-        {doc.summary && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{doc.summary}</p>
-        )}
-      </div>
+      </button>
       {doc.task_count ? (
         <span className="shrink-0 text-[10px] text-muted-foreground">{doc.task_count} 任务</span>
       ) : null}
-    </button>
+      {/* TF-052 归档/还原操作 */}
+      {showArchived ? (
+        <button
+          type="button"
+          onClick={() => onRestore(doc.id)}
+          className="shrink-0 rounded-lg border border-divider px-2 py-1 text-[11px] text-primary-700 transition-colors hover:bg-primary-50"
+          aria-label={`还原文档 ${doc.display_name}`}
+        >
+          还原
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onArchive(doc.id)}
+          className="shrink-0 rounded-lg border border-divider px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent"
+          title="归档（从列表/检索隐藏，任务引用与文件保留）"
+          aria-label={`归档文档 ${doc.display_name}`}
+        >
+          归档
+        </button>
+      )}
+    </div>
   )
 }
 

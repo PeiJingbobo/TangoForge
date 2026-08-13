@@ -21,9 +21,9 @@ export function useKnowledgeBases(project?: string) {
   })
 }
 
-/** 文档列表（kb/status/q 过滤；有 indexing 文档时轮询刷新以展示嵌入进度） */
+/** 文档列表（kb/status/q/archived 过滤；有 indexing 文档时轮询刷新以展示嵌入进度） */
 export function useKnowledgeDocuments(
-  filter?: { kb_id?: number; status?: string; q?: string },
+  filter?: { kb_id?: number; status?: string; q?: string; archived?: boolean },
   project?: string,
 ) {
   const pid = useProjectId(project)
@@ -36,6 +36,7 @@ export function useKnowledgeDocuments(
           size: 200,
           'filter[kb_id]': filter?.kb_id ?? undefined,
           'filter[status]': filter?.status,
+          'filter[archived]': filter?.archived,
           q: filter?.q,
         },
       }),
@@ -216,6 +217,38 @@ export function useDeleteKnowledgeDocument(project?: string) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.knowledge(pid ?? '') })
       void qc.invalidateQueries({ queryKey: ['tasks', pid ?? ''] })
+    },
+  })
+}
+
+/** 归档文档（TF-052：从默认列表/检索隐藏，任务引用与文件保留） */
+export function useArchiveKnowledgeDocument(project?: string) {
+  const pid = useProjectId(project)
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiRequest<{ id: string; archived: boolean }>(`/api/knowledge/documents/${id}/archive`, {
+        method: 'POST',
+        project: pid,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.knowledge(pid ?? '') })
+    },
+  })
+}
+
+/** 还原归档文档 */
+export function useRestoreKnowledgeDocument(project?: string) {
+  const pid = useProjectId(project)
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiRequest<{ id: string; archived: boolean }>(`/api/knowledge/documents/${id}/restore`, {
+        method: 'POST',
+        project: pid,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.knowledge(pid ?? '') })
     },
   })
 }

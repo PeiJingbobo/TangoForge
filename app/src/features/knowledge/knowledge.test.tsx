@@ -455,3 +455,117 @@ describe('KnowledgePage 队列失败重试（TF-052）', () => {
     toastSpy.mockRestore()
   })
 })
+
+describe('KnowledgePage 归档（TF-052）', () => {
+  const ARCHIVED_DOC = {
+    id: 'doc-arch',
+    project_id: 1,
+    path: 'docs/arch.md',
+    abs_path: '/data/projects/tangoforge/docs/arch.md',
+    rel_path: 'docs/arch.md',
+    origin_path: '',
+    display_name: 'arch.md',
+    type: 'text',
+    size: 10,
+    mtime: '2026-08-13T09:00:00+08:00',
+    content_hash: 'h',
+    summary: '',
+    status: 'ok',
+    embedded: 1,
+    embedding_model: 'm',
+    index_error: '',
+    history: [],
+    archived: true,
+    created_at: '2026-08-13T09:00:00+08:00',
+    updated_at: '2026-08-13T09:00:00+08:00',
+  }
+
+  beforeEach(() => {
+    useProjectStore.setState({ project: '/data/projects/tangoforge' })
+  })
+
+  it('归档按钮 → POST archive + toast', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let archivedId = ''
+    server.use(
+      http.post(`${DAEMON_BASE_URL}/api/knowledge/documents/doc-1/archive`, () => {
+        archivedId = 'doc-1'
+        return HttpResponse.json({ code: 0, data: { id: 'doc-1', archived: true } })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<KnowledgePage />, { wrapper })
+    // DocCard 的归档按钮（默认 mock 文档 spec.md）。
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /归档文档 spec.md/ })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: /归档文档 spec.md/ }))
+    await waitFor(() => expect(archivedId).toBe('doc-1'))
+    expect(toastSpy).toBeCalled()
+    toastSpy.mockRestore()
+  })
+
+  it('归档视图：切换 → 请求 archived=true 且展示还原按钮', async () => {
+    const user = userEvent.setup()
+    const captured: { query: URLSearchParams | null } = { query: null }
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/documents`, ({ request }) => {
+        const url = new URL(request.url)
+        captured.query = url.searchParams
+        const archived = url.searchParams.get('filter[archived]')
+        return HttpResponse.json({
+          code: 0,
+          data: {
+            items: archived === 'true' ? [ARCHIVED_DOC] : [],
+            total: archived === 'true' ? 1 : 0,
+            page: 0,
+            size: 50,
+          },
+        })
+      }),
+    )
+    render(<KnowledgePage />, { wrapper })
+    // 点击归档视图按钮（「返回文档」切换前显示「归档」）。
+    await waitFor(() => expect(screen.getByRole('button', { name: /归档/ })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /归档/ }))
+    await waitFor(() => expect(captured.query?.get('filter[archived]')).toBe('true'))
+    // 展示归档文档 + 还原按钮。
+    await waitFor(() => expect(screen.getByText('arch.md')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /还原/ })).toBeInTheDocument()
+  })
+
+  it('归档视图还原按钮 → POST restore + toast', async () => {
+    const toastSpy = vi.spyOn(toast, 'success').mockImplementation(() => '')
+    let restoredId = ''
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/knowledge/documents`, ({ request }) => {
+        const url = new URL(request.url)
+        const archived = url.searchParams.get('filter[archived]')
+        return HttpResponse.json({
+          code: 0,
+          data: {
+            items: archived === 'true' ? [ARCHIVED_DOC] : [],
+            total: archived === 'true' ? 1 : 0,
+            page: 0,
+            size: 50,
+          },
+        })
+      }),
+      http.post(`${DAEMON_BASE_URL}/api/knowledge/documents/doc-arch/restore`, () => {
+        restoredId = 'doc-arch'
+        return HttpResponse.json({ code: 0, data: { id: 'doc-arch', archived: false } })
+      }),
+    )
+    const user = userEvent.setup()
+    render(<KnowledgePage />, { wrapper })
+    await waitFor(() => expect(screen.getByRole('button', { name: /归档/ })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /归档/ }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /还原文档 arch.md/ })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole('button', { name: /还原文档 arch.md/ }))
+    await waitFor(() => expect(restoredId).toBe('doc-arch'))
+    expect(toastSpy).toBeCalled()
+    toastSpy.mockRestore()
+  })
+})

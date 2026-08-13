@@ -44,6 +44,8 @@ export interface KnowledgeDocument {
   index_error: string
   /** relink 历史：[{path, relinked_at}] */
   history: { path: string; relinked_at: string }[]
+  /** 归档标记（TF-052）：归档后从默认列表/检索隐藏，任务引用与文件保留 */
+  archived: boolean
   created_at: string
   updated_at: string
   /** 详情扩展：关联任务数 / 所属库列表 */
