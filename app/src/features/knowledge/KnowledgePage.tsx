@@ -152,17 +152,8 @@ export function KnowledgePage() {
 
         {/* 右：文档列表 + 检索 */}
         <main className="flex min-h-0 flex-col gap-4">
-          {/* 工具行：筛选 + 扫描 */}
+          {/* 工具行：状态 → 筛选 →（空）→ 扫描 → 添加文件（右侧对齐） */}
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <div className="relative w-52">
-              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="筛选文档"
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -174,10 +165,17 @@ export function KnowledgePage() {
               <option value="failed">失败</option>
               <option value="indexing">索引中</option>
             </select>
-            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAddOpen(true)}>
-              <Plus className="size-3.5" />
-              添加文件
-            </Button>
+            <div className="relative w-52">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="筛选文档"
+                className="h-8 pl-8 text-xs"
+              />
+            </div>
+            {/* 弹性空位：将右侧操作推到最右 */}
+            <div className="flex-1" />
             <Button
               variant="outline"
               size="sm"
@@ -195,6 +193,10 @@ export function KnowledgePage() {
             >
               <RefreshCw className={cn('size-3.5', scan.isPending && 'animate-spin')} />
               扫描
+            </Button>
+            <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setAddOpen(true)}>
+              <Plus className="size-3.5" />
+              添加文件
             </Button>
           </div>
 
