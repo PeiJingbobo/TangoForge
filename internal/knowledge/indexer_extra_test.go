@@ -5,9 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"testing"
-
 	"tangoforge/internal/llm"
+	"testing"
 )
 
 func TestIndexDocument_EmptyDoc(t *testing.T) {
@@ -189,7 +188,7 @@ func TestIndexDocument_DocNotFound(t *testing.T) {
 
 // TestSummarizeAndCache_CacheHit 缓存命中（摘要与 hash 一致）→ 返回缓存摘要。
 func TestSummarizeAndCache_CacheHit(t *testing.T) {
-	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, mockChatServer(t, func(req map[string]any) string {
+	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, mockChatServer(t, func(_ map[string]any) string {
 		return `{"summary": "缓存摘要"}`
 	}))})
 	workdir := initProject(t)

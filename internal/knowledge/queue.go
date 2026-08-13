@@ -24,12 +24,18 @@ import (
 // QueueTaskStatus 任务状态。
 type QueueTaskStatus string
 
+// 任务状态取值（嵌入任务队列状态机，TF-052）。
 const (
-	TaskPending   QueueTaskStatus = "pending"
+	// TaskPending 排队中（等待 worker）。
+	TaskPending QueueTaskStatus = "pending"
+	// TaskEmbedding 正在嵌入（进行中）。
 	TaskEmbedding QueueTaskStatus = "embedding"
-	TaskDone      QueueTaskStatus = "done"
-	TaskFailed    QueueTaskStatus = "failed"
-	TaskCanceled  QueueTaskStatus = "canceled"
+	// TaskDone 已完成。
+	TaskDone QueueTaskStatus = "done"
+	// TaskFailed 失败（可重试）。
+	TaskFailed QueueTaskStatus = "failed"
+	// TaskCanceled 已取消。
+	TaskCanceled QueueTaskStatus = "canceled"
 )
 
 // QueueTask 单个嵌入任务。
@@ -164,78 +170,76 @@ func (q *Queue) worker() {
 	}
 }
 
-// processWorkdir 处理一个项目的队列（找到最早 pending → 执行 → 循环，直到无任务）。
+// processWorkdir 处理一个项目的队列：取最早 pending 任务执行 → 完成后递归处理下一个。
+// 每次调用处理一个任务；无 pending 任务或已有任务在跑（inFlight）时直接返回。
 func (q *Queue) processWorkdir(workdir string) {
-	for {
-		// 取最早 pending 任务。
-		q.mu.Lock()
-		if q.inFlight[workdir] {
-			// 该项目已有任务在跑（避免重复 worker）。
-			q.mu.Unlock()
-			return
-		}
-		var task *QueueTask
-		for _, t := range q.jobs[workdir] {
-			if t.Status == TaskPending {
-				task = t
-				break
-			}
-		}
-		if task == nil {
-			q.mu.Unlock()
-			return
-		}
-		// 标记 embedding + inFlight。
-		task.Status = TaskEmbedding
-		task.StartedAt = nowRFC3339()
-		q.inFlight[workdir] = true
-		ictx, cancel := context.WithTimeout(context.Background(), indexTimeout)
-		q.cancel[workdir] = cancel
-		emb := q.embCfg
-		maxSize := q.maxSize
+	// 取最早 pending 任务。
+	q.mu.Lock()
+	if q.inFlight[workdir] {
+		// 该项目已有任务在跑（避免重复 worker）。
 		q.mu.Unlock()
-
-		// 执行索引。
-		var runErr error
-		if emb != nil {
-			_, runErr = q.svc.IndexDocument(ictx, workdir, task.DocID, IndexOptions{
-				Embedding:    emb,
-				MaxIndexSize: maxSize,
-			})
-		} else {
-			// 未配置 embedding：仅标记 done（无向量可嵌）。
-			runErr = nil
-		}
-		// 先判断结果（正常完成时 ictx.Err() 为 nil；Cancel 手动触发才 Canceled），
-		// 再 cancel 释放资源（顺序重要：先 cancel 会误判为取消）。
-		q.mu.Lock()
-		ctxCanceled := ictx.Err() == context.Canceled || errors.Is(runErr, context.Canceled)
-		cancel()
-		delete(q.cancel, workdir)
-		delete(q.inFlight, workdir)
-		switch {
-		case ctxCanceled:
-			task.Status = TaskCanceled
-			task.Error = "已取消"
-		case runErr != nil:
-			task.Status = TaskFailed
-			task.Error = runErr.Error()
-		default:
-			task.Status = TaskDone
-			task.Error = ""
-		}
-		task.FinishedAt = nowRFC3339()
-		q.trimLocked(workdir)
-		q.mu.Unlock()
-
-		q.logger.Info("knowledge queue task finished",
-			"workdir", workdir, "doc", task.DocID, "status", task.Status, "err", task.Error)
-		q.fire(context.Background(), workdir, "queue_updated", task.DocID)
-
-		// 处理下一个任务。
-		q.processWorkdir(workdir)
 		return
 	}
+	var task *QueueTask
+	for _, t := range q.jobs[workdir] {
+		if t.Status == TaskPending {
+			task = t
+			break
+		}
+	}
+	if task == nil {
+		q.mu.Unlock()
+		return
+	}
+	// 标记 embedding + inFlight。
+	task.Status = TaskEmbedding
+	task.StartedAt = nowRFC3339()
+	q.inFlight[workdir] = true
+	ictx, cancel := context.WithTimeout(context.Background(), indexTimeout)
+	q.cancel[workdir] = cancel
+	emb := q.embCfg
+	maxSize := q.maxSize
+	q.mu.Unlock()
+
+	// 执行索引。
+	var runErr error
+	if emb != nil {
+		_, runErr = q.svc.IndexDocument(ictx, workdir, task.DocID, IndexOptions{
+			Embedding:    emb,
+			MaxIndexSize: maxSize,
+		})
+	} else {
+		// 未配置 embedding：仅标记 done（无向量可嵌）。
+		runErr = nil
+	}
+	// 先判断结果（正常完成时 ictx.Err() 为 nil；Cancel 手动触发才 Canceled），
+	// 再 cancel 释放资源（顺序重要：先 cancel 会误判为取消）。
+	q.mu.Lock()
+	ctxCanceled := ictx.Err() == context.Canceled || errors.Is(runErr, context.Canceled)
+	cancel()
+	delete(q.cancel, workdir)
+	delete(q.inFlight, workdir)
+	switch {
+	case ctxCanceled:
+		task.Status = TaskCanceled
+		task.Error = "已取消"
+	case runErr != nil:
+		task.Status = TaskFailed
+		task.Error = runErr.Error()
+	default:
+		task.Status = TaskDone
+		task.Error = ""
+	}
+	task.FinishedAt = nowRFC3339()
+	q.trimLocked(workdir)
+	q.mu.Unlock()
+
+	q.logger.Info("knowledge queue task finished",
+		"workdir", workdir, "doc", task.DocID, "status", task.Status, "err", task.Error)
+	q.fire(context.Background(), workdir, "queue_updated", task.DocID)
+
+	// 处理下一个任务（递归）。
+	q.processWorkdir(workdir)
 }
 
 // trimLocked 裁剪每个状态的历史任务（保留 doneRetain 个 done/failed/canceled）。

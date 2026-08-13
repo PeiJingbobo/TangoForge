@@ -233,7 +233,7 @@ func (s *Service) knowledgeSummary(path string, size int64) string {
 		return ""
 	}
 	// 二进制内容（含 NUL）→ 不摘要。
-	if strings.ContainsRune(string(data[:min(len(data), 512)]), '\x00') {
+	if strings.ContainsRune(string(data[:minInt(len(data), 512)]), '\x00') {
 		return ""
 	}
 	text := string(data)
@@ -263,7 +263,7 @@ func isTextExt(path string) bool {
 	return true // 未知扩展名按文本
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

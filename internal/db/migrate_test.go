@@ -184,8 +184,10 @@ func TestMigrate_UpDownRoundTrip(t *testing.T) {
 	if err := MigrateDown(ctx, conn, ProjectMigrations, 0); err != nil {
 		t.Fatalf("down to 0: %v", err)
 	}
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "skills", "audit_log",
-		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks"} {
+	for _, table := range []string{
+		"tasks", "permissions", "import_drafts", "skills", "audit_log",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks",
+	} {
 		assertTableAbsent(t, conn, table)
 	}
 	v, err := CurrentVersion(ctx, conn)
@@ -299,8 +301,10 @@ func TestEnsureProject_FileDB(t *testing.T) {
 		t.Fatalf("ensure project: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log",
-		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks"} {
+	for _, table := range []string{
+		"tasks", "permissions", "import_drafts", "audit_log",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks",
+	} {
 		assertTableExists(t, conn, table)
 	}
 	// skills 表已由 v3 迁移移除（TF-033：技能包改为内置 embed + 全局库，无项目库依赖）。

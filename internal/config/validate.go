@@ -61,20 +61,20 @@ func Validate(cfg GlobalConfig) error {
 			kind = "openai"
 		}
 		if kind != "openai" && kind != "ollama" {
-			return fmt.Errorf("Embedding 协议类型必须是 openai / ollama")
+			return fmt.Errorf("embedding 协议类型必须是 openai / ollama")
 		}
 		// base_url 为空时复用 chat base_url（EmbeddingFromConfig 处理）；此处校验显式配置的 URL。
 		if strings.TrimSpace(emb.BaseURL) != "" {
 			eu, err := url.Parse(emb.BaseURL)
 			if err != nil || (eu.Scheme != "http" && eu.Scheme != "https") || eu.Host == "" {
-				return fmt.Errorf("Embedding 接口地址必须是合法的 http/https URL")
+				return fmt.Errorf("embedding 接口地址必须是合法的 http/https URL")
 			}
 		}
 		if emb.TimeoutSec < 0 {
-			return fmt.Errorf("Embedding 请求超时不能为负数")
+			return fmt.Errorf("embedding 请求超时不能为负数")
 		}
 		if emb.MaxTokens < 0 {
-			return fmt.Errorf("Embedding max_tokens 不能为负数")
+			return fmt.Errorf("embedding max_tokens 不能为负数")
 		}
 	}
 

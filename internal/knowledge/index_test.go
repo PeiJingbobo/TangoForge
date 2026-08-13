@@ -7,15 +7,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"tangoforge/internal/llm"
 	"testing"
 	"time"
-
-	"tangoforge/internal/llm"
 )
 
-// httptest_500 返回恒定 500 的 server（嵌入失败注入；调用方负责 Close）。
-func httptest_500() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// httptest500 返回恒定 500 的 server（嵌入失败注入；调用方负责 Close）。
+func httptest500() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 }
@@ -24,7 +23,7 @@ func httptest_500() *httptest.Server {
 func mockEmbedFixed(t *testing.T) *llm.EmbeddingConfig {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
 	})
@@ -39,7 +38,7 @@ func mockEmbedFixed(t *testing.T) *llm.EmbeddingConfig {
 }
 
 func TestIndexDocument_TextAndChunks(t *testing.T) {
-	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, mockChatServer(t, func(req map[string]any) string {
+	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, mockChatServer(t, func(_ map[string]any) string {
 		return `{"summary": "测试摘要"}`
 	}))})
 	workdir := initProject(t)
@@ -73,7 +72,7 @@ func TestIndexDocument_TextAndChunks(t *testing.T) {
 }
 
 func TestIndexDocument_Embed(t *testing.T) {
-	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, mockChatServer(t, func(req map[string]any) string {
+	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, mockChatServer(t, func(_ map[string]any) string {
 		return `{"summary": "x"}`
 	}))})
 	svc.SetEmbeddingConfig(mockEmbedFixed(t))
@@ -188,7 +187,7 @@ func TestIndexDocument_OverLimit(t *testing.T) {
 
 func TestIndexDocument_EmbedFail(t *testing.T) {
 	// 返回错误的 embedding server → 文档 failed + index_error。
-	srv := httptest_500()
+	srv := httptest500()
 	t.Cleanup(srv.Close)
 	svc := newTestService(t)
 	svc.SetEmbeddingConfig(&llm.EmbeddingConfig{BaseURL: srv.URL, Model: "m", Kind: llm.EmbedOpenAI})
@@ -339,7 +338,7 @@ func TestIndexDocument_EmitsEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register2: %v", err)
 	}
-	srv500 := httptest_500()
+	srv500 := httptest500()
 	t.Cleanup(srv500.Close)
 	svc.SetEmbeddingConfig(&llm.EmbeddingConfig{BaseURL: srv500.URL, Model: "m", Kind: llm.EmbedOpenAI})
 	if _, err := svc.IndexDocument(ctx, workdir, doc2.ID, IndexOptions{Embedding: svc.(*service).embCfg}); err == nil {
@@ -368,7 +367,7 @@ func TestIndexDocument_EmitsEvents(t *testing.T) {
 func TestIndexDocument_SetsIndexingFirst(t *testing.T) {
 	// 慢 embedding（延迟响应），确保能在完成前观察到 indexing 状态。
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(300 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))

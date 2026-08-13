@@ -106,8 +106,10 @@ func NewService(opts Options) *Service {
 	if opts.LLM == nil {
 		opts.LLM = func() config.LLMConfig { return config.DefaultLLMConfig() }
 	}
-	return &Service{logger: opts.Logger, tasks: opts.Tasks, llmCfg: opts.LLM,
-		knowledge: opts.Knowledge, onExport: opts.OnExport}
+	return &Service{
+		logger: opts.Logger, tasks: opts.Tasks, llmCfg: opts.LLM,
+		knowledge: opts.Knowledge, onExport: opts.OnExport,
+	}
 }
 
 // RenderOptions 导出参数（QA P4-1 §18.2）。

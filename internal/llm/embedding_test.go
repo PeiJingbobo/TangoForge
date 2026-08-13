@@ -7,13 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/config"
+	"testing"
 )
 
 // mockEmbeddingServer 构造按协议响应的 mock embedding server。
-func mockEmbeddingServer(t *testing.T, kind EmbeddingKind) *httptest.Server {
+func mockEmbeddingServer(t *testing.T, _ EmbeddingKind) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +49,7 @@ func mockEmbeddingServer(t *testing.T, kind EmbeddingKind) *httptest.Server {
 			"embeddings": [][]float32{{0.4, 0.5, 0.6}},
 		})
 	})
-	mux.HandleFunc("/error", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/error", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("boom"))
 	})
@@ -116,7 +115,7 @@ func TestEmbedding_APIError(t *testing.T) {
 		t.Fatalf("401 应 FAILED，got %v", err)
 	}
 	// 网络错误（关闭的 server）→ FAILED。
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	bad := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	badURL := bad.URL
 	bad.Close()
 	cfg3 := EmbeddingConfig{BaseURL: badURL, APIKey: "k", Model: "m", Kind: EmbedOpenAI}

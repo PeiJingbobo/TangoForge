@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -151,7 +152,7 @@ func TestRegisterDocument_StatAfterCopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("register external: %v", err)
 	}
-	if doc.AbsPath == "" || !filepath.HasPrefix(doc.AbsPath, workdir) {
+	if doc.AbsPath == "" || !strings.HasPrefix(doc.AbsPath, workdir) {
 		t.Fatalf("外部 auto 拷贝落点异常: %s", doc.AbsPath)
 	}
 }

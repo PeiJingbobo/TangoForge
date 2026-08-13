@@ -105,20 +105,6 @@ func NewService(opts Options) *Service {
 	}
 }
 
-// ensureLLMClient 懒构造 LLM 客户端（知识库摘要用；配置不可用 → nil 降级）。
-func (s *Service) ensureLLMClient() *llm.Client {
-	if s.llmClient != nil {
-		return s.llmClient
-	}
-	cl, err := llm.New(llm.FromConfig(s.llmCfg()), s.logger)
-	if err != nil {
-		s.llmClient = nil
-		return nil
-	}
-	s.llmClient = cl
-	return cl
-}
-
 // projectDB 打开并缓存项目库连接（语义同 task.Service.projectDB）。
 // TF-001 修复：缓存命中校验 meta.db 文件指纹，删除重建后重开连接。
 func (s *Service) projectDB(workdir string) (*sql.DB, error) {

@@ -68,8 +68,10 @@ func TestImport_NewProjectInitializesMeta(t *testing.T) {
 		t.Fatalf("open meta.db: %v", err)
 	}
 	defer func() { _ = projDB.Close() }()
-	for _, table := range []string{"tasks", "permissions", "import_drafts", "audit_log",
-		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks"} {
+	for _, table := range []string{
+		"tasks", "permissions", "import_drafts", "audit_log",
+		"knowledge_bases", "knowledge_documents", "knowledge_base_documents", "task_documents", "knowledge_chunks",
+	} {
 		if n := countRows(t, projDB, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='`+table+`'`); n != 1 {
 			t.Errorf("meta.db missing table %s", table)
 		}

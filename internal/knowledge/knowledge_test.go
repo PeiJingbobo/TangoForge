@@ -7,9 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"testing"
-
 	"tangoforge/internal/db"
+	"testing"
 )
 
 // newTestService 构造知识库服务（sqlite 临时文件库 + 空日志）。
@@ -63,7 +62,7 @@ func writeFile(t *testing.T, workdir, rel string, content string) string {
 // fakeTaskLister 实现 TaskLister 的桩（任意 id 视为存在）。
 type fakeTaskLister struct{}
 
-func (fakeTaskLister) Get(ctx context.Context, workdir, id string) (any, error) {
+func (fakeTaskLister) Get(_ context.Context, _ string, _ string) (any, error) {
 	return nil, nil
 }
 
@@ -73,7 +72,7 @@ func discardLogger() *slog.Logger {
 }
 
 // mustProjectDB 打开项目 meta.db 连接（测试断言底层数据用）。
-func mustProjectDB(t *testing.T, svc Service, workdir string) *sql.DB {
+func mustProjectDB(t *testing.T, _ Service, workdir string) *sql.DB {
 	t.Helper()
 	conn, err := db.Open(db.MetaDBPath(workdir))
 	if err != nil {

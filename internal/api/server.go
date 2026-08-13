@@ -153,7 +153,7 @@ func NewServer(cfg *config.GlobalConfig, registry *sql.DB, logger *slog.Logger, 
 	s.knowledgeScanner = knowledge.NewScanner(knowSvc, s.currentConfig().Knowledge, s.embeddingConfig(), logger)
 	// TF-052：嵌入任务队列（统一排队 + 状态 + 重试/取消；WS 事件驱动前端刷新）。
 	s.knowledgeQueue = knowledge.NewQueue(knowSvc, s.currentConfig().Knowledge, s.embeddingConfig(), logger)
-	s.knowledgeQueue.SetOnWrite(func(ctx context.Context, workdir, action, target string) {
+	s.knowledgeQueue.SetOnWrite(func(_ context.Context, workdir, action, target string) {
 		hub.Publish(workdir, action, map[string]any{"id": target})
 	})
 	// 新文档注册成功 → 入嵌入队列（不依赖 fsnotify 目录是否已 watch）。

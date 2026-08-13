@@ -7,9 +7,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
-	"testing"
-
 	"tangoforge/internal/llm"
+	"testing"
 )
 
 // mockChatServer 模拟 OpenAI chat completions（摘要生成用）。
@@ -48,7 +47,7 @@ func newLLMClient(t *testing.T, srv *httptest.Server) *llm.Client {
 }
 
 func TestGenerateSummary(t *testing.T) {
-	srv := mockChatServer(t, func(req map[string]any) string {
+	srv := mockChatServer(t, func(_ map[string]any) string {
 		return `{"summary": "这是文档摘要，涵盖核心内容。"}`
 	})
 	cl := newLLMClient(t, srv)
@@ -58,7 +57,7 @@ func TestGenerateSummary(t *testing.T) {
 	}
 	// 超长摘要截断到 200 字。
 	len200 := strings.Repeat("长", 250)
-	srv2 := mockChatServer(t, func(req map[string]any) string {
+	srv2 := mockChatServer(t, func(_ map[string]any) string {
 		return `{"summary": "` + len200 + `"}`
 	})
 	cl2 := newLLMClient(t, srv2)
@@ -74,22 +73,22 @@ func TestGenerateSummary_Failures(t *testing.T) {
 		t.Fatalf("nil client 应返回空: %q", got)
 	}
 	// 空文本 → 空串。
-	cl := newLLMClient(t, mockChatServer(t, func(req map[string]any) string { return "{}" }))
+	cl := newLLMClient(t, mockChatServer(t, func(_ map[string]any) string { return "{}" }))
 	if got := GenerateSummary(context.Background(), cl, "  "); got != "" {
 		t.Fatalf("空文本应返回空: %q", got)
 	}
 	// LLM 返回非法 JSON → 空串（不阻断）。
-	cl2 := newLLMClient(t, mockChatServer(t, func(req map[string]any) string { return "not-json" }))
+	cl2 := newLLMClient(t, mockChatServer(t, func(_ map[string]any) string { return "not-json" }))
 	if got := GenerateSummary(context.Background(), cl2, "x"); got != "" {
 		t.Fatalf("非法响应应返回空: %q", got)
 	}
 	// LLM 返回缺 summary 字段 → 空串。
-	cl3 := newLLMClient(t, mockChatServer(t, func(req map[string]any) string { return `{"other":1}` }))
+	cl3 := newLLMClient(t, mockChatServer(t, func(_ map[string]any) string { return `{"other":1}` }))
 	if got := GenerateSummary(context.Background(), cl3, "x"); got != "" {
 		t.Fatalf("缺字段应返回空: %q", got)
 	}
 	// 服务端 500 → 空串。
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	t.Cleanup(srv.Close)
@@ -100,7 +99,7 @@ func TestGenerateSummary_Failures(t *testing.T) {
 }
 
 func TestSummarizeAndCache(t *testing.T) {
-	srv := mockChatServer(t, func(req map[string]any) string {
+	srv := mockChatServer(t, func(_ map[string]any) string {
 		return `{"summary": "缓存摘要内容"}`
 	})
 	svc := NewService(Options{Logger: discardLogger(), LLM: newLLMClient(t, srv)})
@@ -123,7 +122,7 @@ func TestSummarizeAndCache(t *testing.T) {
 	// 同 hash 再次调用 → 缓存命中（返回缓存摘要，不再调 LLM）。
 	// 通过关闭 LLM client 验证缓存路径：摘要已缓存则无需 LLM。
 	srvCount := 0
-	srv2 := mockChatServer(t, func(req map[string]any) string {
+	srv2 := mockChatServer(t, func(_ map[string]any) string {
 		srvCount++
 		return `{"summary": "第二次摘要"}`
 	})

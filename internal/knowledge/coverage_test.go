@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,7 +77,7 @@ func TestRelink_ExternalCopy(t *testing.T) {
 	if relinked.OriginPath != ext {
 		t.Fatalf("relink 外部文件应记 origin_path: %q", relinked.OriginPath)
 	}
-	if !filepath.HasPrefix(relinked.AbsPath, filepath.Join(workdir, ".taskboard", "knowledge")) {
+	if !strings.HasPrefix(relinked.AbsPath, filepath.Join(workdir, ".taskboard", "knowledge")) {
 		t.Fatalf("relink 拷贝应落点默认目录: %s", relinked.AbsPath)
 	}
 	// history 含旧路径。

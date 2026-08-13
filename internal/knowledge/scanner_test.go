@@ -5,11 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"testing"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/llm"
+	"testing"
+	"time"
 )
 
 // newTestScanner 构造测试 scanner（短防抖窗口便于测试）。
@@ -237,7 +236,7 @@ func TestScanner_EmbedFailRetry(t *testing.T) {
 	// 先失败（500），后恢复。
 	state := &struct{ fail bool }{fail: true}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, _ *http.Request) {
 		if state.fail {
 			w.WriteHeader(http.StatusInternalServerError)
 			return

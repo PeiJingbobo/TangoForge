@@ -51,7 +51,7 @@ func runKnowledge(args []string, g cliGlobal) error {
 }
 
 // runKnowledgeBases 库列表（bases）。
-func runKnowledgeBases(args []string, g cliGlobal, c *cliClient, project string) error {
+func runKnowledgeBases(_ []string, g cliGlobal, c *cliClient, project string) error {
 	resp, err := c.call("GET", "/api/knowledge/bases", project, nil)
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func runKnowledgeUnlink(args []string, g cliGlobal, c *cliClient, project string
 	if err != nil {
 		return err
 	}
-	printOutput(g, resp, func(data json.RawMessage) string { return "已解除关联" })
+	printOutput(g, resp, func(_ json.RawMessage) string { return "已解除关联" })
 	return nil
 }
 
@@ -204,6 +204,6 @@ func runKnowledgeEdit(args []string, g cliGlobal, c *cliClient, project string) 
 	if err != nil {
 		return err
 	}
-	printOutput(g, resp, func(data json.RawMessage) string { return "已保存（触发重索引）" })
+	printOutput(g, resp, func(_ json.RawMessage) string { return "已保存（触发重索引）" })
 	return nil
 }

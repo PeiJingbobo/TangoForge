@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
-
-	"github.com/fsnotify/fsnotify"
 	"tangoforge/internal/config"
 	"tangoforge/internal/db"
 	"tangoforge/internal/llm"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // Scanner 文件扫描与自动重索引（docs/KNOWLEDGE-BASE.md §2.7，QA-K8）。
@@ -167,7 +167,7 @@ func (s *Scanner) scanAll(ctx context.Context, trigger string) ScanStats {
 // 由于 knowledge Service 不维护项目注册表（分层：注册表在 project 包），scanner 采用
 // 「被动注册」：IndexDocument 时登记 workdir，扫描/监听仅针对已登记项目。守护进程启动时
 // 由 api/daemon 层调用 RegisterWorkdir 登记全部已导入项目。
-func (s *Scanner) listWorkdirs(ctx context.Context) []string {
+func (s *Scanner) listWorkdirs(_ context.Context) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]string, 0, len(s.watching))
@@ -389,7 +389,7 @@ func (s *Scanner) flushPendingFor(ctx context.Context, workdir string) {
 const indexTimeout = 5 * time.Minute
 
 // indexIfChanged 变化检测（mtime+size 快速比对 → sha256 确认）→ 重建摘要与向量。
-func (s *Scanner) indexIfChanged(ctx context.Context, workdir string, d Document, trigger string) (IndexResult, error) {
+func (s *Scanner) indexIfChanged(ctx context.Context, workdir string, d Document, _ string) (IndexResult, error) {
 	fi, err := os.Stat(d.AbsPath)
 	if err != nil {
 		// 文件缺失：懒校验 → missing（内容/向量保留）。
@@ -406,17 +406,17 @@ func (s *Scanner) indexIfChanged(ctx context.Context, workdir string, d Document
 			if err != nil {
 				return IndexResult{}, fmt.Errorf("knowledge: read %s: %w", d.AbsPath, err)
 			}
-			return s.indexDocument(workdir, d, sha256Hex(data), false)
+			return s.indexDocument(ctx, workdir, d, sha256Hex(data), false)
 		}
 		// 有 hash 但未嵌入（如嵌入失败/中断遗留）→ 补嵌入。
 		if d.Embedded != EmbedYes {
 			s.logger.Info("knowledge: doc has hash but not embedded, re-indexing", "doc", d.ID)
-			return s.indexDocument(workdir, d, d.ContentHash, false)
+			return s.indexDocument(ctx, workdir, d, d.ContentHash, false)
 		}
 		// 无变化 → 模型漂移检测（embedding_model 变更 → 全量重嵌）。
 		if s.modelDrifted(d) {
 			s.logger.Info("knowledge: embedding model drift, re-embedding", "doc", d.ID)
-			return s.indexDocument(workdir, d, d.ContentHash, true)
+			return s.indexDocument(ctx, workdir, d, d.ContentHash, true)
 		}
 		return IndexResult{Chunks: 0}, nil
 	}
@@ -430,7 +430,7 @@ func (s *Scanner) indexIfChanged(ctx context.Context, workdir string, d Document
 		// 内容未变（mtime 变化但 hash 相同）。
 		return IndexResult{Chunks: 0}, nil
 	}
-	return s.indexDocument(workdir, d, sum, false)
+	return s.indexDocument(ctx, workdir, d, sum, false)
 }
 
 // changedByMeta mtime + size 快速比对。
@@ -447,14 +447,14 @@ func (s *Scanner) modelDrifted(d Document) bool {
 }
 
 // indexDocument 执行索引（带 singleflight 语义由调用方保证串行）。
-func (s *Scanner) indexDocument(workdir string, d Document, contentHash string, force bool) (IndexResult, error) {
+func (s *Scanner) indexDocument(ctx context.Context, workdir string, d Document, contentHash string, force bool) (IndexResult, error) {
 	opts := IndexOptions{
 		ContentHash:  contentHash,
 		Embedding:    s.llmCfg,
 		MaxIndexSize: s.cfg.MaxIndexSize,
 		ForceReembed: force,
 	}
-	return s.svc.IndexDocument(context.Background(), workdir, d.ID, opts)
+	return s.svc.IndexDocument(ctx, workdir, d.ID, opts)
 }
 
 // markMissing 标记文档缺失（懒校验：读取时 stat 失败 → missing 状态，内容/向量保留）。

@@ -207,7 +207,7 @@ func (s *Server) handleKnowledgeRelink(ctx context.Context, req mcp.CallToolRequ
 
 // handleKnowledgeScan knowledge_scan 处理器。
 func (s *Server) handleKnowledgeScan(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return s.exec(ctx, "knowledge.index", req.GetArguments(), func(ctx context.Context, workdir string, args map[string]any) (any, error) {
+	return s.exec(ctx, "knowledge.index", req.GetArguments(), func(ctx context.Context, _ string, _ map[string]any) (any, error) {
 		if s.deps.KnowledgeScanner == nil {
 			return nil, knowledge.ErrIndexFailed
 		}

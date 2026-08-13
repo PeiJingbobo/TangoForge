@@ -182,7 +182,7 @@ func (s *service) IndexDocument(ctx context.Context, workdir, docID string, opts
 			UPDATE knowledge_documents
 			SET status = ?, content_hash = ?, index_error = ?, updated_at = ?
 			WHERE id = ?`,
-			DocStatusOK, opts.ContentHash, overLimitNote(overLimit, opts.MaxIndexSize), nowRFC3339(), docID); err != nil {
+			DocStatusOK, opts.ContentHash, overLimitNote(overLimit), nowRFC3339(), docID); err != nil {
 			return res, fmt.Errorf("knowledge: update doc: %w", err)
 		}
 		res.Skipped = overLimit
@@ -244,7 +244,7 @@ func (s *service) fireIndexFailed(ctx context.Context, workdir, docID string) {
 }
 
 // overLimitNote 生成超限说明（index_error 字段语义）。
-func overLimitNote(over bool, limit int) string {
+func overLimitNote(over bool) string {
 	if over {
 		return "too_large"
 	}

@@ -5,9 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"testing"
-
 	"tangoforge/internal/db"
+	"testing"
 )
 
 // breakProjectDB 删除项目 meta.db（含 WAL/SHM），使后续 projectDB 打开失败
@@ -247,6 +246,6 @@ func TestClose_DBError(t *testing.T) {
 // errTaskLister 任务校验永远失败。
 type errTaskLister struct{}
 
-func (errTaskLister) Get(ctx context.Context, workdir, id string) (any, error) {
+func (errTaskLister) Get(_ context.Context, _ string, _ string) (any, error) {
 	return nil, errors.New("task not found")
 }

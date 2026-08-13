@@ -4,10 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"tangoforge/internal/config"
 	"testing"
 	"time"
-
-	"tangoforge/internal/config"
 )
 
 func TestScanner_ConfigGetter(t *testing.T) {

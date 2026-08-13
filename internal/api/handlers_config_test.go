@@ -372,7 +372,7 @@ func TestConfigPut_KnowledgeThresholdOutOfRange(t *testing.T) {
 func TestConfigTestEmbedding_OK(t *testing.T) {
 	// mock openai embeddings 端点。
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
 	})

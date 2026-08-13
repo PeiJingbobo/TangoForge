@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"testing"
-	"time"
-
 	"tangoforge/internal/config"
 	"tangoforge/internal/llm"
+	"testing"
+	"time"
 )
 
 func newTestQueue(t *testing.T, svc Service, emb *llm.EmbeddingConfig) *Queue {
@@ -166,7 +165,7 @@ func TestQueue_SnapshotEmpty(t *testing.T) {
 func slowEmbedCfg(t *testing.T) *llm.EmbeddingConfig {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/embeddings", func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(300 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
@@ -179,7 +178,7 @@ func slowEmbedCfg(t *testing.T) *llm.EmbeddingConfig {
 // failingEmbedCfg 恒 500 embedding。
 func failingEmbedCfg(t *testing.T) *llm.EmbeddingConfig {
 	t.Helper()
-	srv := httptest_500()
+	srv := httptest500()
 	t.Cleanup(srv.Close)
 	return &llm.EmbeddingConfig{BaseURL: srv.URL, Model: "m", Kind: llm.EmbedOpenAI}
 }

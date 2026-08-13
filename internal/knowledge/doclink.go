@@ -240,7 +240,7 @@ func (s *service) addToBases(ctx context.Context, conn *sql.DB, workdir, docID s
 // resolveDefaultDocDir 解析外部文件默认拷贝目录（QA-K13）：
 // 项目 config.yaml knowledge.default_doc_dir → 全局逻辑（TF-048 落地隐式检测）→ .taskboard/knowledge。
 // 当前实现：项目配置覆盖 + 默认 .taskboard/knowledge。
-func (s *service) resolveDefaultDocDir(ctx context.Context, workdir string) (string, error) {
+func (s *service) resolveDefaultDocDir(_ context.Context, workdir string) (string, error) {
 	pc, err := config.LoadProject(workdir)
 	if err != nil {
 		return "", fmt.Errorf("knowledge: load project config: %w", err)
@@ -459,7 +459,7 @@ func (s *service) LinkFiles(ctx context.Context, workdir string, taskIDs []strin
 }
 
 // indexBaseNames 建立库名 → 库 id 索引（供 kb 名解析）。
-func (s *service) indexBaseNames(ctx context.Context, conn *sql.DB, workdir string) (map[string]int64, error) {
+func (s *service) indexBaseNames(ctx context.Context, conn *sql.DB, _ string) (map[string]int64, error) {
 	rows, err := conn.QueryContext(ctx, `SELECT id, name FROM knowledge_bases WHERE project_id = 1`)
 	if err != nil {
 		return nil, fmt.Errorf("knowledge: list base names: %w", err)
@@ -478,7 +478,7 @@ func (s *service) indexBaseNames(ctx context.Context, conn *sql.DB, workdir stri
 }
 
 // resolveKB 解析 kb 名 → 库 id（空名 = 默认库；名不存在 → KNOWLEDGE_INVALID）。
-func (s *service) resolveKB(ctx context.Context, conn *sql.DB, workdir, name string, index map[string]int64) (int64, error) {
+func (s *service) resolveKB(ctx context.Context, _ *sql.DB, workdir, name string, index map[string]int64) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		kb, err := s.EnsureDefaultBase(ctx, workdir)

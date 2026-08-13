@@ -692,9 +692,9 @@ func TestProjectDB_ReopenAfterMetaDBReplaced(t *testing.T) {
 	}
 
 	// 删除 meta.db（含 WAL/SHM）并重建新库——inode 变化，旧连接必须失效。
-	os.Remove(metaPath)
-	os.Remove(metaPath + "-wal")
-	os.Remove(metaPath + "-shm")
+	_ = os.Remove(metaPath)
+	_ = os.Remove(metaPath + "-wal")
+	_ = os.Remove(metaPath + "-shm")
 	conn2, err := db.EnsureProject(context.Background(), metaPath)
 	if err != nil {
 		t.Fatalf("recreate project db: %v", err)

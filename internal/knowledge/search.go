@@ -31,7 +31,9 @@ type SearchSnippet struct {
 	Text    string  `json:"text"`
 	Score   float32 `json:"score"`
 	Seq     int     `json:"seq"`
-} // SearchResult 检索结果。
+}
+
+// SearchResult 检索结果。
 type SearchResult struct {
 	Query string      `json:"query"`
 	Total int         `json:"total"`
