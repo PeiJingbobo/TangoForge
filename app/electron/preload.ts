@@ -11,6 +11,8 @@ export interface ApiRequestPayload {
   path: string
   body?: unknown
   project?: string
+  /** 超时覆盖（ms）；缺省时主进程用默认 30s。导入等 LLM 解析请求应显式放宽。 */
+  timeoutMs?: number
 }
 
 const api = {

@@ -29,6 +29,7 @@ import {
   useRetryQueueTask,
 } from '@/hooks/useKnowledge'
 import { useProjectId } from '@/hooks/useProject'
+import { useEventInvalidator } from '@/hooks/useEvents'
 import { cn } from '@/lib/utils'
 import type { KnowledgeBase, KnowledgeDocument } from '@/types/models'
 import { KnowledgeDocumentDrawer } from '@/features/knowledge/KnowledgeDocumentDrawer'
@@ -41,6 +42,9 @@ import { KnowledgeAddDialog } from '@/features/knowledge/KnowledgeAddDialog'
  */
 export function KnowledgePage() {
   const pid = useProjectId()
+  // TF-053 修复：接入 WS 事件失效（queue_updated / document_added 等无 knowledge. 前缀
+  // 的事件），LLM/MCP 导入文档入队或嵌入状态变化时，文档列表与队列状态条实时刷新。
+  useEventInvalidator(pid)
   const [selectedKB, setSelectedKB] = useState<number | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
   const [q, setQ] = useState('')

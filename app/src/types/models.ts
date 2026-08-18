@@ -117,6 +117,8 @@ export interface DraftDetail extends ImportDraft {
   tasks: ParsedTask[]
   /** LLM 建议关联的知识库文件（TF-049，草稿审阅展示/勾选） */
   knowledge_files?: KnowledgeFileSuggestion[]
+  /** 文档中出现的原始状态集合（TF-054：确认导入时并入项目状态机） */
+  document_statuses?: string[]
 }
 
 /* ---------- export（TF-019） ---------- */

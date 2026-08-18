@@ -9,8 +9,33 @@ import type { WSEvent } from '@/types/models'
  * - task.*            → 任务列表 / 单任务 / 图
  * - state_machine.*   → 状态机
  * - import.*          → 草稿列表
+ * - knowledge 域      → 知识库查询（后端事件 type 无 knowledge. 前缀：
+ *   queue_updated / document_added / document_removed / document_relinked /
+ *   document_content_edited / document_archived / document_restored /
+ *   kb_created / kb_updated / kb_deleted / task_linked / task_unlinked /
+ *   index_failed；TF-053 修复：之前按 knowledge. 前缀匹配导致永不命中）。
  * 事件连接由主进程持有（渲染进程仅订阅）；项目切换（pid 变化）自动重订阅。
  */
+
+// 后端 knowledge 域 WS 事件 type（internal/knowledge/*.go fireWrite / queue.go fire，
+// 经 hub.Publish(workdir, action) 原样透传，无前缀）。改动后端事件名须同步本集合。
+const KNOWLEDGE_EVENTS = new Set([
+  'queue_updated',
+  'document_added',
+  'document_removed',
+  'document_relinked',
+  'document_content_edited',
+  'document_archived',
+  'document_restored',
+  'document_updated',
+  'kb_created',
+  'kb_updated',
+  'kb_deleted',
+  'task_linked',
+  'task_unlinked',
+  'index_failed',
+])
+
 export function useEventInvalidator(project?: string): void {
   const pid = useProjectId(project)
   const qc = useQueryClient()
@@ -29,7 +54,7 @@ export function useEventInvalidator(project?: string): void {
         qc.invalidateQueries({ queryKey: ['tasks', pid] })
       } else if (e.type.startsWith('import.')) {
         qc.invalidateQueries({ queryKey: ['drafts', pid] })
-      } else if (e.type.startsWith('knowledge.')) {
+      } else if (e.type.startsWith('knowledge.') || KNOWLEDGE_EVENTS.has(e.type)) {
         qc.invalidateQueries({ queryKey: ['knowledge', pid] })
         // 任务详情内嵌文档摘要 → 任务查询也失效。
         qc.invalidateQueries({ queryKey: ['tasks', pid] })

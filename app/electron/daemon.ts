@@ -180,6 +180,8 @@ interface ApiRequestPayload {
   path: string
   body?: unknown
   project?: string
+  /** 超时覆盖（ms）；缺省 30s。LLM 解析类请求（导入等）显式放宽，避免误报断连。 */
+  timeoutMs?: number
 }
 
 interface ApiProxyResult {
@@ -200,12 +202,15 @@ async function apiProxy(req: ApiRequestPayload): Promise<ApiProxyResult> {
   // 全局端点 403（如 ensureRunning 未完成、多实例、daemon 热重载 token 变更）。
   const token = readUiToken()
   if (token) headers['X-UI-Token'] = token
+  // 超时：默认 30s；调用方可显式放宽（如 LLM 解析的导入请求）。
+  // 超时 abort 与连接失败分开提示，避免把耗时误报为"守护进程不可用"。
+  const timeoutMs = req.timeoutMs ?? 30_000
   try {
     const res = await fetch(`${DAEMON_BASE_URL}${req.path}`, {
       method,
       headers,
       body: req.body === undefined ? undefined : JSON.stringify(req.body),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
     const text = await res.text()
     let body: unknown = text
@@ -215,7 +220,15 @@ async function apiProxy(req: ApiRequestPayload): Promise<ApiProxyResult> {
       // 非 JSON（如导出内容）
     }
     return { ok: res.ok, status: res.status, body }
-  } catch {
+  } catch (err) {
+    // 超时（AbortSignal.timeout 触发）≠ 守护进程不可用：LLM 解析大文件可远超 30s。
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      return {
+        ok: false,
+        status: 0,
+        body: { code: 'REQUEST_TIMEOUT', message: `请求超时（>${timeoutMs / 1000}s）` },
+      }
+    }
     return { ok: false, status: 0, body: { code: 'NETWORK_ERROR', message: '无法连接守护进程' } }
   }
 }

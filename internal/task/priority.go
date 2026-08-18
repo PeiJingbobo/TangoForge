@@ -33,7 +33,8 @@ var priorityAliases = map[string]int{
 // 支持输入（docs/TASK-SEMANTICS.md §3）：
 //   - nil → 0（缺省无优先级）
 //   - int / int64 / float64（JSON number，须为整数）→ 原值并校验 0–5
-//   - string → 别名表（大小写不敏感：P0~P5 亦受支持）；否则按数字字符串解析（"3"），仍失败则拒绝
+//   - string → 空白串视为缺省（0，与 nil 一致——LLM 对无优先级文档常输出空串 ""）；
+//     别名表（大小写不敏感：P0~P5 亦受支持）；否则按数字字符串解析（"3"），仍失败则拒绝
 //
 // 非法输入返回 *Error（Code=CodeTaskInvalid），不静默 fallback。
 func NormalizePriority(v any) (int, error) {
@@ -51,10 +52,15 @@ func NormalizePriority(v any) (int, error) {
 		}
 		return checkPriorityRange(int(t))
 	case string:
-		if alias, ok := priorityAliases[strings.ToLower(strings.TrimSpace(t))]; ok {
+		trimmed := strings.TrimSpace(t)
+		if trimmed == "" {
+			// 空串 = 无优先级（与 nil 一致；LLM 对未标注优先级的文档常输出 ""，不应拒绝整次导入）。
+			return 0, nil
+		}
+		if alias, ok := priorityAliases[strings.ToLower(trimmed)]; ok {
 			return alias, nil
 		}
-		n, err := strconv.Atoi(t)
+		n, err := strconv.Atoi(trimmed)
 		if err != nil {
 			return 0, NewInvalid("priority 必须为 0-5 整数或字符串别名，got %q", t)
 		}

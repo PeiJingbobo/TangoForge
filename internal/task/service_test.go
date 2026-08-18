@@ -147,6 +147,10 @@ func TestCreate_PriorityNormalize(t *testing.T) {
 		{"P5", 0},
 		{"p0", 5},
 		{" p2 ", 3},
+		// 空串 = 无优先级（与 nil 一致；LLM 对无优先级文档输出 ""，不得拒绝整次导入）。
+		{"", 0},
+		{"   ", 0},
+		{"\t\n", 0},
 	}
 	for _, c := range cases {
 		task := mustCreate(t, svc, wd, CreateInput{Title: "t", Priority: c.in})

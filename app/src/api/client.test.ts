@@ -124,4 +124,45 @@ describe('IPC 代理路径（Electron 环境：渲染进程不直连 daemon）',
     const err = await apiGet('/api/projects').catch((e: unknown) => e)
     expect((err as ApiError).code).toBe('NETWORK_ERROR')
   })
+
+  it('IPC 请求透传 timeoutMs（导入等 LLM 解析放宽超时）', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      body: { code: 0, data: { id: 'd1' } },
+    }))
+    Object.defineProperty(window, 'tangoforge', { value: { api: { request } }, configurable: true })
+    await apiRequest('/api/import', {
+      method: 'POST',
+      body: { file_path: '/x.md' },
+      timeoutMs: 300_000,
+    })
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'POST', path: '/api/import', timeoutMs: 300_000 }),
+    )
+  })
+
+  it('IPC 超时错误：REQUEST_TIMEOUT 透传为超时而非断连', async () => {
+    const request = vi.fn(async () => ({
+      ok: false,
+      status: 0,
+      body: { code: 'REQUEST_TIMEOUT', message: '请求超时（>30s）' },
+    }))
+    Object.defineProperty(window, 'tangoforge', { value: { api: { request } }, configurable: true })
+    const err = await apiGet('/api/projects').catch((e: unknown) => e)
+    expect((err as ApiError).code).toBe('REQUEST_TIMEOUT')
+    expect((err as ApiError).message).toContain('超时')
+  })
+
+  it('直连超时：abort 触发 → TIMEOUT（非 NETWORK_ERROR）', async () => {
+    // MSW 延迟响应 + 极短 timeoutMs → setTimeout abort → 应分类为 TIMEOUT。
+    server.use(
+      http.get(`${DAEMON_BASE_URL}/api/tasks`, async () => {
+        await new Promise((r) => setTimeout(r, 200))
+        return HttpResponse.json({ code: 0, data: [] })
+      }),
+    )
+    const err = await apiGet('/api/tasks', { timeoutMs: 10 }).catch((e: unknown) => e)
+    expect((err as ApiError).code).toBe('TIMEOUT')
+  })
 })
