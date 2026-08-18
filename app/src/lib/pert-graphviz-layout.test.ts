@@ -24,6 +24,7 @@ const task = (id: string): Task => ({
   updated_at: '2026-08-18T10:00:00+08:00',
 })
 const dep = (from: string, to: string): GraphEdge => ({ from, to, type: 'dependency' })
+const parent = (from: string, to: string): GraphEdge => ({ from, to, type: 'parent' })
 const graph = (ids: string[], edges: GraphEdge[]): GraphData => ({ nodes: ids.map(task), edges })
 
 const tangentAlignment = (left: PertBezierSegment, right: PertBezierSegment) => {
@@ -48,6 +49,25 @@ const tangentAlignment = (left: PertBezierSegment, right: PertBezierSegment) => 
 }
 
 describe('graphvizPertLayout', () => {
+  it('可渲染 ARGUS 规模的单根层级任务，不丢失父子节点和边', async () => {
+    const children = Array.from({ length: 122 }, (_, index) => `CHILD-${index + 1}`)
+    const layout = await graphvizPertLayout(
+      graph(
+        ['ROOT', ...children],
+        children.map((child) => parent('ROOT', child)),
+      ),
+    )
+
+    expect(layout.hasCycle).toBe(false)
+    expect(layout.nodes).toHaveLength(123)
+    expect(layout.edges).toHaveLength(122)
+    expect(layout.edges.every((edge) => edge.type === 'parent')).toBe(true)
+    expect(layout.nodes.find((node) => node.id === 'ROOT')?.layer).toBe(0)
+    expect(
+      layout.nodes.filter((node) => node.id !== 'ROOT').every((node) => node.layer === 1),
+    ).toBe(true)
+  })
+
   it('输出平滑三次贝塞尔、共享源端点并避开所有非端点节点', async () => {
     const layout = await graphvizPertLayout(
       graph(

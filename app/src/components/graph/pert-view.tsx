@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import {
   bezierPath,
   pertLayout,
+  selectPertPrimaryRoot,
   tracePertEdge,
   tracePertNodes,
   type PertEdge,
@@ -163,19 +164,25 @@ export function PertView({ data, states, onSelect, onOpenFull, className }: Pert
     )
     // 大图首次加载保持可读尺度，超出视口的内容通过无限平移浏览；全图概览由按钮显式触发。
     const scale = Math.max(DEFAULT_VIEW_SCALE, overviewScale)
-    const nodeBounds = {
-      minX: Math.min(...layout.nodes.map((node) => node.x - node.radius)),
-      maxX: Math.max(...layout.nodes.map((node) => node.x + node.radius)),
-      minY: Math.min(...layout.nodes.map((node) => node.y - node.radius - 16)),
-      maxY: Math.max(...layout.nodes.map((node) => node.y + node.radius + 38)),
-    }
-    const centerX = (nodeBounds.minX + nodeBounds.maxX) / 2
-    const centerY = (nodeBounds.minY + nodeBounds.maxY) / 2
+    // 超大层级图的包围盒中心可能完全没有节点。首次进入时锚定分支最多的主根，
+    // 让用户立即看到层级入口；小图仍以完整节点包围盒中心展示。
+    const isLargeGraph = overviewScale < DEFAULT_VIEW_SCALE
+    const anchor = isLargeGraph ? selectPertPrimaryRoot(layout.nodes, layout.edges) : null
+    const nodeBounds = anchor
+      ? null
+      : {
+          minX: Math.min(...layout.nodes.map((node) => node.x - node.radius)),
+          maxX: Math.max(...layout.nodes.map((node) => node.x + node.radius)),
+          minY: Math.min(...layout.nodes.map((node) => node.y - node.radius - 16)),
+          maxY: Math.max(...layout.nodes.map((node) => node.y + node.radius + 38)),
+        }
+    const centerX = anchor ? anchor.x : (nodeBounds!.minX + nodeBounds!.maxX) / 2
+    const centerY = anchor ? anchor.y : (nodeBounds!.minY + nodeBounds!.maxY) / 2
     const transform = d3.zoomIdentity
       .translate(rect.width / 2 - centerX * scale, rect.height / 2 - centerY * scale)
       .scale(scale)
     d3.select(svg).call(zoom.transform, transform)
-  }, [layout.height, layout.nodes, layout.width])
+  }, [layout.edges, layout.height, layout.nodes, layout.width])
 
   const fitMatchedNodes = useCallback(
     (nodeIds: Set<string>, animate = true) => {
@@ -397,7 +404,7 @@ export function PertView({ data, states, onSelect, onOpenFull, className }: Pert
                           className="cursor-default outline-none focus:outline-none focus-visible:outline-none"
                           style={{ outline: 'none' }}
                           role="button"
-                          aria-label={`选择依赖 ${nodeMap.get(edge.from)?.number || edge.from} 到 ${nodeMap.get(edge.to)?.number || edge.to}`}
+                          aria-label={`选择${edge.type === 'parent' ? '父子关系' : '依赖'} ${nodeMap.get(edge.from)?.number || edge.from} 到 ${nodeMap.get(edge.to)?.number || edge.to}`}
                           onClick={(event) => {
                             event.stopPropagation()
                             setSelectedEdgeId((current) => (current === edge.id ? null : edge.id))

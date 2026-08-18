@@ -252,19 +252,30 @@ describe('pertLayout 分层和路由', () => {
     expect(layout.edges.find((edge) => edge.from === 'ROOT-B')?.rootId).toBe('ROOT-B')
   })
 
-  it('默认过滤 parent、去重并忽略悬空依赖', () => {
+  it('默认同时布局 parent 与 dependency，重复关系优先依赖语义并忽略悬空边', () => {
     const layout = pertLayout(
       graph(['A', 'B'], [parent('A', 'B'), dep('A', 'B'), dep('A', 'B'), dep('ghost', 'B')]),
     )
     expect(layout.edges).toHaveLength(1)
     expect(layout.edges[0].id).toBe(pertEdgeId('A', 'B'))
+    expect(layout.edges[0].type).toBe('dependency')
   })
 
-  it('自定义 edgeFilter 可以布局 parent 边', () => {
-    const layout = pertLayout(graph(['A', 'B'], [parent('A', 'B')]), {
-      edgeFilter: (edge) => edge.type === 'parent',
+  it('纯父子任务树按层级从左向右展示', () => {
+    const layout = pertLayout(
+      graph(
+        ['ROOT', 'CHILD-A', 'CHILD-B', 'GRANDCHILD'],
+        [parent('ROOT', 'CHILD-A'), parent('ROOT', 'CHILD-B'), parent('CHILD-A', 'GRANDCHILD')],
+      ),
+    )
+    expect(Object.fromEntries(layout.nodes.map((node) => [node.id, node.layer]))).toEqual({
+      ROOT: 0,
+      'CHILD-A': 1,
+      'CHILD-B': 1,
+      GRANDCHILD: 2,
     })
-    expect(layout.edges).toHaveLength(1)
+    expect(layout.edges).toHaveLength(3)
+    expect(layout.edges.every((edge) => edge.type === 'parent')).toBe(true)
   })
 
   it('空图返回稳定的空布局', () => {

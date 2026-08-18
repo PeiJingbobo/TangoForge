@@ -64,6 +64,7 @@ export interface PertEdge {
   id: string
   from: string
   to: string
+  type: GraphEdge['type']
   /** 一段或多段三次贝塞尔；同源边共享第一段起点与第一控制点。 */
   segments: PertBezierSegment[]
   rootId: string
@@ -92,6 +93,23 @@ export interface PertTrace {
 
 export const pertEdgeId = (from: string, to: string) => `${from}->${to}`
 
+export function selectPertPrimaryRoot(nodes: PertNode[], edges: PertEdge[]): PertNode | null {
+  if (nodes.length === 0) return null
+  const outgoing = new Map<string, number>()
+  for (const edge of edges) outgoing.set(edge.from, (outgoing.get(edge.from) ?? 0) + 1)
+  return (
+    nodes
+      .slice()
+      .sort(
+        (a, b) =>
+          (outgoing.get(b.id) ?? 0) - (outgoing.get(a.id) ?? 0) ||
+          a.layer - b.layer ||
+          a.indexInLayer - b.indexInLayer ||
+          a.id.localeCompare(b.id),
+      )[0] ?? null
+  )
+}
+
 export function bezierPath(segments: PertBezierSegment[]): string {
   if (segments.length === 0) return ''
   const parts = [`M ${segments[0][0].x} ${segments[0][0].y}`]
@@ -116,7 +134,7 @@ export function pertLayout(data: GraphData, options: PertLayoutOptions = {}): Pe
     routeLaneCount = PERT_DEFAULTS.routeLaneCount,
     barycenterIterations = PERT_DEFAULTS.barycenterIterations,
     verticalIterations = PERT_DEFAULTS.verticalIterations,
-    edgeFilter = (edge) => edge.type === 'dependency',
+    edgeFilter = (edge) => edge.type === 'dependency' || edge.type === 'parent',
   } = options
 
   const empty: PertLayout = {
@@ -133,13 +151,16 @@ export function pertLayout(data: GraphData, options: PertLayoutOptions = {}): Pe
   if (data.nodes.length === 0) return empty
 
   const ids = new Set(data.nodes.map((node) => node.id))
-  const seen = new Set<string>()
-  const graphEdges = data.edges.filter(edgeFilter).filter((edge) => {
+  const graphEdgesById = new Map<string, GraphEdge>()
+  for (const edge of data.edges.filter(edgeFilter)) {
     const id = pertEdgeId(edge.from, edge.to)
-    if (!ids.has(edge.from) || !ids.has(edge.to) || seen.has(id)) return false
-    seen.add(id)
-    return true
-  })
+    if (!ids.has(edge.from) || !ids.has(edge.to)) continue
+    const existing = graphEdgesById.get(id)
+    // 同一对任务同时具有父子和依赖语义时只画一条线，并优先保留更具体的依赖语义。
+    if (!existing || (existing.type === 'parent' && edge.type === 'dependency'))
+      graphEdgesById.set(id, edge)
+  }
+  const graphEdges = [...graphEdgesById.values()]
 
   const preds = new Map<string, string[]>(data.nodes.map((node) => [node.id, []]))
   const succs = new Map<string, string[]>(data.nodes.map((node) => [node.id, []]))
@@ -347,6 +368,7 @@ export function pertLayout(data: GraphData, options: PertLayoutOptions = {}): Pe
       id: pertEdgeId(edge.from, edge.to),
       from: edge.from,
       to: edge.to,
+      type: edge.type,
       segments,
       rootId: source.rootId,
       routed: segments.length > 1 || target.layer - source.layer > 1,

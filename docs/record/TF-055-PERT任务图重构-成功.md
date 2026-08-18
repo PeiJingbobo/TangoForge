@@ -30,7 +30,8 @@
 - `pnpm typecheck`：通过。
 - `pnpm lint`：通过，无本次 PERT 警告。
 - `pnpm format:check`：通过。
-- `pnpm test`：49 文件、322 测试全部通过。
+- `pnpm test`：49 文件、325 测试全部通过。
+- ARGUS 层级任务回归：141 节点、138 条父子边与 218 条依赖边均进入 PERT 布局；用户已在 macOS App 确认修复完成。
 - 真实 `/api/graph`：47 节点/134 边，Graphviz 布局约 147ms；非端点节点穿越 0；独立路径交叉对由同步兜底 616 降为 424（约 31%）。
 - `pnpm build`：Electron main/preload/renderer production build 通过。
 - 后端/API/MCP/CLI 数据契约：未修改。
@@ -40,4 +41,3 @@
 - 用户已确认本轮全景图优化完成，TF-028 可流转 `done`。
 - 真实依赖图为非平面图；在不合并依赖且保持每条边独立可选的前提下，二维无法保证绝对零边交叉，当前实现采用节点避让硬约束和边交叉最小化。
 - 全量测试仍输出工作区既有的 MSW handler、React `act` 和 Skills 嵌套 button 警告，但不影响本次门禁通过。
-��量测试仍输出工作区既有的 MSW handler、React `act` 和 Skills 嵌套 button 警告，但不影响本次门禁通过。

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ZoomTransform } from 'd3'
 import { PertView } from './pert-view'
+import { pertLayout, selectPertPrimaryRoot } from '@/lib/pert-layout'
 import type { GraphData, StateMachineState } from '@/types/models'
 
 const STATES: StateMachineState[] = [
@@ -43,11 +44,25 @@ const DATA: GraphData = {
 }
 
 describe('PertView 工作流画布', () => {
-  it('以圆形节点渲染并只展示 dependency 边', () => {
+  it('以圆形节点渲染 dependency 与 parent 边', () => {
     render(<PertView data={DATA} states={STATES} onSelect={() => {}} />)
     expect(document.querySelectorAll('[data-role="pert-nodes"] > g')).toHaveLength(5)
     expect(document.querySelectorAll('[data-role="pert-nodes"] > g > circle')).toHaveLength(5)
-    expect(document.querySelectorAll('[data-role="pert-edges"] > g')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-role="pert-edges"] > g')).toHaveLength(5)
+    expect(screen.getByRole('button', { name: '选择父子关系 TF-ROOT 到 TF-C' })).toBeInTheDocument()
+  })
+
+  it('超大层级图选择分支最多的主根作为初始视口锚点', () => {
+    const layout = pertLayout({
+      nodes: [node('ROOT'), node('OTHER'), node('A'), node('B'), node('C')],
+      edges: [
+        { from: 'ROOT', to: 'A', type: 'parent' },
+        { from: 'ROOT', to: 'B', type: 'parent' },
+        { from: 'ROOT', to: 'C', type: 'parent' },
+        { from: 'OTHER', to: 'C', type: 'dependency' },
+      ],
+    })
+    expect(selectPertPrimaryRoot(layout.nodes, layout.edges)?.id).toBe('ROOT')
   })
 
   it('每条边有透明宽命中层，可通过鼠标选中', () => {
