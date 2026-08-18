@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ArrowLeft, BookOpen, Check, Loader2, Trash2, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, Check, GitBranch, Loader2, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -288,6 +288,29 @@ export function DraftReview({ draftId, onExit, project, onConfirmed }: DraftRevi
           </Button>
         </div>
       </div>
+
+      {/* TF-054：文档原始状态（确认导入时并入项目状态机，任务状态保持语义） */}
+      {detail?.document_statuses && detail.document_statuses.length > 0 && (
+        <div className="mb-4 shrink-0 rounded-xl border border-divider p-3">
+          <div className="flex items-center gap-1.5 text-sm font-medium">
+            <GitBranch className="size-4 text-muted-foreground" />
+            文档原始状态
+            <span className="text-xs text-muted-foreground">
+              （确认导入时自动并入项目状态机；已在状态机中的措辞自动归一）
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {detail.document_statuses.map((s, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-divider bg-muted/40 px-2 py-1 font-mono text-xs"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* TF-049：LLM 建议的知识库文件（确认时自动关联全部生成任务） */}
       {detail?.knowledge_files && detail.knowledge_files.length > 0 && (

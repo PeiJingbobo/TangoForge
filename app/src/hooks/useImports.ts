@@ -20,7 +20,14 @@ export function useImportTasks(project?: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: ParseInput) =>
-      apiRequest<ImportDraft>('/api/import', { project: pid, method: 'POST', body: input }),
+      // TF-053/导入修复：LLM 解析大文件/批量文件可远超默认 30s（实测 3 文件合并约 40s+），
+      // 显式放宽到 5 分钟，避免前端提前 abort 误报"无法连接守护进程"。
+      apiRequest<ImportDraft>('/api/import', {
+        project: pid,
+        method: 'POST',
+        body: input,
+        timeoutMs: 5 * 60 * 1000,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['drafts', pid] })
     },

@@ -66,6 +66,9 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
       path: `${path}${buildQuery(opts.query)}`,
       body: opts.body,
       project: opts.project,
+      // TF-053/导入修复：LLM 解析可能超过默认 30s（如大文件批量导入），
+      // 透传调用方 timeoutMs 到主进程代理，避免前端提前 abort 误报"无法连接守护进程"。
+      timeoutMs: opts.timeoutMs,
     })) as ApiProxyResult
     return parseEnvelope<T>(result)
   }
@@ -112,9 +115,11 @@ async function fetchDirect<T>(path: string, opts: RequestOptions): Promise<T> {
       signal: controller.signal,
     })
   } catch (err) {
+    // abort 由 setTimeout 超时触发 → 超时而非断连（LLM 解析大文件可远超默认 30s）。
+    const timedOut = controller.signal.aborted
     throw new ApiError(
-      'NETWORK_ERROR',
-      ERROR_MESSAGES.NETWORK_ERROR,
+      timedOut ? 'TIMEOUT' : 'NETWORK_ERROR',
+      timedOut ? ERROR_MESSAGES.TIMEOUT : ERROR_MESSAGES.NETWORK_ERROR,
       err instanceof Error ? err.message : undefined,
     )
   } finally {

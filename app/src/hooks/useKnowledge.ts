@@ -41,10 +41,12 @@ export function useKnowledgeDocuments(
         },
       }),
     enabled: !!pid,
-    // TF-052：存在正在嵌入（indexing）文档时每 2s 轮询，展示嵌入完成进度。
+    // TF-052：存在正在嵌入（indexing）文档时每 2s 轮询展示进度；
+    // TF-053 修复：空闲时也保留 5s 兜底轮询——否则首次加载无 indexing 文档时
+    // refetchInterval 返回 false 永久停轮，之后 LLM/MCP 导入的文档状态变化无法刷新。
     refetchInterval: (query) => {
       const hasIndexing = query.state.data?.items?.some((d) => d.status === 'indexing') ?? false
-      return hasIndexing ? 2000 : false
+      return hasIndexing ? 2000 : 5000
     },
   })
 }
@@ -328,10 +330,13 @@ export function useKnowledgeQueue(project?: string) {
     queryKey: [...qk.knowledge(pid ?? ''), 'queue'],
     queryFn: () => apiRequest<KnowledgeQueueSnapshot>('/api/knowledge/queue', { project: pid }),
     enabled: !!pid,
+    // TF-053 修复：活跃任务 1.5s 快轮询；空闲也保留 5s 兜底轮询——
+    // 否则首次加载队列为空时返回 false 永久停轮，之后 LLM/MCP 导入入队
+    // 且 WS 事件缺失时，任务列表与状态条永不出现/不刷新。
     refetchInterval: (query) => {
       const s = query.state.data
       const active = (s?.pending?.length ?? 0) > 0 || (s?.embedding?.length ?? 0) > 0
-      return active ? 1500 : false
+      return active ? 1500 : 5000
     },
   })
 }

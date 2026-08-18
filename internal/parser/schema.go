@@ -28,6 +28,9 @@ type ParseResult struct {
 	// KnowledgeFiles LLM 建议的应引用知识库文件（TF-049，QA-K11）。
 	// path 必填；kb 为库名（可省略 = 默认库；不存在 → 整次导入失败 KNOWLEDGE_INVALID）。
 	KnowledgeFiles []knowledge.KnowledgeFile `json:"knowledge_files,omitempty"`
+	// DocumentStatuses 文档中出现的原始状态集合（LLM 识别，TF-054 状态机适配）：
+	// 用于对比项目状态机，缺失状态在确认导入时自动并入（状态机合并，方式 2）。
+	DocumentStatuses []string `json:"document_statuses,omitempty"`
 }
 
 // KnowledgeInput 导入入参的 knowledge 节（TF-049，QA-K11 扩展草稿流）。
@@ -62,6 +65,8 @@ type ParsedTask struct {
 type rawParseOutput struct {
 	Tasks          []rawTask                 `json:"tasks"`
 	KnowledgeFiles []knowledge.KnowledgeFile `json:"knowledge_files"`
+	// DocumentStatuses 文档中出现的原始状态集合（LLM 识别，状态机适配）。
+	DocumentStatuses []string `json:"document_statuses"`
 }
 
 type rawTask struct {
@@ -85,13 +90,15 @@ func buildSystemPrompt() string {
 规则：
 1. 只输出 JSON 本身，禁止输出解释、Markdown 代码围栏或任何多余文本。
 2. 每个任务必须有 title（标题）与 status（状态）字段；无法确定的 status 也必须从文档上下文推断。
-3. 层级：Markdown 标题层级映射为嵌套 children（## 为顶层，其下 ### 为子任务）。
-4. status 只能输出给定的状态 key 或其 label（label 会由系统自动映射）；不得自定义状态。
-5. priority 输出 0-5 整数或字符串别名（lowest/low/normal/high/highest/critical/urgent，以及 P0~P5——P0=5 最高、P5=0 最低，大小写不敏感）。
-6. 每个任务必须输出一个唯一的 id（建议 T1、T2、T3… 形式，简短、全局唯一；子任务也在同一编号体系内递增）。
-7. depends_on 输出被依赖任务的【id】（必须引用本文档中已经定义过的任务 id），不要输出任务标题或文档序号。
-8. number 输出文档中任务自带的简短编号（如标题前缀 "TF-001"、"T01"），与 priority 区分：表示"任务序号/编号"的值进 number，表示"优先级/紧急程度"的值（如 P0/P1/P2、高/中/低）进 priority；文档没有编号则输出空字符串 ""。
-9. 保持任务顺序与文档一致。`
+3. 层级：Markdown 标题层级映射为嵌套 children（## 为顶层，其下 ### 为子任务）。**章节/里程碑/任务组标题（如 "## M1：工程底座"、"### 临时任务"）必须保留为父任务节点**——即使它本身没有可执行内容，也输出为一个任务（title=章节标题，status 从子任务推断），其下的条目作为 children，禁止把章节标题丢弃或与子任务合并。
+4. status 只能输出给定的状态 key 或其 label（label 会由系统自动映射）；文档中出现的其它状态措辞（如 DONE / NOT_STARTED / IN_PROGRESS / READY_FOR_ACCEPTANCE / BLOCKED / TO DO / 未开始 / 进行中 / 已完成 等）**必须映射为最接近的状态 key**（如 DONE/已完成→done、NOT_STARTED/未开始/待办→todo、IN_PROGRESS/进行中→doing、READY_FOR_ACCEPTANCE/待验收→verifying（无 verifying 则 done）、BLOCKED/阻塞→doing）。不得输出状态机中不存在的状态 key。
+5. 另外，在顶层输出 document_statuses 数组：列出文档中**实际出现过的原始状态措辞**（去重，保留原文大小写，如 ["NOT_STARTED","IN_PROGRESS","BLOCKED","DONE"]），用于导入时核对项目状态机是否需要补充。
+6. priority 输出 0-5 整数或字符串别名（lowest/low/normal/high/highest/critical/urgent，以及 P0~P5——P0=5 最高、P5=0 最低，大小写不敏感）；文档未标注优先级时输出 null 或空串（系统归一为 0）。
+7. 每个任务必须输出一个唯一的 id（建议 T1、T2、T3… 形式，简短、全局唯一；子任务也在同一编号体系内递增）。
+8. depends_on 输出被依赖任务的【id】（必须引用本文档中已经定义过的任务 id），不要输出任务标题或文档序号。
+9. number 输出文档中任务自带的简短编号（如标题前缀 "TF-001"、"T01"），与 priority 区分：表示"任务序号/编号"的值进 number，表示"优先级/紧急程度"的值（如 P0/P1/P2、高/中/低）进 priority；文档没有编号则输出空字符串 ""。
+10. tags 输出任务的关键词标签；**若任务属于某个里程碑/章节（如父任务标题以 "M1"、"M2" 或里程碑名开头），必须把该里程碑标识（如 "M1"）加入本任务及其所有后代任务的 tags**，便于筛选与索引。文档已有的标签照抄。
+11. 保持任务顺序与文档一致。`
 }
 
 // buildJSONSchema 构造 JSON Schema 描述（追加进 user 提示，约束 LLM 输出）。
@@ -110,16 +117,17 @@ func buildJSONSchema() string {
           "number": {"type": "string", "description": "简短任务编号：文档自带编号（如 TF-001/T01），无则空字符串"},
           "title": {"type": "string"},
           "description": {"type": "string"},
-          "status": {"type": "string"},
-          "priority": {"type": ["integer", "string"], "description": "0-5 整数或别名（lowest/low/normal/high/highest/critical/urgent/P0~P5，P0=5 最高）"},
-          "tags": {"type": "array", "items": {"type": "string"}},
+          "status": {"type": "string", "description": "状态机 key 或 label；文档原文状态必须映射为最接近的状态 key（DONE→done、NOT_STARTED→todo、IN_PROGRESS→doing、READY_FOR_ACCEPTANCE→verifying/done、BLOCKED→doing 等）"},
+          "priority": {"type": ["integer", "string", "null"], "description": "0-5 整数或别名（lowest/low/normal/high/highest/critical/urgent/P0~P5，P0=5 最高）；未标注输出 null"},
+          "tags": {"type": "array", "items": {"type": "string"}, "description": "关键词标签；属于某里程碑/章节的任务必须包含里程碑标识（如 M1）"},
           "assignee": {"type": "string"},
           "depends_on": {"type": "array", "items": {"type": "string"}, "description": "被依赖任务的临时 id"},
           "children": {"type": "array", "items": {"$ref": "#"}}
         }
       }
-    }
-  }
+    },
+    "document_statuses": {"type": "array", "items": {"type": "string"}, "description": "文档中实际出现过的原始状态措辞（去重，如 NOT_STARTED/IN_PROGRESS/BLOCKED/DONE）"},
+    "knowledge_files": {"type": "array", "items": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}, "kb": {"type": "string"}, "reason": {"type": "string"}}}}
 }`
 }
 
@@ -285,7 +293,8 @@ func normalizeTags(tags []string) []string {
 	return out
 }
 
-// mapStatus 将 LLM 输出状态映射为状态机 key（key 或 label 匹配，大小写不敏感）。
+// mapStatus 将 LLM 输出状态映射为状态机 key（key 或 label 匹配，大小写不敏感；
+// 常见文档状态措辞（英文/中文）做语义映射，避免文档状态机与项目状态机不一致时整次导入失败）。
 func mapStatus(sm config.StateMachine, raw any) (string, bool) {
 	str, ok := raw.(string)
 	if !ok {
@@ -293,12 +302,65 @@ func mapStatus(sm config.StateMachine, raw any) (string, bool) {
 	}
 	str = strings.TrimSpace(str)
 	lower := strings.ToLower(str)
+	// 1. 状态机 key / label 精确匹配。
 	for _, st := range sm.States {
 		if strings.ToLower(st.Key) == lower {
 			return st.Key, true
 		}
 		if strings.ToLower(st.Label) == lower {
 			return st.Key, true
+		}
+	}
+	// 2. 常见状态措辞 → 状态机 key 语义映射（文档状态机适配，TF-054）。
+	if key, ok := semanticStatus(sm, lower); ok {
+		return key, true
+	}
+	return "", false
+}
+
+// semanticStatus 常见状态措辞（英文/中文）→ 状态机 key 的语义映射。
+// 返回项目状态机中最接近的 key；映射不到返回 ok=false。
+//
+// 两轮匹配：先全部别名完全相等（避免 "not_started" 被子串 "started" 误判），
+// 再长别名子串包含（"ready for acceptance" 等带空格变体）。
+func semanticStatus(sm config.StateMachine, lower string) (string, bool) {
+	groups := []struct {
+		aliases []string
+		keys    []string // 优先级：先取状态机中存在的
+	}{
+		{[]string{"done", "completed", "complete", "finished", "closed", "accepted", "已完成", "完成", "已验收", "验收通过", "released"},
+			[]string{"done"}},
+		{[]string{"doing", "in_progress", "in progress", "inprogress", "working", "started", "wip", "进行中", "执行中", "处理中", "开发中", "blocked", "blocking", "on hold", "on_hold", "stuck", "阻塞", "被阻塞", "卡住"},
+			[]string{"doing"}},
+		{[]string{"todo", "not_started", "not started", "notstarted", "pending", "planned", "backlog", "open", "待办", "未开始", "未启动", "计划中", "新建"},
+			[]string{"todo"}},
+		{[]string{"verifying", "ready_for_acceptance", "ready for acceptance", "rfa", "review", "in_review", "in review", "qa", "待验收", "待核验", "待验证", "验收中", "核验中", "待审查"},
+			[]string{"verifying", "doing", "done"}},
+	}
+	resolve := func(idx int) (string, bool) {
+		for _, k := range groups[idx].keys {
+			for _, st := range sm.States {
+				if st.Key == k {
+					return st.Key, true
+				}
+			}
+		}
+		return "", false
+	}
+	// 第一轮：完全相等。
+	for i, g := range groups {
+		for _, a := range g.aliases {
+			if lower == a {
+				return resolve(i)
+			}
+		}
+	}
+	// 第二轮：长别名子串包含（≥6 字符，避免 "do" 之类误匹配）。
+	for i, g := range groups {
+		for _, a := range g.aliases {
+			if len(a) >= 6 && strings.Contains(lower, a) {
+				return resolve(i)
+			}
 		}
 	}
 	return "", false
@@ -324,12 +386,14 @@ type flattenResult struct {
 // resolveDependsOn 将 depends_on 引用解析为任务 ID：
 // 优先按草稿内临时 ID 匹配（LLM 解析新格式）；未命中再按标题匹配（兼容旧草稿标题引用）。
 // 引用支持 Markdown 锚点链接 `[标题](#锚点)`（TF-040 导出格式）——先提取链接文本再匹配。
-// 无法解析的引用（如被依赖任务标题已被修改、旧草稿标题引用失效）**跳过并计数**——
-// 确认导入不因坏引用整次失败（宽容降级），由返回的 dropped 数量提示用户（草稿中间态可交互修复）。
-// ID/标题不唯一仍视为结构性错误。
+// 无法解析的引用（如被依赖任务标题已被修改、旧草稿标题引用失效）、自引用、以及批次内成环的
+// 依赖边（LLM 解析常见缺陷，如 A→B 且 B→A）**跳过并计数**——确认导入不因坏引用整次失败
+// （宽容降级，与 task.ImportTasks 的严格环校验互补：parser 在入口处剔除成环边），
+// 由返回的 dropped 数量提示用户（草稿中间态可交互修复）。ID 不唯一视为结构性错误；
+// 标题重复（LLM 输出缺陷）宽容处理——保留第一个映射，不整次失败。
 func resolveDependsOn(flattened []flattenResult) (map[string][]string, int, error) {
 	idIndex := make(map[string]string)    // 临时 ID → UUID
-	titleIndex := make(map[string]string) // 标题(trim) → UUID
+	titleIndex := make(map[string]string) // 标题(trim) → UUID（重复标题保留第一个，宽容）
 	for _, f := range flattened {
 		if f.RefID != "" {
 			if prev, ok := idIndex[f.RefID]; ok && prev != f.ID {
@@ -338,23 +402,27 @@ func resolveDependsOn(flattened []flattenResult) (map[string][]string, int, erro
 			idIndex[f.RefID] = f.ID
 		}
 		t := strings.TrimSpace(f.Title)
-		if prev, ok := titleIndex[t]; ok && prev != f.ID {
-			return nil, 0, fmt.Errorf("依赖标题不唯一: %q", t)
+		if _, ok := titleIndex[t]; !ok {
+			titleIndex[t] = f.ID
 		}
-		titleIndex[t] = f.ID
 	}
+	// 第一遍：解析全部引用（自引用/坏引用剔除并计数），得到 UUID → 依赖 UUID 集合。
 	out := make(map[string][]string, len(flattened))
 	dropped := 0
 	for _, f := range flattened {
 		var ids []string
 		for _, dep := range f.DependsOn {
 			ref := extractLinkText(strings.TrimSpace(dep))
+			// 自引用（按临时 ID 或自身标题）：无意义，跳过并计数。
+			if ref == f.RefID || strings.TrimSpace(ref) == strings.TrimSpace(f.Title) {
+				dropped++
+				continue
+			}
 			id, ok := idIndex[ref]
 			if !ok {
 				id, ok = titleIndex[ref]
 			}
 			if !ok {
-				// 无法解析（标题被修改/引用失效）：跳过并计数，导入仍继续。
 				dropped++
 				continue
 			}
@@ -362,7 +430,86 @@ func resolveDependsOn(flattened []flattenResult) (map[string][]string, int, erro
 		}
 		out[f.ID] = ids
 	}
+	// 第二遍：剔除批次内成环的依赖边（迭代消环：每次去掉一个"引用其它批次任务的边"，
+	// 直至无环；被剔除的边计数）。仅处理本批内部引用——指向库内旧任务的边不可能成环。
+	out, cycleDropped := breakBatchCycles(out)
+	dropped += cycleDropped
 	return out, dropped, nil
+}
+
+// breakBatchCycles 迭代剔除批次内依赖图的成环边（保序，最小剔除）。
+//
+// 策略：DFS 找环——每次检测到环时，剔除环上"当前节点 → 环内某节点"的**一条**边
+// （剔除最后被访问的入环边，保证尽量少的边被移除），重复直至无环。
+// 仅处理本批内部引用（指向库内旧任务的边不在图内，不会误判）。
+func breakBatchCycles(deps map[string][]string) (map[string][]string, int) {
+	out := make(map[string][]string, len(deps))
+	for k, v := range deps {
+		out[k] = append([]string(nil), v...)
+	}
+	dropped := 0
+	for {
+		// 找任意一条环边（若存在）。
+		cut := findCycleEdge(out)
+		if cut == nil {
+			break
+		}
+		src := cut[0]
+		target := cut[1]
+		list := out[src]
+		for i, d := range list {
+			if d == target {
+				out[src] = append(append([]string(nil), list[:i]...), list[i+1:]...)
+				break
+			}
+		}
+		dropped++
+	}
+	return out, dropped
+}
+
+// findCycleEdge 返回图中任意一条成环的边 [src, target]；无环返回 nil。
+// 用 DFS 维护访问栈：当前节点指向栈内祖先的边 (id → dep) 必在某个环上
+// （栈内路径 dep → ... → id 存在），剔除该边即破坏该环。
+func findCycleEdge(deps map[string][]string) []string {
+	visiting := make(map[string]bool, len(deps)) // 当前 DFS 栈内
+	visited := make(map[string]bool, len(deps))  // 已完全处理
+	var found []string
+	var dfs func(id string) bool
+	dfs = func(id string) bool {
+		if found != nil {
+			return true
+		}
+		if visiting[id] {
+			return true // 防御（不应发生：进入前已标记）
+		}
+		if visited[id] {
+			return false
+		}
+		visiting[id] = true
+		for _, dep := range deps[id] {
+			if _, ok := deps[dep]; !ok {
+				continue // 非本批内部边
+			}
+			if visiting[dep] {
+				// id → dep 且 dep 是栈内祖先：环 = id→dep + dep→...→id。
+				found = []string{id, dep}
+				return true
+			}
+			if dfs(dep) {
+				return true
+			}
+		}
+		delete(visiting, id)
+		visited[id] = true
+		return false
+	}
+	for id := range deps {
+		if dfs(id) {
+			break
+		}
+	}
+	return found
 }
 
 // extractLinkText 从依赖引用中提取可匹配文本（TF-040）：

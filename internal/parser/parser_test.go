@@ -125,6 +125,26 @@ func TestParse_PriorityP0Alias(t *testing.T) {
 	}
 }
 
+func TestParse_PriorityEmptyString(t *testing.T) {
+	// LLM 对未标注优先级的文档常输出 ""（空串），应归一化为 0（无优先级），
+	// 不得让整次导入失败（TF-053 修复：ARGUS 等无优先级文档导入）。
+	srv := mockLLM(t, `{"tasks":[{"title":"工作台","status":"done","priority":""}]}`)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+
+	draft, err := svc.Parse(context.Background(), workdir, ParseInput{Content: "x", SourceFile: "a.md"})
+	if err != nil {
+		t.Fatalf("Parse(empty priority): %v", err)
+	}
+	detail, err := svc.Get(context.Background(), workdir, draft.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(detail.Tasks) != 1 || detail.Tasks[0].Priority != 0 {
+		t.Fatalf("空串 priority 应归一化为 0，got %+v", detail.Tasks)
+	}
+}
+
 func TestParse_Failures(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -374,14 +394,22 @@ func TestFlattenTasks(t *testing.T) {
 	}
 }
 
-// 依赖标题解析：重复标题报错。
+// 依赖标题解析：重复标题（LLM 输出缺陷，大型文档常见）宽容保留第一个映射，不整次失败。
 func TestResolveDependsOn_DuplicateTitle(t *testing.T) {
 	flat := []flattenResult{
-		{ID: "a", Title: "重复"},
-		{ID: "b", Title: "重复"},
+		{ID: "a", RefID: "T1", Title: "重复"},
+		{ID: "b", RefID: "T2", Title: "重复"},
+		{ID: "c", RefID: "T3", Title: "使用方", DependsOn: []string{"重复"}},
 	}
-	if _, _, err := resolveDependsOn(flat); err == nil {
-		t.Fatal("重复标题应报错")
+	dep, dropped, err := resolveDependsOn(flat)
+	if err != nil {
+		t.Fatalf("重复标题不应报错: %v", err)
+	}
+	if len(dep["c"]) != 1 || dep["c"][0] != "a" {
+		t.Fatalf("重复标题引用应映射到首个同标题任务: %v", dep["c"])
+	}
+	if dropped != 0 {
+		t.Fatalf("dropped=%d，期望 0", dropped)
 	}
 }
 
@@ -584,5 +612,252 @@ func TestConfirm_DepsByID(t *testing.T) {
 	}
 	if len(fix.DependsOn) != 1 || fix.DependsOn[0] != child.ID {
 		t.Fatalf("修复登录页 depends_on: %v, want %s", fix.DependsOn, child.ID)
+	}
+}
+
+// TestParse_DocumentStatusesAndMilestone：LLM 输出 document_statuses + 章节父任务 + 里程碑标签。
+func TestParse_DocumentStatusesAndMilestone(t *testing.T) {
+	doc := `{"document_statuses":["NOT_STARTED","IN_PROGRESS","BLOCKED","DONE"],
+	  "tasks":[
+	    {"id":"T1","title":"M1：工程底座","status":"","children":[
+	      {"id":"T2","title":"数据库迁移","status":"done"},
+	      {"id":"T3","title":"配置加载","status":"doing","tags":["config"]}
+	    ]},
+	    {"id":"T4","title":"M2：数据闭环","status":"","children":[
+	      {"id":"T5","title":"Connector 注册","status":"NOT_STARTED"}
+	    ]}
+	  ]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "# 文档\n", SourceFile: "docs/m.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	detail, err := svc.Get(ctx, workdir, draft.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	// document_statuses 透传。
+	if len(detail.DocumentStatuses) != 4 {
+		t.Fatalf("document_statuses=%v", detail.DocumentStatuses)
+	}
+	// 父任务保留 + 状态推断（M1 有 done+doing → doing；M2 全 todo → todo）。
+	if len(detail.Tasks) != 2 {
+		t.Fatalf("顶层任务数=%d，父任务应保留", len(detail.Tasks))
+	}
+	if detail.Tasks[0].Status != "doing" {
+		t.Fatalf("M1 父任务状态=%q，应推断为 doing", detail.Tasks[0].Status)
+	}
+	if detail.Tasks[1].Status != "todo" {
+		t.Fatalf("M2 父任务状态=%q，应推断为 todo", detail.Tasks[1].Status)
+	}
+	// 里程碑标签注入：父任务与后代均含 M1/M2。
+	hasTag := func(tags []string, tag string) bool {
+		for _, x := range tags {
+			if x == tag {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasTag(detail.Tasks[0].Tags, "M1") {
+		t.Fatalf("M1 父任务 tags 缺里程碑: %v", detail.Tasks[0].Tags)
+	}
+	child := detail.Tasks[0].Children[1]
+	if !hasTag(child.Tags, "M1") {
+		t.Fatalf("M1 子任务 tags 缺里程碑: %v", child.Tags)
+	}
+	if !hasTag(child.Tags, "config") {
+		t.Fatalf("子任务原有 tag 应保留: %v", child.Tags)
+	}
+	if !hasTag(detail.Tasks[1].Children[0].Tags, "M2") {
+		t.Fatalf("M2 子任务 tags 缺里程碑: %v", detail.Tasks[1].Children[0].Tags)
+	}
+	// 文档状态 NOT_STARTED → todo 语义映射（非失败）。
+	if detail.Tasks[1].Children[0].Status != "todo" {
+		t.Fatalf("NOT_STARTED 应映射为 todo，got %q", detail.Tasks[1].Children[0].Status)
+	}
+}
+
+// TestConfirm_MergeDocumentStatuses：确认导入时，文档原始状态自动并入项目状态机（方式 2）。
+func TestConfirm_MergeDocumentStatuses(t *testing.T) {
+	doc := `{"document_statuses":["BLOCKED","NOT_STARTED","DONE"],
+	  "tasks":[
+	    {"id":"T1","title":"M6：四平台回归","status":"BLOCKED"}
+	  ]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "# 文档\n", SourceFile: "docs/blocked.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// 解析阶段：BLOCKED 应语义映射为 doing（项目状态机无 blocked），导入不失败。
+	detail, _ := svc.Get(ctx, workdir, draft.ID)
+	if detail.Tasks[0].Status != "doing" {
+		t.Fatalf("解析阶段 BLOCKED 应映射为 doing，got %q", detail.Tasks[0].Status)
+	}
+	// 确认导入：document_statuses 中 BLOCKED/NOT_STARTED/DONE 经语义归一后，
+	// 仅 DONE 已在状态机；NOT_STARTED→todo 已在；BLOCKED→doing 已在 → 状态机不变。
+	if _, err := svc.Confirm(ctx, workdir, draft.ID); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	sm, err := svc.loadStateMachine(workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sm.States) != 3 { // todo/doing/done，未新增（BLOCKED 语义并入 doing）
+		t.Fatalf("状态机状态数=%d，期望 3（语义归一后无缺失）: %+v", len(sm.States), keysOf(sm.States))
+	}
+}
+
+// TestMergeDocumentStatuses_AddsMissing：状态机确实缺失的文档状态（如待办别名 NEW）应新增。
+func TestMergeDocumentStatuses_AddsMissing(t *testing.T) {
+	doc := `{"document_statuses":["NEW","ARCHIVING"],"tasks":[{"id":"T1","title":"x","status":"todo"}]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "x", SourceFile: "a.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if _, err := svc.Confirm(ctx, workdir, draft.ID); err != nil {
+		t.Fatalf("Confirm: %v", err)
+	}
+	sm, err := svc.loadStateMachine(workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := keysOf(sm.States)
+	foundNew, foundArch := false, false
+	for _, k := range keys {
+		if k == "new" {
+			foundNew = true
+		}
+		if k == "archiving" {
+			foundArch = true
+		}
+	}
+	if !foundNew || !foundArch {
+		t.Fatalf("状态机应新增 new/archiving，got %v", keys)
+	}
+	// 新状态可达：todo→new、new→doing/done。
+	trs := sm.Transitions
+	if !transitionAllows(trs, "todo", "new") || !transitionAllows(trs, "new", "doing") {
+		t.Fatalf("新状态流转缺失: %+v", trs)
+	}
+}
+
+// transitionAllows 判断 from→to 是否在 transitions 中（宽松：from 无规则视为放行）。
+func transitionAllows(trs []config.Transition, from, to string) bool {
+	for _, tr := range trs {
+		if tr.From != from {
+			continue
+		}
+		for _, t := range tr.To {
+			if t == to {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// TestConfirm_SelfReferenceSkipped：LLM 输出 depends_on 自引用（依赖自身）→ 确认导入跳过，
+// 不因 CIRCULAR_DEPENDENCY 整次失败（TF-054 宽容降级，同坏引用）。
+func TestConfirm_SelfReferenceSkipped(t *testing.T) {
+	doc := `{"tasks":[
+	  {"id":"T1","title":"四平台回归","status":"todo","depends_on":["T1"]},
+	  {"id":"T2","title":"Meta 对账","status":"todo","depends_on":["T1","T2"]}
+	]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "x", SourceFile: "self.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	res, err := svc.Confirm(ctx, workdir, draft.ID)
+	if err != nil {
+		t.Fatalf("Confirm 不应因自引用失败: %v", err)
+	}
+	if res.Created != 2 {
+		t.Fatalf("created=%d，期望 2", res.Created)
+	}
+	if res.DroppedDeps != 2 { // T1→T1 与 T2→T2 两条自引用
+		t.Fatalf("dropped_deps=%d，期望 2", res.DroppedDeps)
+	}
+	// 入库：T1 无依赖（自引用剔除）；T2 仅依赖 T1（T2→T2 自引用剔除）。
+	ts := task.NewService(task.Options{})
+	t.Cleanup(func() { _ = ts.Close() })
+	list, err := ts.List(ctx, workdir, task.ListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byTitle := map[string]*task.TaskTreeNode{}
+	for _, n := range list.Tree {
+		byTitle[n.Title] = n
+	}
+	if len(byTitle["四平台回归"].DependsOn) != 0 {
+		t.Fatalf("四平台回归依赖应为空（自引用剔除）: %v", byTitle["四平台回归"].DependsOn)
+	}
+	deps := byTitle["Meta 对账"].DependsOn
+	if len(deps) != 1 || deps[0] != byTitle["四平台回归"].ID {
+		t.Fatalf("Meta 对账依赖应仅含四平台回归: %v", deps)
+	}
+}
+
+// TestConfirm_CycleEdgesSkipped：LLM 输出间接环（A→B 且 B→A）→ 确认导入剔除成环边，
+// 不因 CIRCULAR_DEPENDENCY 整次失败（TF-054 宽容降级，同坏引用）。
+func TestConfirm_CycleEdgesSkipped(t *testing.T) {
+	doc := `{"tasks":[
+	  {"id":"T1","title":"A 任务","status":"todo","depends_on":["T2"]},
+	  {"id":"T2","title":"B 任务","status":"todo","depends_on":["T1"]},
+	  {"id":"T3","title":"C 任务","status":"todo","depends_on":["T1","T2"]}
+	]}`
+	srv := mockLLM(t, doc)
+	svc, _ := newParser(t, srv.URL)
+	workdir := initParserProject(t)
+	ctx := context.Background()
+
+	draft, err := svc.Parse(ctx, workdir, ParseInput{Content: "x", SourceFile: "cycle.md"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	res, err := svc.Confirm(ctx, workdir, draft.ID)
+	if err != nil {
+		t.Fatalf("Confirm 不应因环失败: %v", err)
+	}
+	if res.Created != 3 {
+		t.Fatalf("created=%d，期望 3", res.Created)
+	}
+	// 环边被剔除：A、B 互不依赖；C 依赖保留其中一条（A 或 B）。
+	if res.DroppedDeps != 1 { // 2-环需剔除 1 条边
+		t.Fatalf("dropped_deps=%d，期望 1（剔除成环边）", res.DroppedDeps)
+	}
+	ts := task.NewService(task.Options{})
+	t.Cleanup(func() { _ = ts.Close() })
+	list, err := ts.List(ctx, workdir, task.ListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byTitle := map[string]*task.TaskTreeNode{}
+	for _, n := range list.Tree {
+		byTitle[n.Title] = n
+	}
+	// A 与 B 之间不得互为依赖。
+	aDeps, bDeps := byTitle["A 任务"].DependsOn, byTitle["B 任务"].DependsOn
+	if len(aDeps) != 0 && len(bDeps) != 0 {
+		t.Fatalf("环边未剔除: A=%v B=%v", aDeps, bDeps)
 	}
 }

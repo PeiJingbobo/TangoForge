@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"tangoforge/internal/config"
@@ -366,6 +367,14 @@ func (s *Service) Confirm(ctx context.Context, workdir, draftID string) (Confirm
 		return ConfirmResult{}, fmt.Errorf("%w: 草稿数据损坏: %v", ErrImportFailed, err)
 	}
 
+	// TF-054 状态机合并（方式 2）：文档状态机与项目状态机对比，缺失状态确认导入时自动并入，
+	// 使文档原始状态（如 BLOCKED / NOT_STARTED）在任务入库后可用，避免状态被抹平或导入失败。
+	mergedSM, err := s.mergeDocumentStatuses(ctx, workdir, pr.DocumentStatuses)
+	if err != nil {
+		return ConfirmResult{}, fmt.Errorf("%w: 状态机合并失败: %v", ErrImportFailed, err)
+	}
+	_ = mergedSM
+
 	// 展平 + 依赖解析（§17.3）：先补齐临时 ID（旧草稿兼容），再按 ID/标题双索引解析。
 	pr.Tasks = ensureTaskIDs(pr.Tasks)
 	flattened, err := flattenTasks(pr.Tasks, "")
@@ -464,12 +473,180 @@ func (s *Service) Discard(ctx context.Context, workdir, draftID string) error {
 	return nil
 }
 
+// mergeDocumentStatuses 状态机合并（TF-054 方式 2）：将文档原始状态并入项目状态机。
+//
+// 策略：对文档状态做语义归一（英文/中文 → 状态机 key 风格），
+// 凡项目状态机不存在的 key 自动追加为状态（label=原文，颜色取默认），
+// 并补充 transitions：todo→新状态、新状态→doing、新状态→done（保持可达可流转）。
+// 返回合并后的状态机；无差异时原样返回（不落盘、不触发事件）。
+//
+// 注意：仅追加不删除——不触碰用户既有状态机定义，符合「删除=需人工确认」的约束；
+// 合并本身是导入确认流程的一部分（用户已确认草稿），落盘经 task.UpdateStateMachine
+// （含编辑校验 + STATUS_IN_USE 占用校验 + state_machine.changed 事件/审计）。
+func (s *Service) mergeDocumentStatuses(ctx context.Context, workdir string, docStatuses []string) (config.StateMachine, error) {
+	if len(docStatuses) == 0 {
+		sm, err := s.loadStateMachine(workdir)
+		if err != nil {
+			return config.StateMachine{}, err
+		}
+		return sm, nil
+	}
+	sm, err := s.loadStateMachine(workdir)
+	if err != nil {
+		return config.StateMachine{}, err
+	}
+	existing := make(map[string]bool, len(sm.States))
+	for _, st := range sm.States {
+		existing[st.Key] = true
+	}
+	// 收集缺失状态：语义归一后 key 唯一、非 archived、非系统保留态。
+	missing := make([]config.State, 0, len(docStatuses))
+	seen := make(map[string]bool)
+	for _, raw := range docStatuses {
+		raw = strings.TrimSpace(raw)
+		if raw == "" || raw == task.StatusArchived {
+			continue
+		}
+		key := semanticStatusKey(raw)
+		if key == "" || key == task.StatusArchived || existing[key] || seen[key] {
+			continue
+		}
+		seen[key] = true
+		missing = append(missing, config.State{
+			Key:   key,
+			Label: raw, // label 保留文档原文，便于看板识别来源
+			Color: defaultStateColor(len(sm.States) + len(missing)),
+		})
+	}
+	if len(missing) == 0 {
+		return sm, nil
+	}
+	// 追加状态 + 补充流转：todo→新状态、新状态→doing/done、doing→新状态、done→新状态。
+	sm.States = append(sm.States, missing...)
+	toAll := make([]string, 0, len(missing))
+	for _, st := range missing {
+		toAll = append(toAll, st.Key)
+	}
+	sm.Transitions = appendTransitions(sm.Transitions,
+		config.Transition{From: "todo", To: toAll},
+		config.Transition{From: "doing", To: toAll},
+		config.Transition{From: "done", To: toAll},
+	)
+	for _, st := range missing {
+		sm.Transitions = appendTransitions(sm.Transitions,
+			config.Transition{From: st.Key, To: []string{"doing", "done"}},
+		)
+	}
+	// 经 task.UpdateStateMachine 持久化（校验 + 审计 + 事件）。
+	norm, err := s.tasks.UpdateStateMachine(ctx, workdir, sm)
+	if err != nil {
+		return config.StateMachine{}, err
+	}
+	s.logger.Info("import state machine merged",
+		"workdir", workdir, "added", len(missing), "states", keysOf(norm.States))
+	return norm, nil
+}
+
+// semanticStatusKey 文档原始状态措辞 → 状态机 key（语义归一；与 mapStatus 的语义组一致）。
+func semanticStatusKey(raw string) string {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	// 常见措辞 → 目标 key（英文/中文）。两轮：先完全相等，再长别名子串包含。
+	groups := []struct {
+		aliases []string
+		key     string
+	}{
+		{[]string{"done", "completed", "complete", "finished", "closed", "accepted", "已完成", "完成", "已验收", "验收通过", "released"}, "done"},
+		{[]string{"doing", "in_progress", "in progress", "inprogress", "working", "started", "wip", "进行中", "执行中", "处理中", "开发中", "blocked", "blocking", "on hold", "on_hold", "stuck", "阻塞", "被阻塞", "卡住"}, "doing"},
+		{[]string{"todo", "not_started", "not started", "notstarted", "pending", "planned", "backlog", "open", "待办", "未开始", "未启动", "计划中", "新建"}, "todo"},
+		{[]string{"verifying", "ready_for_acceptance", "ready for acceptance", "rfa", "review", "in_review", "in review", "qa", "待验收", "待核验", "待验证", "验收中", "核验中", "待审查"}, "verifying"},
+	}
+	for _, g := range groups {
+		for _, a := range g.aliases {
+			if lower == a {
+				return g.key
+			}
+		}
+	}
+	for _, g := range groups {
+		for _, a := range g.aliases {
+			if len(a) >= 6 && strings.Contains(lower, a) {
+				return g.key
+			}
+		}
+	}
+	// 无法语义归一：按原文规范化成 key（小写、空白→下划线、去特殊字符）。
+	key := strings.ToLower(strings.TrimSpace(raw))
+	key = regexp.MustCompile(`[^a-z0-9_\-]+`).ReplaceAllString(key, "_")
+	key = strings.Trim(key, "_")
+	if key == "" || key == "archived" {
+		return ""
+	}
+	return key
+}
+
+// appendTransitions 追加流转规则（from 已存在时合并 to，去重）。
+func appendTransitions(list []config.Transition, adds ...config.Transition) []config.Transition {
+	out := list
+	for _, a := range adds {
+		found := false
+		for i := range out {
+			if out[i].From == a.From {
+				out[i].To = mergeStrings(out[i].To, a.To)
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// mergeStrings 合并去重（保序）。
+func mergeStrings(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, s := range a {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	for _, s := range b {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
+// keysOf 提取状态 key 列表（日志用）。
+func keysOf(states []config.State) []string {
+	out := make([]string, 0, len(states))
+	for _, st := range states {
+		out = append(out, st.Key)
+	}
+	return out
+}
+
+// defaultStateColor 默认状态颜色（新增状态按序号取色板，保证与既有状态视觉可区分）。
+func defaultStateColor(i int) string {
+	palette := []string{"#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#84cc16", "#06b6d4", "#a855f7", "#f43f5e"}
+	return palette[i%len(palette)]
+}
+
 // DraftDetail 草稿明细（审阅界面数据源）：含完整解析任务树。
 type DraftDetail struct {
 	Draft
 	Tasks []ParsedTask `json:"tasks"`
 	// KnowledgeFiles LLM 建议关联的知识库文件（TF-049；草稿审阅展示/勾选）。
 	KnowledgeFiles []knowledge.KnowledgeFile `json:"knowledge_files,omitempty"`
+	// DocumentStatuses 文档原始状态集合（TF-054；确认导入时并入项目状态机）。
+	DocumentStatuses []string `json:"document_statuses,omitempty"`
 }
 
 // Get 读取单个 pending 草稿明细（含任务树；供审阅/编辑）。
@@ -497,6 +674,7 @@ func (s *Service) Get(ctx context.Context, workdir, draftID string) (DraftDetail
 	if err := json.Unmarshal([]byte(parsed), &pr); err == nil && len(pr.Tasks) > 0 {
 		d.Tasks = pr.Tasks
 		d.KnowledgeFiles = pr.KnowledgeFiles
+		d.DocumentStatuses = pr.DocumentStatuses
 	} else {
 		if err := json.Unmarshal([]byte(parsed), &d.Tasks); err != nil {
 			return DraftDetail{}, fmt.Errorf("parser: parse draft json: %w", err)
@@ -609,7 +787,18 @@ func (s *Service) normalizeOutput(sm config.StateMachine, raw json.RawMessage) (
 			Reason: strings.TrimSpace(kf.Reason),
 		})
 	}
-	return ParseResult{Tasks: normalized, KnowledgeFiles: kfs}, nil
+	// document_statuses 规范化：去空白去重（TF-054 状态机适配，LLM 识别文档原始状态）。
+	docStatuses := make([]string, 0, len(out.DocumentStatuses))
+	seenStatus := make(map[string]bool)
+	for _, st := range out.DocumentStatuses {
+		st = strings.TrimSpace(st)
+		if st == "" || seenStatus[st] {
+			continue
+		}
+		seenStatus[st] = true
+		docStatuses = append(docStatuses, st)
+	}
+	return ParseResult{Tasks: normalized, KnowledgeFiles: kfs, DocumentStatuses: docStatuses}, nil
 }
 
 // normalizeTasks 递归校验规范化任务树。
@@ -622,9 +811,20 @@ func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask, counter 
 		if title == "" {
 			return nil, fmt.Errorf("第 %d 项缺少 title", i+1)
 		}
-		status, ok := mapStatus(sm, rt.Status)
-		if !ok || status == "archived" {
-			return nil, fmt.Errorf("第 %d 项 status 非法或不在状态机中: %v", i+1, rt.Status)
+		// 状态解析：空 status（LLM 对章节/里程碑父节点的常见省略）允许——有 children 时
+		// 由子任务推断；无 children 仍必须给出合法状态（避免把"无状态的任务"当叶子静默入库）。
+		var status string
+		if rawStatusIsEmpty(rt.Status) {
+			if len(rt.Children) == 0 {
+				return nil, fmt.Errorf("第 %d 项 status 非法或不在状态机中: %v", i+1, rt.Status)
+			}
+			status = "" // 待推断
+		} else {
+			mapped, ok := mapStatus(sm, rt.Status)
+			if !ok || mapped == "archived" {
+				return nil, fmt.Errorf("第 %d 项 status 非法或不在状态机中: %v", i+1, rt.Status)
+			}
+			status = mapped
 		}
 		prio, err := normalizePriority(rt.Priority)
 		if err != nil {
@@ -640,6 +840,18 @@ func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask, counter 
 		if err != nil {
 			return nil, err
 		}
+		// 父任务状态推断（TF-054 层级保留）：章节/里程碑父节点若 LLM 未给明确状态，
+		// 由子任务推断——全部 done → done；存在 doing/verifying → doing；否则 todo。
+		if status == "" && len(children) > 0 {
+			status = inferParentStatus(status, children)
+		}
+		// 里程碑标签（TF-054）：父任务标题前缀（如 "M1：工程底座" / "M2 数据闭环"）提取为
+		// 里程碑标识，注入本任务及其全部后代 tags，便于筛选与索引。
+		milestone := milestoneOf(title)
+		tags := normalizeTags(rt.Tags)
+		if milestone != "" {
+			tags = ensureMilestoneTag(tags, milestone)
+		}
 		out = append(out, ParsedTask{
 			ID:          id,
 			Number:      strings.TrimSpace(rt.Number),
@@ -647,13 +859,93 @@ func (s *Service) normalizeTasks(sm config.StateMachine, raw []rawTask, counter 
 			Description: rt.Description,
 			Status:      status,
 			Priority:    prio,
-			Tags:        normalizeTags(rt.Tags),
+			Tags:        tags,
 			Assignee:    strings.TrimSpace(rt.Assignee),
 			DependsOn:   cleanStrings(rt.DependsOn),
-			Children:    children,
+			Children:    injectMilestoneTags(children, milestone),
 		})
 	}
 	return out, nil
+}
+
+// rawStatusIsEmpty 判断 LLM 原始 status 是否为空（nil / 空串 / 纯空白）。
+func rawStatusIsEmpty(raw any) bool {
+	if raw == nil {
+		return true
+	}
+	if s, ok := raw.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	return false
+}
+
+// inferParentStatus 由子任务状态推断父任务状态（章节/里程碑节点）。
+func inferParentStatus(_ string, children []ParsedTask) string {
+	hasDone, hasActive := false, false
+	var walk func(list []ParsedTask)
+	walk = func(list []ParsedTask) {
+		for _, c := range list {
+			switch c.Status {
+			case "done":
+				hasDone = true
+			case "doing", "verifying":
+				hasActive = true
+			}
+			walk(c.Children)
+		}
+	}
+	walk(children)
+	switch {
+	case hasActive:
+		return "doing"
+	case hasDone:
+		return "done"
+	default:
+		return "todo"
+	}
+}
+
+// milestoneOf 从章节/任务标题提取里程碑标识（如 "M1：xxx" → "M1"、"M2 xxx" → "M2"）。
+func milestoneOf(title string) string {
+	t := strings.TrimSpace(title)
+	// 匹配行首里程碑前缀：字母 M + 数字（可带 -），后接分隔符（：:、空白、-）。
+	re := regexp.MustCompile(`^(M\d+[-]?\d*)\s*[：:、\-\s]`)
+	if m := re.FindStringSubmatch(t); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// injectMilestoneTags 将父任务里程碑标识注入全部后代任务 tags（大小写不敏感去重）。
+func injectMilestoneTags(children []ParsedTask, milestone string) []ParsedTask {
+	if milestone == "" || len(children) == 0 {
+		return children
+	}
+	for i := range children {
+		children[i].Tags = ensureMilestoneTag(children[i].Tags, milestone)
+		children[i].Children = injectMilestoneTags(children[i].Children, milestone)
+	}
+	return children
+}
+
+// ensureMilestoneTag 注入里程碑标签：已存在（大小写不敏感）则不重复追加，
+// 并移除旧的小写/大写变体，统一为里程碑规范形式（如 M1）。
+func ensureMilestoneTag(tags []string, milestone string) []string {
+	out := make([]string, 0, len(tags)+1)
+	seen := make(map[string]bool, len(tags)+1)
+	for _, t := range tags {
+		if strings.EqualFold(t, milestone) {
+			continue // 旧变体由下方统一写回规范形式
+		}
+		low := strings.ToLower(t)
+		if seen[low] {
+			continue
+		}
+		seen[low] = true
+		out = append(out, t)
+	}
+	out = append(out, milestone)
+	return out
 }
 
 // ensureTaskIDs 递归补齐草稿任务临时 ID（旧草稿/外部编辑兼容）：

@@ -146,6 +146,16 @@ describe('SkillStep（TF-041 Step 4：多宿主安装）', () => {
     expect(zhText).toContain('project=/data/projects/tf')
     expect(zhText).toContain('taskboard-basic')
     expect(zhText).toContain('todo(待办)')
+    // 知识库使用方法 + 状态同步铁律（TF：AGENTS.md 推荐提示词同源）。
+    expect(zhText).toContain('知识库（Knowledge Base）使用')
+    expect(zhText).toContain('knowledge_search')
+    expect(zhText).toContain('状态同步铁律')
+    // 公共模板不得硬编码项目专属状态名（verifying/doing 等），
+    // 只允许通过 {{ state_machine_list }} 变量注入实际状态机。
+    // 本用例 mock 状态机为 todo/doing/done（无 verifying），渲染结果不应出现 verifying。
+    expect(zhText).toContain('完成判定以项目状态机为准')
+    expect(zhText).toContain('state_machine_get')
+    expect(zhText).not.toContain('verifying')
     expect(zhText).not.toContain('{{')
     clipboard.mockClear()
 
@@ -157,6 +167,12 @@ describe('SkillStep（TF-041 Step 4：多宿主安装）', () => {
     expect(enText).toContain('## TangoForge Task Management')
     expect(enText).toContain('port `19810`')
     expect(enText).toContain('project=/data/projects/tf')
+    expect(enText).toContain('Knowledge Base Usage')
+    expect(enText).toContain('knowledge_search')
+    expect(enText).toContain('Status synchronization is a hard requirement')
+    // 英文公共模板同样不得硬编码状态名，只依赖变量注入。
+    expect(enText).toContain('Completion criteria follow the project state machine')
+    expect(enText).toContain('state_machine_get')
     expect(enText).not.toContain('{{')
     clipboard.mockRestore()
   })
